@@ -69,15 +69,24 @@ export default function MiniAppPage() {
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
           : `${Date.now()}`;
-      const result = await sdk.actions.signIn({ nonce });
-      const user = result?.user;
+      await sdk.actions.signIn({ nonce });
+
+      const context = await sdk.context;
+      const user = context.user;
 
       if (!user) {
         setError('No Farcaster user detected. Please try again.');
         return;
       }
 
-      const addresses = user.verifiedAddresses?.ethereumAddresses ?? [];
+      const addressesResponse = await fetch(`/api/addresses?fid=${user.fid}`);
+      if (!addressesResponse.ok) {
+        setError('Unable to sync verified addresses. Please try again.');
+        return;
+      }
+
+      const addressData = (await addressesResponse.json()) as { addresses: string[] };
+      const addresses = addressData.addresses ?? [];
       const primaryAddress = addresses[0] || user.custodyAddress;
 
       if (!primaryAddress) {
