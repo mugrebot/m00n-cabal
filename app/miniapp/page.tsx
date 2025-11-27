@@ -37,12 +37,6 @@ interface ViewerContext {
 
 type ScanPhase = 'idle' | 'authenticating' | 'addresses' | 'fetching' | 'ready' | 'error';
 
-interface ScanStep {
-  key: ScanPhase;
-  label: string;
-  description: string;
-}
-
 const TOKEN_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
 const CLAIM_URL = 'https://clanker.world/clanker/0x22Cd99EC337a2811F594340a4A6E41e4A3022b07';
 const STICKER_EMOJIS = ['🌙', '💜', '🕸️', '🦇', '☠️', '✨', '🧬', '🛸', '🩸', '💾'];
@@ -69,11 +63,9 @@ const getReplyGlowConfig = (count: number): ReplyGlow => {
   return { color: '#8c54ff', shadow: 'rgba(140, 84, 255, 0.25)' };
 };
 
-export default function MiniAppPage() {
-  const DEFAULT_MINIAPP_URL = 'https://m00nad.vercel.app/miniapp/';
-  const rawMiniAppUrl = process.env.NEXT_PUBLIC_MINIAPP_URL ?? DEFAULT_MINIAPP_URL;
-  const miniAppUrl = rawMiniAppUrl.endsWith('/') ? rawMiniAppUrl : `${rawMiniAppUrl}/`;
+const SHARE_URL = 'https://m00nad.vercel.app/miniapp';
 
+export default function MiniAppPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSdkReady, setIsSdkReady] = useState(false);
   const [isMiniApp, setIsMiniApp] = useState<boolean | null>(null);
@@ -89,6 +81,7 @@ export default function MiniAppPage() {
   const [error, setError] = useState<string | null>(null);
   const [scanPhase, setScanPhase] = useState<ScanPhase>('idle');
   const [copiedContract, setCopiedContract] = useState(false);
+  const [hasZeroPoints, setHasZeroPoints] = useState(false);
 
   const formatAmount = (amount?: string | number) => {
     if (amount === undefined || amount === null) return '0';
@@ -149,50 +142,6 @@ export default function MiniAppPage() {
 
     void bootstrapSdk();
   }, []);
-
-  const scanSteps = useMemo<ScanStep[]>(
-    () => [
-      {
-        key: 'idle',
-        label: 'Awaiting scan',
-        description: 'Tap SCAN FID to begin the ritual.'
-      },
-      {
-        key: 'authenticating',
-        label: 'Authenticating',
-        description: 'Awaiting Farcaster approval.'
-      },
-      {
-        key: 'addresses',
-        label: 'Syncing wallets',
-        description: 'Pulling every verified address tied to your FID.'
-      },
-      {
-        key: 'fetching',
-        label: 'Consulting ledger',
-        description: 'Checking the $m00n drop allocations.'
-      },
-      {
-        key: 'ready',
-        label: 'Drop synced',
-        description: 'Scroll down to view your fate.'
-      },
-      {
-        key: 'error',
-        label: 'Link disrupted',
-        description: 'Something went wrong. Tap RETRY SCAN.'
-      }
-    ],
-    []
-  );
-  const resolvedPhase = scanPhase;
-  const activeStepIndex = Math.max(
-    0,
-    scanSteps.findIndex((step) => step.key === resolvedPhase)
-  );
-  const currentStep = scanSteps[activeStepIndex] ?? scanSteps[0];
-  const currentDescription = scanPhase === 'error' && error ? error : currentStep.description;
-  const scanProgress = ((activeStepIndex + 1) / scanSteps.length) * 100;
 
   const syncAddresses = async (fid: number) => {
     const response = await fetch(`/api/addresses?fid=${fid}`);
@@ -291,6 +240,19 @@ export default function MiniAppPage() {
         setAirdropData(matchedResult);
       }
 
+      // Check if user has 0 points
+      if (
+        matchedResult &&
+        (!matchedResult.eligible ||
+          matchedResult.amount === '0' ||
+          matchedResult.amount === undefined)
+      ) {
+        setHasZeroPoints(true);
+        setScanPhase('ready');
+        setIsLoading(false);
+        return;
+      }
+
       setScanPhase('fetching');
       try {
         const engagementResponse = await fetch(`/api/engagement?fid=${activeContext.fid}`);
@@ -351,7 +313,7 @@ export default function MiniAppPage() {
     const baseText = `I'm part of the m00n cabal! Receiving ${formatAmount(
       airdropData.amount
     )} $m00n tokens 🌙✨`;
-    const finalText = miniAppUrl ? `${baseText} ${miniAppUrl}` : baseText;
+    const finalText = `${baseText} ${SHARE_URL}`;
 
     const composeUrl = new URL('https://warpcast.com/~/compose');
     composeUrl.searchParams.set('text', finalText);
@@ -360,11 +322,11 @@ export default function MiniAppPage() {
   };
 
   const PANEL_CLASS =
-    'bg-black/45 border border-[var(--monad-purple)] rounded-2xl px-6 py-5 backdrop-blur';
+    'bg-black/45 border border-[var(--monad-purple)] rounded-2xl px-8 py-6 backdrop-blur';
 
   const renderSessionCard = (fid?: number, wallet?: string | null, extraClass = '') => (
     <div
-      className={`grid grid-cols-1 md:grid-cols-2 gap-6 text-sm ${PANEL_CLASS} ${extraClass} [&>div]:space-y-1`}
+      className={`grid grid-cols-1 md:grid-cols-2 gap-8 text-sm ${PANEL_CLASS} ${extraClass} [&>div]:space-y-2`}
     >
       <div>
         <p className="uppercase text-[var(--moss-green)] text-[11px] tracking-[0.4em]">
@@ -436,10 +398,12 @@ export default function MiniAppPage() {
   );
 
   const renderContractCard = () => (
-    <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-4 text-left backdrop-blur">
+    <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-6 space-y-4 text-left backdrop-blur">
       <div>
-        <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">m00n contract</p>
-        <p className="font-mono text-sm break-all">{TOKEN_ADDRESS}</p>
+        <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest mb-2">
+          m00n contract
+        </p>
+        <p className="font-mono text-sm break-all px-1">{TOKEN_ADDRESS}</p>
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">
         <button
@@ -525,34 +489,39 @@ export default function MiniAppPage() {
   }, [isMiniApp, isSdkReady, airdropData, error, scanPhase]);
 
   if (!userData) {
+    // Show special message for users with 0 points
+    if (hasZeroPoints) {
+      return renderShell(
+        <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
+          <div className="max-w-2xl w-full text-center">
+            <h1 className="pixel-font text-3xl text-red-400 glow-red">
+              You don&apos;t have to go home but can&apos;t stay here
+            </h1>
+          </div>
+        </div>
+      );
+    }
+
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
-        <div className="w-full max-w-xl space-y-5">
-          <div className={`${PANEL_CLASS} text-center space-y-3`}>
-            <h1 className="pixel-font text-2xl md:text-3xl glow-purple">m00n Cabal Check</h1>
-            <p className="text-base opacity-80">
-              Scan your Farcaster FID to see if you made the drop.
+        <div className="w-full max-w-sm space-y-8 text-center">
+          <div className={`${PANEL_CLASS} space-y-4`}>
+            <h1 className="pixel-font text-2xl glow-purple">m00n Cabal Check</h1>
+            <p className="text-sm opacity-80 px-2">
+              Only cabal members with an allocation can enter. Scan inside Warpcast to verify.
             </p>
           </div>
 
-          {renderSessionCard(viewerContext?.fid, primaryAddress)}
+          {!isMiniApp && (
+            <a
+              href="https://warpcast.com/~/add-mini-app?domain=m00nad.vercel.app"
+              className="pixel-font inline-block px-6 py-2 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all text-[11px] tracking-[0.4em]"
+            >
+              OPEN IN WARPCAST
+            </a>
+          )}
 
-          <div className={`${PANEL_CLASS} space-y-4`}>
-            <p className="text-base">{currentDescription}</p>
-            <div className="w-full h-1.5 bg-gray-900 rounded-full overflow-hidden">
-              <div className="h-full status-progress" style={{ width: `${scanProgress}%` }} />
-            </div>
-            {!isMiniApp && (
-              <a
-                href="https://warpcast.com/~/add-mini-app?domain=m00nad.vercel.app"
-                className="pixel-font inline-block px-6 py-2 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all text-xs tracking-[0.3em]"
-              >
-                OPEN IN WARPCAST
-              </a>
-            )}
-          </div>
-
-          <div className="text-center space-y-2">
+          <div className="text-center space-y-3">
             <button
               onClick={handleSignIn}
               className="pixel-font w-full px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all disabled:opacity-40 text-xs tracking-[0.4em]"
@@ -560,8 +529,8 @@ export default function MiniAppPage() {
             >
               {statusState.label}
             </button>
-            <p className="text-xs opacity-70">{statusState.detail}</p>
-            {error && <p className="text-red-400">{error}</p>}
+            <p className="text-xs opacity-70 px-2">{statusState.detail}</p>
+            {error && <p className="text-red-400 px-2">{error}</p>}
           </div>
         </div>
       </div>
@@ -586,9 +555,9 @@ export default function MiniAppPage() {
 
   if (airdropData?.eligible) {
     return renderShell(
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
-        <div className="max-w-3xl w-full space-y-6 scanline p-8 bg-black/50 rounded-lg border-2 border-[var(--monad-purple)]">
-          <div className="flex justify-center">
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
+        <div className="max-w-3xl w-full space-y-8 scanline p-10 bg-black/50 rounded-lg border-2 border-[var(--monad-purple)]">
+          <div className="flex justify-center mb-2">
             <NeonHaloLogo size={150} />
           </div>
 
@@ -605,9 +574,9 @@ export default function MiniAppPage() {
             </p>
           </div>
 
-          <div className="flex justify-center">
+          <div className="flex justify-center mb-6">
             <div
-              className="pixel-font text-[11px] uppercase tracking-[0.5em] px-6 py-2 rounded-full"
+              className="pixel-font text-[11px] uppercase tracking-[0.5em] px-8 py-3 rounded-full"
               style={{
                 border: `2px solid ${replyGlow.color}`,
                 color: replyGlow.color,
@@ -619,7 +588,7 @@ export default function MiniAppPage() {
             </div>
           </div>
 
-          {renderSessionCard(userData.fid, primaryAddress)}
+          <div className="mb-2">{renderSessionCard(userData.fid, primaryAddress)}</div>
           {dropAddress && dropAddress !== primaryAddress && (
             <p className="text-xs opacity-70">
               Allocation detected on{' '}
@@ -630,7 +599,7 @@ export default function MiniAppPage() {
 
           {tier && engagementData?.isFollowing && (
             <div
-              className={`mt-6 p-6 bg-purple-900/30 rounded-lg border ${
+              className={`mt-8 p-8 bg-purple-900/30 rounded-lg border ${
                 showLootReveal ? 'crt-flicker' : ''
               }`}
               style={{
@@ -657,17 +626,17 @@ export default function MiniAppPage() {
             </div>
           )}
 
-          <div className="text-center">
+          <div className="text-center mt-6">
             <button
               onClick={() => setShowLorePanel((prev) => !prev)}
-              className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
+              className="pixel-font text-xs px-6 py-3 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
             >
               {showLorePanel ? 'Hide detail scan' : 'Reveal detail scan'}
             </button>
           </div>
 
           {showLorePanel && (
-            <div className="p-4 border border-[var(--monad-purple)] rounded-lg bg-black/40 space-y-2 text-left">
+            <div className="p-6 border border-[var(--monad-purple)] rounded-lg bg-black/40 space-y-3 text-left">
               <p className="text-sm uppercase tracking-wide text-[var(--moss-green)]">
                 Allocation telemetry
               </p>
@@ -712,7 +681,7 @@ export default function MiniAppPage() {
           You don&apos;t have to go home, but you can&apos;t stay here.
         </p>
 
-        <div className="text-sm text-left bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-5 space-y-2">
+        <div className="text-sm text-left bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-6 space-y-3">
           <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Session</p>
           <p>FID: {userData.fid}</p>
           <p>
