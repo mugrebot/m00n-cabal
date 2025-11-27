@@ -65,7 +65,11 @@ export default function MiniAppPage() {
       setIsLoading(true);
       setError(null);
 
-      const result = await sdk.actions.signIn({});
+      const nonce =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}`;
+      const result = await sdk.actions.signIn({ nonce });
       const user = result?.user;
 
       if (!user) {
