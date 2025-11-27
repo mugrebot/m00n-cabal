@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import sdk from '@farcaster/miniapp-sdk';
 import { toPng } from 'html-to-image';
@@ -40,11 +40,15 @@ export default function MiniAppPage() {
   const [showLorePanel, setShowLorePanel] = useState(false);
   const [glyphIndex, setGlyphIndex] = useState(0);
   const [primaryAddress, setPrimaryAddress] = useState<string | null>(null);
+  const [dropAddress, setDropAddress] = useState<string | null>(null);
   const [viewerContext, setViewerContext] = useState<ViewerContext | null>(null);
   const [addresses, setAddresses] = useState<string[]>([]);
   const [isSoundtrackPlaying, setIsSoundtrackPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [scanPhase, setScanPhase] = useState<
+    'idle' | 'authenticating' | 'addresses' | 'fetching' | 'ready' | 'error'
+  >('idle');
 
   useEffect(() => {
     const bootstrapSdk = async () => {
@@ -131,10 +135,11 @@ export default function MiniAppPage() {
     return fetchedAddresses;
   };
 
-  const handleSignIn = async () => {
+  const handleSignIn = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
+      setScanPhase('authenticating');
 
       const nonce =
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -147,6 +152,7 @@ export default function MiniAppPage() {
 
       if (!user) {
         setError('No Farcaster user detected. Please try again.');
+        setScanPhase('error');
         return;
       }
 
@@ -156,14 +162,41 @@ export default function MiniAppPage() {
         displayName: user.displayName
       });
 
+      setScanPhase('addresses');
       const fetchedAddresses = addresses.length > 0 ? addresses : await syncAddresses(user.fid);
       const derivedPrimaryAddress = fetchedAddresses[0];
 
       if (!derivedPrimaryAddress) {
         setError('No verified address available. Add a wallet in Warpcast and retry.');
+        setScanPhase('error');
         return;
       }
 
+      setPrimaryAddress(derivedPrimaryAddress);
+
+      setDropAddress(null);
+      let matchedAddress: string | null = null;
+      let matchedResult: AirdropData | null = null;
+
+      for (const addr of fetchedAddresses) {
+        setScanPhase('fetching');
+        const response = await fetch(`/api/airdrop?address=${addr}`);
+        const result = (await response.json()) as AirdropData;
+        if (result.eligible) {
+          matchedAddress = addr;
+          matchedResult = result;
+          break;
+        }
+        if (!matchedResult) {
+          matchedResult = result;
+        }
+      }
+
+      if (!matchedAddress) {
+        matchedAddress = derivedPrimaryAddress;
+      }
+
+      setDropAddress(matchedAddress);
       setPrimaryAddress(derivedPrimaryAddress);
 
       setUserData({
@@ -173,9 +206,10 @@ export default function MiniAppPage() {
         verifiedAddresses: fetchedAddresses
       });
 
-      const airdropResponse = await fetch(`/api/airdrop?address=${derivedPrimaryAddress}`);
-      const airdropResult = await airdropResponse.json();
-      setAirdropData(airdropResult);
+      setScanPhase('fetching');
+      if (matchedResult) {
+        setAirdropData(matchedResult);
+      }
 
       const engagementResponse = await fetch(`/api/engagement?fid=${user.fid}`);
       if (engagementResponse.ok) {
@@ -183,20 +217,22 @@ export default function MiniAppPage() {
         setEngagementData(engagementResult);
 
         if (
-          airdropResult.eligible &&
+          matchedResult?.eligible &&
           engagementResult.isFollowing &&
           engagementResult.replyCount > 0
         ) {
           setShowLootReveal(true);
         }
       }
+      setScanPhase('ready');
     } catch (err) {
       console.error('Sign in error:', err);
       setError('Failed to authenticate. Please try again.');
+      setScanPhase('error');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [addresses]);
 
   const formatAmount = (amount: string) => {
     return parseInt(amount).toLocaleString();
@@ -282,6 +318,72 @@ export default function MiniAppPage() {
 
   const statusProgress = ((glyphIndex + 1) / ritualGlyphs.length) * 100;
 
+  const statusState = useMemo(() => {
+    if (isMiniApp === false) {
+      return {
+        label: 'OPEN IN WARPCAST',
+        detail: 'This portal only unlocks inside the Warpcast mini app shell.',
+        actionable: false
+      };
+    }
+    if (!isSdkReady) {
+      return {
+        label: 'SYNCING SDK…',
+        detail: 'Bridging to the Farcaster relay.',
+        actionable: false
+      };
+    }
+    if (scanPhase === 'authenticating') {
+      return {
+        label: 'AUTHENTICATING…',
+        detail: 'Awaiting approval from your Farcaster wallet.',
+        actionable: false
+      };
+    }
+    if (scanPhase === 'addresses') {
+      return {
+        label: 'SYNCING ADDRESSES…',
+        detail: 'Pulling verified wallets from Neynar.',
+        actionable: false
+      };
+    }
+    if (scanPhase === 'fetching') {
+      return {
+        label: 'CALCULATING DROP…',
+        detail: 'Crunching the $m00n ledger entries.',
+        actionable: false
+      };
+    }
+    if (scanPhase === 'idle') {
+      return {
+        label: 'SCAN FID',
+        detail: 'Tap to connect and fetch your drop.',
+        actionable: true
+      };
+    }
+    if (error || scanPhase === 'error') {
+      return {
+        label: 'RETRY SCAN',
+        detail: error ?? 'Tap to try again.',
+        actionable: true
+      };
+    }
+    if (airdropData) {
+      return {
+        label: 'DROP READY',
+        detail: airdropData.eligible
+          ? 'Scroll to reveal your allocation.'
+          : 'No cabal allotment this round.',
+        actionable: !airdropData.eligible
+      };
+    }
+    return {
+      label: 'SCAN AGAIN',
+      detail: 'Tap to re-link your wallet and fetch the ledger.',
+      actionable: true
+    };
+  }, [isMiniApp, isSdkReady, airdropData, error, scanPhase]);
+
   if (!userData) {
     return (
       <div className="relative min-h-screen overflow-hidden">
@@ -347,10 +449,12 @@ export default function MiniAppPage() {
             <button
               onClick={handleSignIn}
               className="pixel-font px-8 py-4 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all transform hover:scale-105 glow-purple disabled:opacity-40"
-              disabled={isLoading || !isSdkReady || isMiniApp === false}
+              disabled={!statusState.actionable}
             >
-              {!isSdkReady ? 'SYNCING SDK...' : isLoading ? 'CONNECTING...' : 'SCAN FID'}
+              {statusState.label}
             </button>
+
+            <p className="text-xs opacity-70">{statusState.detail}</p>
 
             {error && <p className="text-red-400 mt-4">{error}</p>}
           </div>
@@ -405,6 +509,13 @@ export default function MiniAppPage() {
             </div>
 
             {renderSessionCard(userData.fid, primaryAddress)}
+            {dropAddress && dropAddress !== primaryAddress && (
+              <p className="text-xs opacity-70">
+                Allocation detected on{' '}
+                <span className="font-mono">{`${dropAddress.slice(0, 6)}…${dropAddress.slice(-4)}`}</span>
+                .
+              </p>
+            )}
 
             {tier && engagementData?.isFollowing && (
               <div
@@ -498,6 +609,13 @@ export default function MiniAppPage() {
               {primaryAddress ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}` : '—'}
             </p>
           </div>
+          {dropAddress && dropAddress !== primaryAddress && (
+            <p className="text-xs opacity-70">
+              Drop checks were performed against{' '}
+              <span className="font-mono">{`${dropAddress.slice(0, 6)}…${dropAddress.slice(-4)}`}</span>
+              .
+            </p>
+          )}
         </div>
       </div>
     </div>
