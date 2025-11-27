@@ -9,7 +9,7 @@ This mini app provides:
 - Authentication via Farcaster SDK
 - Airdrop eligibility checking for $m00n tokens
 - Engagement tier rewards based on user interaction with @m00npapi
-- Retro Castlevania-inspired UI with CRT effects
+- Retro 8-bit UI with CRT effects
 - Share functionality for eligible users
 - Downloadable receipt generation
 

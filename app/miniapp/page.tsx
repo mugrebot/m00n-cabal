@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
-import { sdk } from '@farcaster/miniapp-sdk';
+import sdk from '@farcaster/miniapp-sdk';
 import { toPng } from 'html-to-image';
 import { getTierByReplyCount } from '@/app/lib/tiers';
 
@@ -10,7 +10,8 @@ interface UserData {
   fid: number;
   username?: string;
   displayName?: string;
-  pfpUrl?: string;
+  custodyAddress?: string;
+  verifiedAddresses: string[];
 }
 
 interface AirdropData {
@@ -25,52 +26,84 @@ interface EngagementData {
 
 export default function MiniAppPage() {
   const [isLoading, setIsLoading] = useState(true);
+  const [isSdkReady, setIsSdkReady] = useState(false);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [airdropData, setAirdropData] = useState<AirdropData | null>(null);
   const [engagementData, setEngagementData] = useState<EngagementData | null>(null);
   const [showLootReveal, setShowLootReveal] = useState(false);
+  const [showLorePanel, setShowLorePanel] = useState(false);
+  const [glyphIndex, setGlyphIndex] = useState(0);
+  const [torchIntensity, setTorchIntensity] = useState(40);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    sdk.actions.ready();
+    const bootstrapSdk = async () => {
+      try {
+        await sdk.actions.ready();
+        setIsSdkReady(true);
+      } catch (err) {
+        console.error('Failed to call sdk.actions.ready()', err);
+        setError('Unable to connect to the Farcaster SDK bridge. Reload to try again.');
+      }
+    };
+
+    void bootstrapSdk();
   }, []);
+
+  const ritualGlyphs = useMemo(
+    () => [
+      'relay tuned • awaiting wallet signal',
+      'airdrop ledger • checksum verified',
+      'engagement scanner • syncing replies',
+      'loot framework • particles stabilized'
+    ],
+    []
+  );
 
   const handleSignIn = async () => {
     try {
       setIsLoading(true);
       setError(null);
 
-      // Get user context first
-      const context = await sdk.context;
-      const user = context.user;
+      const result = await sdk.actions.signIn();
+      const user = result?.user;
 
-      if (user) {
-        setUserData({
-          fid: user.fid,
-          username: user.username,
-          displayName: user.displayName,
-          pfpUrl: user.pfpUrl
-        });
+      if (!user) {
+        setError('No Farcaster user detected. Please try again.');
+        return;
+      }
 
-        // Note: We'll need to implement address resolution separately
-        // For now, let's check for a demo address
-        const demoAddress = '0x1234567890123456789012345678901234567890';
-        const airdropResponse = await fetch(`/api/airdrop?address=${demoAddress}`);
-        const airdropResult = await airdropResponse.json();
-        setAirdropData(airdropResult);
+      const addresses = user.verifiedAddresses?.ethereumAddresses ?? [];
+      const primaryAddress = addresses[0] || user.custodyAddress;
 
-        const engagementResponse = await fetch(`/api/engagement?fid=${user.fid}`);
-        if (engagementResponse.ok) {
-          const engagementResult = await engagementResponse.json();
-          setEngagementData(engagementResult);
+      if (!primaryAddress) {
+        setError('No verified address available. Add a wallet in Warpcast and retry.');
+        return;
+      }
 
-          if (
-            airdropResult.eligible &&
-            engagementResult.isFollowing &&
-            engagementResult.replyCount > 0
-          ) {
-            setShowLootReveal(true);
-          }
+      setUserData({
+        fid: user.fid,
+        username: user.username,
+        displayName: user.displayName,
+        custodyAddress: user.custodyAddress,
+        verifiedAddresses: addresses
+      });
+
+      const airdropResponse = await fetch(`/api/airdrop?address=${primaryAddress}`);
+      const airdropResult = await airdropResponse.json();
+      setAirdropData(airdropResult);
+
+      const engagementResponse = await fetch(`/api/engagement?fid=${user.fid}`);
+      if (engagementResponse.ok) {
+        const engagementResult = await engagementResponse.json();
+        setEngagementData(engagementResult);
+
+        if (
+          airdropResult.eligible &&
+          engagementResult.isFollowing &&
+          engagementResult.replyCount > 0
+        ) {
+          setShowLootReveal(true);
         }
       }
     } catch (err) {
@@ -109,6 +142,14 @@ export default function MiniAppPage() {
 
   const tier = engagementData ? getTierByReplyCount(engagementData.replyCount) : null;
 
+  const handleGlyphCycle = () => {
+    setGlyphIndex((prev) => (prev + 1) % ritualGlyphs.length);
+  };
+
+  const handleTorchChange = (value: number) => {
+    setTorchIntensity(value);
+  };
+
   if (!userData) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
@@ -125,25 +166,50 @@ export default function MiniAppPage() {
           <h1 className="pixel-font text-2xl md:text-3xl glow-purple">m00n Cabal Check</h1>
 
           <div className="space-y-4">
-            <p className="text-lg opacity-90">
-              Venture into the purple realm and discover your fate
-            </p>
+            <p className="text-lg opacity-90">Check your $m00n eligibility.</p>
+
+            <div className="bg-black/40 border border-[var(--monad-purple)] rounded-lg p-4 space-y-2">
+              <p className="text-sm uppercase tracking-wide text-[var(--moss-green)]">
+                Status console
+              </p>
+              <p className="text-base">{ritualGlyphs[glyphIndex]}</p>
+              <button
+                onClick={handleGlyphCycle}
+                className="pixel-font text-xs px-4 py-2 bg-[var(--moss-green)] text-black rounded hover:bg-opacity-80 transition-all"
+              >
+                Cycle diagnostic
+              </button>
+            </div>
 
             <button
               onClick={handleSignIn}
-              className="pixel-font px-8 py-4 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all transform hover:scale-105 glow-purple"
-              disabled={isLoading}
+              className="pixel-font px-8 py-4 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all transform hover:scale-105 glow-purple disabled:opacity-40"
+              disabled={isLoading || !isSdkReady}
             >
-              {isLoading ? 'LOADING...' : 'REVEAL YOUR FATE'}
+              {!isSdkReady ? 'SYNCING SDK...' : isLoading ? 'LOADING...' : 'SCAN WALLET'}
             </button>
           </div>
 
           {error && <p className="text-red-400 mt-4">{error}</p>}
 
           <div className="mt-8 opacity-60">
-            <div className="text-sm animate-pulse">
-              ++ CASTLEVANIA VIBES ++ MONAD PURPLE REALM ++ JOIN THE CABAL ++
-            </div>
+            <div className="text-sm animate-pulse">++ MONAD PURPLE PROTOCOL ++ SIGNAL FID ++</div>
+          </div>
+
+          <div className="mt-6 space-y-2">
+            <label htmlFor="torch-range" className="text-xs uppercase opacity-70 block">
+              Torch glow
+            </label>
+            <input
+              id="torch-range"
+              type="range"
+              min="10"
+              max="90"
+              value={torchIntensity}
+              onChange={(event) => handleTorchChange(Number(event.target.value))}
+              className="w-full accent-[var(--monad-purple)]"
+            />
+            <p className="text-xs opacity-70">Intensity: {torchIntensity}%</p>
           </div>
         </div>
       </div>
@@ -211,6 +277,28 @@ export default function MiniAppPage() {
             </div>
           )}
 
+          <div className="text-center">
+            <button
+              onClick={() => setShowLorePanel((prev) => !prev)}
+              className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
+            >
+              {showLorePanel ? 'Hide detail scan' : 'Reveal detail scan'}
+            </button>
+          </div>
+
+          {showLorePanel && (
+            <div className="p-4 border border-[var(--monad-purple)] rounded-lg bg-black/40 space-y-2 text-left">
+              <p className="text-sm uppercase tracking-wide text-[var(--moss-green)]">
+                Allocation telemetry
+              </p>
+              <ul className="text-sm space-y-1 list-disc list-inside">
+                <li>Primary wallet: {userData.verifiedAddresses[0] ?? userData.custodyAddress}</li>
+                <li>Receipt hash ready for download</li>
+                <li>Engagement tier weight boosts your loot narrative</li>
+              </ul>
+            </div>
+          )}
+
           <div className="flex gap-4 justify-center mt-8">
             <button
               onClick={handleShare}
@@ -245,10 +333,26 @@ export default function MiniAppPage() {
 
         <p className="text-lg opacity-70">you are not part of the cabal maybe next time</p>
 
+        <div className="space-y-2">
+          <label htmlFor="torch-control" className="text-xs uppercase opacity-60 block">
+            Torch intensity
+          </label>
+          <input
+            id="torch-control"
+            type="range"
+            min="10"
+            max="90"
+            value={torchIntensity}
+            onChange={(event) => handleTorchChange(Number(event.target.value))}
+            className="w-full accent-[var(--monad-purple)]"
+          />
+          <p className="text-xs opacity-70">Glow level: {torchIntensity}%</p>
+        </div>
+
         <div className="flex justify-center space-x-4 opacity-30">
-          <span>🔥</span>
-          <span>🔥</span>
-          <span>🔥</span>
+          <span style={{ filter: `brightness(${torchIntensity / 50})` }}>🔥</span>
+          <span style={{ filter: `brightness(${torchIntensity / 50})` }}>🔥</span>
+          <span style={{ filter: `brightness(${torchIntensity / 50})` }}>🔥</span>
         </div>
       </div>
     </div>
