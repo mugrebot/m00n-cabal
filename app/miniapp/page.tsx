@@ -32,7 +32,7 @@ export default function MiniAppPage() {
   const [showLootReveal, setShowLootReveal] = useState(false);
   const [showLorePanel, setShowLorePanel] = useState(false);
   const [glyphIndex, setGlyphIndex] = useState(0);
-  const [torchIntensity, setTorchIntensity] = useState(40);
+  const [primaryAddress, setPrimaryAddress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -86,12 +86,14 @@ export default function MiniAppPage() {
 
       const addressData = (await addressesResponse.json()) as { addresses: string[] };
       const addresses = addressData.addresses ?? [];
-      const primaryAddress = addresses[0];
+      const derivedPrimaryAddress = addresses[0];
 
-      if (!primaryAddress) {
+      if (!derivedPrimaryAddress) {
         setError('No verified address available. Add a wallet in Warpcast and retry.');
         return;
       }
+
+      setPrimaryAddress(derivedPrimaryAddress);
 
       setUserData({
         fid: user.fid,
@@ -100,7 +102,7 @@ export default function MiniAppPage() {
         verifiedAddresses: addresses
       });
 
-      const airdropResponse = await fetch(`/api/airdrop?address=${primaryAddress}`);
+      const airdropResponse = await fetch(`/api/airdrop?address=${derivedPrimaryAddress}`);
       const airdropResult = await airdropResponse.json();
       setAirdropData(airdropResult);
 
@@ -157,71 +159,46 @@ export default function MiniAppPage() {
     setGlyphIndex((prev) => (prev + 1) % ritualGlyphs.length);
   };
 
-  const handleTorchChange = (value: number) => {
-    setTorchIntensity(value);
-  };
-
   if (!userData) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
         <div className="max-w-2xl w-full text-center space-y-8 scanline">
-          <Image
-            src="/brand/banner.png"
-            alt="m00n Cabal"
-            width={600}
-            height={200}
-            className="mx-auto"
-            priority
-          />
+          <div className="relative mx-auto w-full max-w-sm overflow-hidden rounded-3xl border border-[var(--monad-purple)] bg-black/30">
+            <Image
+              src="/brand/banner.png"
+              alt="m00n Cabal"
+              width={512}
+              height={512}
+              className="w-full h-auto object-cover opacity-90"
+              priority
+            />
+          </div>
 
-          <h1 className="pixel-font text-2xl md:text-3xl glow-purple">m00n Cabal Check</h1>
-
-          <div className="space-y-4">
+          <div className="space-y-2">
+            <h1 className="pixel-font text-2xl md:text-3xl glow-purple">m00n Cabal Check</h1>
             <p className="text-lg opacity-90">Check your $m00n eligibility.</p>
+          </div>
 
-            <div className="bg-black/40 border border-[var(--monad-purple)] rounded-lg p-4 space-y-2">
-              <p className="text-sm uppercase tracking-wide text-[var(--moss-green)]">
-                Status console
-              </p>
-              <p className="text-base">{ritualGlyphs[glyphIndex]}</p>
-              <button
-                onClick={handleGlyphCycle}
-                className="pixel-font text-xs px-4 py-2 bg-[var(--moss-green)] text-black rounded hover:bg-opacity-80 transition-all"
-              >
-                Cycle diagnostic
-              </button>
-            </div>
-
+          <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-2">
+            <p className="text-sm uppercase tracking-wide text-[var(--moss-green)]">Signal feed</p>
+            <p className="text-base">{ritualGlyphs[glyphIndex]}</p>
             <button
-              onClick={handleSignIn}
-              className="pixel-font px-8 py-4 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all transform hover:scale-105 glow-purple disabled:opacity-40"
-              disabled={isLoading || !isSdkReady}
+              onClick={handleGlyphCycle}
+              className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-all"
             >
-              {!isSdkReady ? 'SYNCING SDK...' : isLoading ? 'LOADING...' : 'SCAN WALLET'}
+              Cycle diagnostic
             </button>
           </div>
 
+          <button
+            onClick={handleSignIn}
+            className="pixel-font px-8 py-4 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all transform hover:scale-105 glow-purple disabled:opacity-40"
+            disabled={isLoading || !isSdkReady}
+          >
+            {!isSdkReady ? 'SYNCING SDK...' : isLoading ? 'CONNECTING...' : 'SCAN FID'}
+          </button>
+
           {error && <p className="text-red-400 mt-4">{error}</p>}
-
-          <div className="mt-8 opacity-60">
-            <div className="text-sm animate-pulse">++ MONAD PURPLE PROTOCOL ++ SIGNAL FID ++</div>
-          </div>
-
-          <div className="mt-6 space-y-2">
-            <label htmlFor="torch-range" className="text-xs uppercase opacity-70 block">
-              Torch glow
-            </label>
-            <input
-              id="torch-range"
-              type="range"
-              min="10"
-              max="90"
-              value={torchIntensity}
-              onChange={(event) => handleTorchChange(Number(event.target.value))}
-              className="w-full accent-[var(--monad-purple)]"
-            />
-            <p className="text-xs opacity-70">Intensity: {torchIntensity}%</p>
-          </div>
         </div>
       </div>
     );
@@ -263,6 +240,21 @@ export default function MiniAppPage() {
               {userData.displayName ? `${userData.displayName} ` : ''}
               {userData.username ? `@${userData.username}` : `FID: ${userData.fid}`}
             </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 text-sm text-left">
+            <div>
+              <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">
+                Connected FID
+              </p>
+              <p className="font-mono text-base">{userData.fid}</p>
+            </div>
+            <div>
+              <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Wallet</p>
+              <p className="font-mono text-base">
+                {primaryAddress ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}` : '—'}
+              </p>
+            </div>
           </div>
 
           {tier && engagementData?.isFollowing && (
@@ -343,27 +335,13 @@ export default function MiniAppPage() {
         <h1 className="pixel-font text-2xl text-red-400">ACCESS DENIED</h1>
 
         <p className="text-lg opacity-70">you are not part of the cabal maybe next time</p>
-
-        <div className="space-y-2">
-          <label htmlFor="torch-control" className="text-xs uppercase opacity-60 block">
-            Torch intensity
-          </label>
-          <input
-            id="torch-control"
-            type="range"
-            min="10"
-            max="90"
-            value={torchIntensity}
-            onChange={(event) => handleTorchChange(Number(event.target.value))}
-            className="w-full accent-[var(--monad-purple)]"
-          />
-          <p className="text-xs opacity-70">Glow level: {torchIntensity}%</p>
-        </div>
-
-        <div className="flex justify-center space-x-4 opacity-30">
-          <span style={{ filter: `brightness(${torchIntensity / 50})` }}>🔥</span>
-          <span style={{ filter: `brightness(${torchIntensity / 50})` }}>🔥</span>
-          <span style={{ filter: `brightness(${torchIntensity / 50})` }}>🔥</span>
+        <div className="text-sm text-left bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-2">
+          <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Session</p>
+          <p>FID: {userData.fid}</p>
+          <p>
+            Wallet:{' '}
+            {primaryAddress ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}` : '—'}
+          </p>
         </div>
       </div>
     </div>

@@ -1,12 +1,7 @@
 {
-  "accountAssociation": {
-    "header": "REPLACE_WITH_SIGNED_HEADER",
-    "payload": "REPLACE_WITH_SIGNED_PAYLOAD",
-    "signature": "REPLACE_WITH_SIGNATURE"
-  },
   "frame": {
-    "version": "1",
     "name": "m00nad cabal check",
+    "version": "1",
     "iconUrl": "https://m00nad.vercel.app/brand/logo.png",
     "homeUrl": "https://m00nad.vercel.app/miniapp",
     "imageUrl": "https://m00nad.vercel.app/brand/banner.png",
@@ -16,13 +11,17 @@
     "webhookUrl": "https://m00nad.vercel.app/api/webhook",
     "subtitle": "portal into the m00n cabal",
     "description": "see if you’re on the $m00n airdrop ledger",
-    "primaryCategory": "games",
-    "tags": ["social", "m00n", "monad", "m0n", "mon"],
+    "primaryCategory": "social",
     "heroImageUrl": "https://m00nad.vercel.app/brand/banner.png",
+    "tags": ["social", "m00n", "monad", "m0n", "mon"],
     "tagline": "Reveal your m00n",
     "ogTitle": "m00n cabal check",
     "ogDescription": "are you in the cabal?",
-    "ogImageUrl": "https://m00nad.vercel.app/brand/banner.png",
-    "castShareUrl": "https://m00nad.vercel.app/miniapp"
+    "ogImageUrl": "https://m00nad.vercel.app/brand/banner.png"
+  },
+  "accountAssociation": {
+    "header": "eyJmaWQiOjk5MzMsInR5cGUiOiJhdXRoIiwia2V5IjoiMHhCRjQ5NzdmMTI5NTQ1NGNiNDZkOTVmZTdEOEUxRDk5RTMyZDhBRWQxIn0",
+    "payload": "eyJkb21haW4iOiJtMDBuYWQudmVyY2VsLmFwcCJ9",
+    "signature": "4C2FGfji1mFC6j9UvwbVyUPWk8HctGRc4yjUNQtomcEXYBTwMo3Hn10mCpwWCeKUdUU1CI3Lj9Y0vlmW4h89Oxw="
   }
 }
