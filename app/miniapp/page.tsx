@@ -41,6 +41,8 @@ export default function MiniAppPage() {
   const [glyphIndex, setGlyphIndex] = useState(0);
   const [primaryAddress, setPrimaryAddress] = useState<string | null>(null);
   const [viewerContext, setViewerContext] = useState<ViewerContext | null>(null);
+  const [addresses, setAddresses] = useState<string[]>([]);
+  const [addresses, setAddresses] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,6 +67,12 @@ export default function MiniAppPage() {
             username: context.user.username,
             displayName: context.user.displayName
           });
+
+          try {
+            await syncAddresses(context.user.fid);
+          } catch (addressError) {
+            console.error('Failed to prefetch addresses', addressError);
+          }
         }
       } catch (err) {
         console.error('Failed to call sdk.actions.ready()', err);
@@ -74,6 +82,26 @@ export default function MiniAppPage() {
 
     void bootstrapSdk();
   }, []);
+
+  useEffect(() => {
+    if (isMiniApp === false) return;
+    const interval = setInterval(() => {
+      setGlyphIndex((prev) => (prev + 1) % ritualGlyphs.length);
+    }, 4500);
+    return () => clearInterval(interval);
+  }, [isMiniApp, ritualGlyphs.length]);
+
+  const syncAddresses = async (fid: number) => {
+    const response = await fetch(`/api/addresses?fid=${fid}`);
+    if (!response.ok) {
+      throw new Error('Unable to sync verified addresses');
+    }
+    const data = (await response.json()) as { addresses: string[] };
+    const fetchedAddresses = data.addresses ?? [];
+    setAddresses(fetchedAddresses);
+    setPrimaryAddress(fetchedAddresses[0] ?? null);
+    return fetchedAddresses;
+  };
 
   const ritualGlyphs = useMemo(
     () => [
@@ -110,15 +138,8 @@ export default function MiniAppPage() {
         displayName: user.displayName
       });
 
-      const addressesResponse = await fetch(`/api/addresses?fid=${user.fid}`);
-      if (!addressesResponse.ok) {
-        setError('Unable to sync verified addresses. Please try again.');
-        return;
-      }
-
-      const addressData = (await addressesResponse.json()) as { addresses: string[] };
-      const addresses = addressData.addresses ?? [];
-      const derivedPrimaryAddress = addresses[0];
+      const fetchedAddresses = addresses.length > 0 ? addresses : await syncAddresses(user.fid);
+      const derivedPrimaryAddress = fetchedAddresses[0];
 
       if (!derivedPrimaryAddress) {
         setError('No verified address available. Add a wallet in Warpcast and retry.');
@@ -131,7 +152,7 @@ export default function MiniAppPage() {
         fid: user.fid,
         username: user.username,
         displayName: user.displayName,
-        verifiedAddresses: addresses
+        verifiedAddresses: fetchedAddresses
       });
 
       const airdropResponse = await fetch(`/api/airdrop?address=${derivedPrimaryAddress}`);
@@ -192,7 +213,7 @@ export default function MiniAppPage() {
   };
 
   const renderSessionCard = (fid?: number, wallet?: string | null) => (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 text-sm text-left">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 text-sm text-left backdrop-blur-lg">
       <div>
         <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Connected FID</p>
         <p className="font-mono text-base">{fid ?? '—'}</p>
@@ -206,65 +227,85 @@ export default function MiniAppPage() {
     </div>
   );
 
+  const BackgroundOrbs = () => (
+    <>
+      <span className="floating-orb orb-one" />
+      <span className="floating-orb orb-two" />
+      <span className="floating-orb orb-three" />
+    </>
+  );
+
+  const statusProgress = ((glyphIndex + 1) / ritualGlyphs.length) * 100;
+
   if (!userData) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
-        <div className="max-w-2xl w-full text-center space-y-8 scanline">
-          <div className="relative mx-auto w-full max-w-sm overflow-hidden rounded-3xl border border-[var(--monad-purple)] bg-black/30">
-            <Image
-              src="/brand/banner.png"
-              alt="m00n Cabal"
-              width={512}
-              height={512}
-              className="w-full h-auto object-cover opacity-90"
-              priority
-            />
-          </div>
-
-          <div className="space-y-2">
-            <h1 className="pixel-font text-2xl md:text-3xl glow-purple">m00n Cabal Check</h1>
-            <p className="text-lg opacity-90">Check your $m00n eligibility.</p>
-          </div>
-
-          {viewerContext && renderSessionCard(viewerContext.fid, primaryAddress)}
-
-          {isMiniApp === false ? (
-            <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-4">
-              <p className="text-base">
-                This portal must run inside Warpcast. Tap below to open it with your Farcaster
-                session.
-              </p>
-              <a
-                href="https://warpcast.com/~/add-mini-app?domain=m00nad.vercel.app"
-                className="pixel-font inline-block px-6 py-3 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
-              >
-                OPEN IN WARPCAST
-              </a>
+      <div className="relative min-h-screen overflow-hidden">
+        <BackgroundOrbs />
+        <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
+          <div className="max-w-2xl w-full text-center space-y-8 scanline">
+            <div className="relative mx-auto w-full overflow-hidden rounded-3xl border border-[var(--monad-purple)] bg-black/30 shadow-[0_0_40px_rgba(140,84,255,0.35)]">
+              <Image
+                src="/brand/banner.png"
+                alt="m00n Cabal"
+                width={1200}
+                height={600}
+                className="w-full h-[240px] md:h-[340px] object-cover opacity-95"
+                priority
+              />
+              <span className="scanner-bar" />
             </div>
-          ) : (
-            <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-2">
-              <p className="text-sm uppercase tracking-wide text-[var(--moss-green)]">
-                Signal feed
-              </p>
-              <p className="text-base">{ritualGlyphs[glyphIndex]}</p>
-              <button
-                onClick={handleGlyphCycle}
-                className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-all"
-              >
-                Cycle diagnostic
-              </button>
+
+            <div className="space-y-2">
+              <h1 className="pixel-font text-2xl md:text-3xl glow-purple">m00n Cabal Check</h1>
+              <p className="text-lg opacity-90">Check your $m00n eligibility.</p>
             </div>
-          )}
 
-          <button
-            onClick={handleSignIn}
-            className="pixel-font px-8 py-4 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all transform hover:scale-105 glow-purple disabled:opacity-40"
-            disabled={isLoading || !isSdkReady || isMiniApp === false}
-          >
-            {!isSdkReady ? 'SYNCING SDK...' : isLoading ? 'CONNECTING...' : 'SCAN FID'}
-          </button>
+            {renderSessionCard(viewerContext?.fid, primaryAddress)}
 
-          {error && <p className="text-red-400 mt-4">{error}</p>}
+            {isMiniApp === false ? (
+              <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-4 backdrop-blur">
+                <p className="text-base">
+                  This portal must run inside Warpcast. Tap below to open it with your Farcaster
+                  session.
+                </p>
+                <a
+                  href="https://warpcast.com/~/add-mini-app?domain=m00nad.vercel.app"
+                  className="pixel-font inline-block px-6 py-3 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
+                >
+                  OPEN IN WARPCAST
+                </a>
+              </div>
+            ) : (
+              <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-3 backdrop-blur">
+                <div className="flex items-center justify-between text-xs uppercase tracking-widest text-[var(--moss-green)]">
+                  <span>Signal feed</span>
+                  <span>
+                    {glyphIndex + 1}/{ritualGlyphs.length}
+                  </span>
+                </div>
+                <p className="text-base">{ritualGlyphs[glyphIndex]}</p>
+                <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                  <div className="h-full status-progress" style={{ width: `${statusProgress}%` }} />
+                </div>
+                <button
+                  onClick={handleGlyphCycle}
+                  className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-all"
+                >
+                  Cycle diagnostic
+                </button>
+              </div>
+            )}
+
+            <button
+              onClick={handleSignIn}
+              className="pixel-font px-8 py-4 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all transform hover:scale-105 glow-purple disabled:opacity-40"
+              disabled={isLoading || !isSdkReady || isMiniApp === false}
+            >
+              {!isSdkReady ? 'SYNCING SDK...' : isLoading ? 'CONNECTING...' : 'SCAN FID'}
+            </button>
+
+            {error && <p className="text-red-400 mt-4">{error}</p>}
+          </div>
         </div>
       </div>
     );
@@ -272,14 +313,17 @@ export default function MiniAppPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center relative z-10">
-        <div className="text-center space-y-4 crt-flicker">
-          <div className="pixel-font text-xl glow-purple">LOADING...</div>
-          <div className="w-64 h-2 bg-gray-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-[var(--monad-purple)] animate-pulse"
-              style={{ width: '60%' }}
-            />
+      <div className="relative min-h-screen overflow-hidden">
+        <BackgroundOrbs />
+        <div className="min-h-screen flex items-center justify-center relative z-10">
+          <div className="text-center space-y-4 crt-flicker">
+            <div className="pixel-font text-xl glow-purple">LOADING...</div>
+            <div className="w-64 h-2 bg-gray-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[var(--monad-purple)] animate-pulse"
+                style={{ width: '60%' }}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -288,99 +332,89 @@ export default function MiniAppPage() {
 
   if (airdropData?.eligible) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
-        <div
-          id="receipt-content"
-          className="max-w-3xl w-full space-y-6 scanline p-8 bg-black/50 rounded-lg border-2 border-[var(--monad-purple)]"
-        >
-          <Image src="/brand/logo.png" alt="m00n" width={100} height={100} className="mx-auto" />
+      <div className="relative min-h-screen overflow-hidden">
+        <BackgroundOrbs />
+        <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
+          <div
+            id="receipt-content"
+            className="max-w-3xl w-full space-y-6 scanline p-8 bg-black/50 rounded-lg border-2 border-[var(--monad-purple)]"
+          >
+            <Image src="/brand/logo.png" alt="m00n" width={100} height={100} className="mx-auto" />
 
-          <h1 className="pixel-font text-2xl text-center glow-purple">WELCOME TO THE CABAL</h1>
+            <h1 className="pixel-font text-2xl text-center glow-purple">WELCOME TO THE CABAL</h1>
 
-          <div className="text-center space-y-4">
-            <p className="text-3xl font-bold glow-green">
-              {formatAmount(airdropData.amount!)} $m00n
-            </p>
-
-            <p className="text-lg">
-              {userData.displayName ? `${userData.displayName} ` : ''}
-              {userData.username ? `@${userData.username}` : `FID: ${userData.fid}`}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 text-sm text-left">
-            <div>
-              <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">
-                Connected FID
+            <div className="text-center space-y-4">
+              <p className="text-3xl font-bold glow-green">
+                {formatAmount(airdropData.amount!)} $m00n
               </p>
-              <p className="font-mono text-base">{userData.fid}</p>
-            </div>
-            <div>
-              <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Wallet</p>
-              <p className="font-mono text-base">
-                {primaryAddress ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}` : '—'}
+
+              <p className="text-lg">
+                {userData.displayName ? `${userData.displayName} ` : ''}
+                {userData.username ? `@${userData.username}` : `FID: ${userData.fid}`}
               </p>
             </div>
-          </div>
 
-          {tier && engagementData?.isFollowing && (
-            <div
-              className={`mt-6 p-6 bg-purple-900/30 rounded-lg border border-[var(--moss-green)] ${showLootReveal ? 'crt-flicker' : ''}`}
-            >
-              <h3 className="pixel-font text-lg mb-3 text-[var(--moss-green)]">
-                {tier.icon} {tier.title}
-              </h3>
-              <p className="text-sm mb-4 italic">{tier.flavorText}</p>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Tier: {tier.name}</span>
-                  <span>Replies: {engagementData.replyCount}</span>
-                </div>
-                <div className="w-full h-3 bg-gray-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-[var(--monad-purple)] to-[var(--moss-green)] transition-all duration-1000"
-                    style={{ width: `${tier.progressPercentage}%` }}
-                  />
+            {renderSessionCard(userData.fid, primaryAddress)}
+
+            {tier && engagementData?.isFollowing && (
+              <div
+                className={`mt-6 p-6 bg-purple-900/30 rounded-lg border border-[var(--moss-green)] ${showLootReveal ? 'crt-flicker' : ''}`}
+              >
+                <h3 className="pixel-font text-lg mb-3 text-[var(--moss-green)]">
+                  {tier.icon} {tier.title}
+                </h3>
+                <p className="text-sm mb-4 italic">{tier.flavorText}</p>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Tier: {tier.name}</span>
+                    <span>Replies: {engagementData.replyCount}</span>
+                  </div>
+                  <div className="w-full h-3 bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-[var(--monad-purple)] to-[var(--moss-green)] transition-all duration-1000"
+                      style={{ width: `${tier.progressPercentage}%` }}
+                    />
+                  </div>
                 </div>
               </div>
+            )}
+
+            <div className="text-center">
+              <button
+                onClick={() => setShowLorePanel((prev) => !prev)}
+                className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
+              >
+                {showLorePanel ? 'Hide detail scan' : 'Reveal detail scan'}
+              </button>
             </div>
-          )}
 
-          <div className="text-center">
-            <button
-              onClick={() => setShowLorePanel((prev) => !prev)}
-              className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
-            >
-              {showLorePanel ? 'Hide detail scan' : 'Reveal detail scan'}
-            </button>
-          </div>
+            {showLorePanel && (
+              <div className="p-4 border border-[var(--monad-purple)] rounded-lg bg-black/40 space-y-2 text-left">
+                <p className="text-sm uppercase tracking-wide text-[var(--moss-green)]">
+                  Allocation telemetry
+                </p>
+                <ul className="text-sm space-y-1 list-disc list-inside">
+                  <li>Primary wallet: {userData.verifiedAddresses[0]}</li>
+                  <li>Receipt hash ready for download</li>
+                  <li>Engagement tier weight boosts your loot narrative</li>
+                </ul>
+              </div>
+            )}
 
-          {showLorePanel && (
-            <div className="p-4 border border-[var(--monad-purple)] rounded-lg bg-black/40 space-y-2 text-left">
-              <p className="text-sm uppercase tracking-wide text-[var(--moss-green)]">
-                Allocation telemetry
-              </p>
-              <ul className="text-sm space-y-1 list-disc list-inside">
-                <li>Primary wallet: {userData.verifiedAddresses[0]}</li>
-                <li>Receipt hash ready for download</li>
-                <li>Engagement tier weight boosts your loot narrative</li>
-              </ul>
+            <div className="flex gap-4 justify-center mt-8">
+              <button
+                onClick={handleShare}
+                className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
+              >
+                SHARE CAST
+              </button>
+              <button
+                onClick={handleDownloadReceipt}
+                className="pixel-font px-6 py-3 bg-[var(--moss-green)] text-black rounded hover:bg-opacity-90 transition-all"
+              >
+                DOWNLOAD RECEIPT
+              </button>
             </div>
-          )}
-
-          <div className="flex gap-4 justify-center mt-8">
-            <button
-              onClick={handleShare}
-              className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
-            >
-              SHARE CAST
-            </button>
-            <button
-              onClick={handleDownloadReceipt}
-              className="pixel-font px-6 py-3 bg-[var(--moss-green)] text-black rounded hover:bg-opacity-90 transition-all"
-            >
-              DOWNLOAD RECEIPT
-            </button>
           </div>
         </div>
       </div>
