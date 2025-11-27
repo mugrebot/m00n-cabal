@@ -45,7 +45,8 @@ interface ScanStep {
 
 const TOKEN_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
 const CLAIM_URL = 'https://clanker.world/clanker/0x22Cd99EC337a2811F594340a4A6E41e4A3022b07';
-const STICKER_EMOJIS = ['🌙', '💜', '🕸️', '🦇', '☠️', '✨', '🧬', '🛸', '🩸', '💾'];
+const STICKER_EMOJIS = ['✶', '✷', '✸', '✹', '★', '☆', '✦', '✧', '🌙'];
+const STICKER_COLORS = ['#6ce5b1', '#8c54ff', '#ff9b54', '#5ea3ff', '#f7e6ff'];
 
 interface ReplyGlow {
   color: string;
@@ -69,7 +70,9 @@ const getReplyGlowConfig = (count: number): ReplyGlow => {
 };
 
 export default function MiniAppPage() {
-  const MINIAPP_URL = process.env.NEXT_PUBLIC_MINIAPP_URL ?? 'https://m00nad.vercel.app/miniapp';
+  const DEFAULT_MINIAPP_URL = 'https://m00nad.vercel.app/miniapp/';
+  const rawMiniAppUrl = process.env.NEXT_PUBLIC_MINIAPP_URL ?? DEFAULT_MINIAPP_URL;
+  const miniAppUrl = rawMiniAppUrl.endsWith('/') ? rawMiniAppUrl : `${rawMiniAppUrl}/`;
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSdkReady, setIsSdkReady] = useState(false);
@@ -87,15 +90,14 @@ export default function MiniAppPage() {
   const [scanPhase, setScanPhase] = useState<ScanPhase>('idle');
   const [copiedContract, setCopiedContract] = useState(false);
   const [tickerIndex, setTickerIndex] = useState(0);
-  const [isChaosMode, setIsChaosMode] = useState(true);
 
   const miniAppOrigin = useMemo(() => {
     try {
-      return new URL(MINIAPP_URL).origin;
+      return new URL(miniAppUrl).origin;
     } catch {
       return 'https://m00nad.vercel.app';
     }
-  }, [MINIAPP_URL]);
+  }, [miniAppUrl]);
 
   const formatAmount = (amount?: string | number) => {
     if (amount === undefined || amount === null) return '0';
@@ -109,6 +111,7 @@ export default function MiniAppPage() {
       Array.from({ length: 22 }).map((_, idx) => ({
         id: idx,
         emoji: STICKER_EMOJIS[idx % STICKER_EMOJIS.length],
+        color: STICKER_COLORS[idx % STICKER_COLORS.length],
         left: Math.random() * 100,
         duration: 10 + Math.random() * 10,
         delay: Math.random() * -15,
@@ -153,10 +156,6 @@ export default function MiniAppPage() {
     }, 4200);
     return () => window.clearInterval(interval);
   }, [tickerMessages.length]);
-
-  const handleChaosToggle = () => {
-    setIsChaosMode((prev) => !prev);
-  };
 
   const handleTickerAdvance = () => {
     if (tickerMessages.length === 0) return;
@@ -403,8 +402,8 @@ export default function MiniAppPage() {
     const baseText = `I'm part of the m00n cabal! Receiving ${formatAmount(
       airdropData.amount
     )} $m00n tokens 🌙✨`;
-    const finalText = MINIAPP_URL
-      ? `${baseText}\n\n${MINIAPP_URL}`
+    const finalText = miniAppUrl
+      ? `${baseText}\n\n${miniAppUrl}`
       : 'Signal lost. The cabal portal is sealed for now.';
 
     const shareWallet = dropAddress ?? primaryAddress ?? '';
@@ -441,45 +440,36 @@ export default function MiniAppPage() {
     </div>
   );
 
-  const StickerRain = () => {
-    if (!isChaosMode) {
-      return null;
-    }
-
-    return (
-      <div className="sticker-rain" aria-hidden="true">
-        {fallingStickers.map((drop) => (
-          <span
-            key={drop.id}
-            className="sticker"
-            style={
-              {
-                left: `${drop.left}%`,
-                animationDuration: `${drop.duration}s`,
-                animationDelay: `${drop.delay}s`,
-                '--scale': drop.scale
-              } as CSSProperties
-            }
-          >
-            {drop.emoji}
-          </span>
-        ))}
-      </div>
-    );
-  };
+  const StickerRain = () => (
+    <div className="sticker-rain" aria-hidden="true">
+      {fallingStickers.map((drop) => (
+        <span
+          key={drop.id}
+          className="sticker"
+          style={
+            {
+              left: `${drop.left}%`,
+              color: drop.color,
+              animationDuration: `${drop.duration}s`,
+              animationDelay: `${drop.delay}s`,
+              '--scale': drop.scale
+            } as CSSProperties
+          }
+        >
+          {drop.emoji}
+        </span>
+      ))}
+    </div>
+  );
 
   const MyspaceTicker = () => (
     <div className="myspace-ticker">
-      <div className="ticker-label">LIVE STATUS</div>
       <div className="ticker-content">
         <span key={`${tickerIndex}-${tickerMessage}`} className="ticker-message">
           {tickerMessage}
         </span>
       </div>
       <div className="ticker-controls">
-        <button type="button" className="ticker-button" onClick={handleChaosToggle}>
-          {isChaosMode ? 'FREEZE GLITTER' : 'UNLEASH GLITTER'}
-        </button>
         <button type="button" className="ticker-button" onClick={handleTickerAdvance}>
           NEXT
         </button>
@@ -506,7 +496,7 @@ export default function MiniAppPage() {
   const renderShell = (content: ReactNode) => (
     <div className="relative min-h-screen overflow-hidden">
       <BackgroundOrbs />
-      {isChaosMode && <StickerRain />}
+      <StickerRain />
       <MyspaceTicker />
       {content}
     </div>
@@ -789,15 +779,12 @@ export default function MiniAppPage() {
             </div>
           )}
 
-          <div className="flex flex-col gap-4 mt-8 sm:flex-row sm:items-center sm:justify-center">
+          <div className="flex justify-center mt-8">
             <button
               onClick={handleShare}
               className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
             >
               SHARE CAST
-            </button>
-            <button type="button" className="chaos-toggle" onClick={handleChaosToggle}>
-              {isChaosMode ? 'Freeze glitter overlay' : 'Resume glitter overlay'}
             </button>
           </div>
 

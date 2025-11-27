@@ -222,9 +222,11 @@ body::after {
 .sticker-rain .sticker {
   position: absolute;
   top: -10%;
-  font-size: clamp(16px, 3vw, 34px);
-  animation: stickerFall var(--duration, 12s) linear infinite;
-  filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.4));
+  font-size: clamp(14px, 2.6vw, 30px);
+  font-family: 'Press Start 2P', monospace;
+  animation: stickerFall var(--duration, 12s) steps(12) infinite;
+  filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.45));
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.25);
 }
 
 .myspace-ticker {
@@ -337,22 +339,6 @@ body::after {
   text-transform: uppercase;
   background: rgba(0, 0, 0, 0.45);
   box-shadow: inset 0 0 12px rgba(140, 84, 255, 0.3);
-}
-
-.chaos-toggle {
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.15em;
-  border: 1px solid rgba(108, 229, 177, 0.8);
-  border-radius: 999px;
-  padding: 6px 12px;
-  background: rgba(0, 0, 0, 0.4);
-  transition: all 0.2s ease;
-}
-
-.chaos-toggle:hover {
-  background: rgba(108, 229, 177, 0.2);
-  color: var(--monad-dark);
 }
 
 @keyframes orbDrift {

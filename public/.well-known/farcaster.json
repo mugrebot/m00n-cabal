@@ -3,7 +3,7 @@
     "name": "m00nad cabal check",
     "version": "1",
     "iconUrl": "https://m00nad.vercel.app/brand/logo.png",
-    "homeUrl": "https://m00nad.vercel.app/miniapp",
+    "homeUrl": "https://m00nad.vercel.app/miniapp/",
     "imageUrl": "https://m00nad.vercel.app/api/embed-card",
     "buttonTitle": "Enter m00n Cabal",
     "splashImageUrl": "https://m00nad.vercel.app/brand/splash.svg",

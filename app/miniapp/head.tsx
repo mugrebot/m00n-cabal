@@ -1,5 +1,5 @@
 export default function MiniAppHead() {
-  const miniAppUrl = 'https://m00nad.vercel.app/miniapp';
+  const miniAppUrl = 'https://m00nad.vercel.app/miniapp/';
   const bannerUrl = 'https://m00nad.vercel.app/api/embed-card';
   const splashUrl = 'https://m00nad.vercel.app/brand/splash.svg';
   const embedMeta = JSON.stringify({
