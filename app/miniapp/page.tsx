@@ -108,7 +108,7 @@ export default function MiniAppPage() {
 
   const fallingStickers = useMemo(
     () =>
-      Array.from({ length: 22 }).map((_, idx) => ({
+      Array.from({ length: 12 }).map((_, idx) => ({
         id: idx,
         emoji: STICKER_EMOJIS[idx % STICKER_EMOJIS.length],
         color: STICKER_COLORS[idx % STICKER_COLORS.length],
@@ -418,6 +418,12 @@ export default function MiniAppPage() {
       embedUrl.searchParams.set('replies', String(engagementData.replyCount));
     }
 
+    try {
+      await fetch(embedUrl.toString(), { cache: 'no-store' });
+    } catch (prefetchErr) {
+      console.warn('Failed to prefetch embed card', prefetchErr);
+    }
+
     const composeUrl = new URL('https://warpcast.com/~/compose');
     composeUrl.searchParams.set('text', finalText);
     composeUrl.searchParams.append('embeds[]', embedUrl.toString());
@@ -425,15 +431,22 @@ export default function MiniAppPage() {
     await sdk.actions.openUrl(composeUrl.toString());
   };
 
-  const renderSessionCard = (fid?: number, wallet?: string | null) => (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 text-sm text-left backdrop-blur-lg">
+  const PANEL_CLASS =
+    'bg-black/45 border border-[var(--monad-purple)] rounded-2xl p-6 text-left backdrop-blur';
+
+  const renderSessionCard = (fid?: number, wallet?: string | null, extraClass = '') => (
+    <div
+      className={`grid grid-cols-1 md:grid-cols-2 gap-6 text-sm ${PANEL_CLASS} ${extraClass} [&>div]:space-y-1`}
+    >
       <div>
-        <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Connected FID</p>
-        <p className="font-mono text-base">{fid ?? '—'}</p>
+        <p className="uppercase text-[var(--moss-green)] text-[11px] tracking-[0.4em]">
+          Connected FID
+        </p>
+        <p className="font-mono text-lg leading-tight">{fid ?? '—'}</p>
       </div>
       <div>
-        <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Wallet</p>
-        <p className="font-mono text-base">
+        <p className="uppercase text-[var(--moss-green)] text-[11px] tracking-[0.4em]">Wallet</p>
+        <p className="font-mono text-lg leading-tight">
           {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : '—'}
         </p>
       </div>
@@ -606,18 +619,6 @@ export default function MiniAppPage() {
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
         <div className="max-w-2xl w-full text-center space-y-8 scanline">
-          <div className="relative mx-auto w-full overflow-hidden rounded-3xl border border-[var(--monad-purple)] bg-black/30 shadow-[0_0_40px_rgba(140,84,255,0.35)]">
-            <Image
-              src="/brand/banner.png"
-              alt="m00n Cabal"
-              width={1200}
-              height={600}
-              className="w-full h-[240px] md:h-[340px] object-cover opacity-95"
-              priority
-            />
-            <span className="scanner-bar" />
-          </div>
-
           <div className="space-y-2">
             <h1 className="pixel-font text-2xl md:text-3xl glow-purple">m00n Cabal Check</h1>
             <p className="text-lg opacity-90">Check your $m00n eligibility.</p>
@@ -684,6 +685,16 @@ export default function MiniAppPage() {
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
         <div className="max-w-3xl w-full space-y-6 scanline p-8 bg-black/50 rounded-lg border-2 border-[var(--monad-purple)]">
           <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={handleOpenClaimSite}
+              className="pixel-font text-xs tracking-[0.4em] px-6 py-3 rounded-full border border-[var(--moss-green)] text-[var(--moss-green)] hover:bg-[var(--moss-green)] hover:text-black transition"
+            >
+              OPEN CLAIM PORTAL
+            </button>
+          </div>
+
+          <div className="flex justify-center">
             <NeonHaloLogo size={150} />
           </div>
 
@@ -702,7 +713,7 @@ export default function MiniAppPage() {
 
           <div className="flex justify-center">
             <div
-              className="pixel-font text-[11px] uppercase tracking-[0.5em] px-6 py-3 rounded-full"
+              className="pixel-font text-[11px] uppercase tracking-[0.5em] px-6 py-2 rounded-full"
               style={{
                 border: `2px solid ${replyGlow.color}`,
                 color: replyGlow.color,
@@ -782,7 +793,7 @@ export default function MiniAppPage() {
           <div className="flex justify-center mt-8">
             <button
               onClick={handleShare}
-              className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
+              className="pixel-font px-6 py-2 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
             >
               SHARE CAST
             </button>
