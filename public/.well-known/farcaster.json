@@ -20,8 +20,8 @@
     "ogImageUrl": "https://m00nad.vercel.app/brand/banner.png"
   },
   "accountAssociation": {
-    "header": "eyJmaWQiOjk5MzMsInR5cGUiOiJhdXRoIiwia2V5IjoiMHhCRjQ5NzdmMTI5NTQ1NGNiNDZkOTVmZTdEOEUxRDk5RTMyZDhBRWQxIn0",
+    "header": "eyJmaWQiOjk5MzMsInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHg4MjBBRTA1MDM2RTI2OUJlY2JEM0IwMWFBN2UzMGJCYzlmNzUwMjZEIn0",
     "payload": "eyJkb21haW4iOiJtMDBuYWQudmVyY2VsLmFwcCJ9",
-    "signature": "4C2FGfji1mFC6j9UvwbVyUPWk8HctGRc4yjUNQtomcEXYBTwMo3Hn10mCpwWCeKUdUU1CI3Lj9Y0vlmW4h89Oxw="
+    "signature": "MHgzM2M2N2NmMzZhZWE5NTYxZmRkZTE4ZjZmNDBmZTkxNzk1YmQ5ODgwODI4Njg0NDNlODIzY2ZkZjQzOGYyMjg5MmVkYjgyMmUyY2EyMjExMzQ2YjUxNTQ1MGIzOWU1OWIwZjU0NjZlNGEzYmRkZGQ3Njk4ZmYwNjg2NjFhYmMwMjFj"
   }
 }
