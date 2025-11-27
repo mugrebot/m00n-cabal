@@ -45,8 +45,7 @@ interface ScanStep {
 
 const TOKEN_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
 const CLAIM_URL = 'https://clanker.world/clanker/0x22Cd99EC337a2811F594340a4A6E41e4A3022b07';
-const STICKER_EMOJIS = ['✶', '✷', '✸', '✹', '★', '☆', '✦', '✧', '🌙'];
-const STICKER_COLORS = ['#6ce5b1', '#8c54ff', '#ff9b54', '#5ea3ff', '#f7e6ff'];
+const STICKER_EMOJIS = ['🌙', '💜', '🕸️', '🦇', '☠️', '✨', '🧬', '🛸', '🩸', '💾'];
 
 interface ReplyGlow {
   color: string;
@@ -89,7 +88,6 @@ export default function MiniAppPage() {
   const [error, setError] = useState<string | null>(null);
   const [scanPhase, setScanPhase] = useState<ScanPhase>('idle');
   const [copiedContract, setCopiedContract] = useState(false);
-  const [tickerIndex, setTickerIndex] = useState(0);
 
   const miniAppOrigin = useMemo(() => {
     try {
@@ -108,59 +106,16 @@ export default function MiniAppPage() {
 
   const fallingStickers = useMemo(
     () =>
-      Array.from({ length: 12 }).map((_, idx) => ({
+      Array.from({ length: 20 }).map((_, idx) => ({
         id: idx,
         emoji: STICKER_EMOJIS[idx % STICKER_EMOJIS.length],
-        color: STICKER_COLORS[idx % STICKER_COLORS.length],
         left: Math.random() * 100,
-        duration: 10 + Math.random() * 10,
-        delay: Math.random() * -15,
+        duration: 12 + Math.random() * 8,
+        delay: Math.random() * -18,
         scale: 0.7 + Math.random() * 0.8
       })),
     []
   );
-
-  const tickerMessages = useMemo(() => {
-    const amountText = formatAmount(airdropData?.amount ?? 0);
-    const replyText = engagementData?.replyCount
-      ? `${engagementData.replyCount} replies logged`
-      : 'waiting for chatter';
-
-    return [
-      `m00npapi.eth just glitter-bombed your HUD`,
-      `ledger ping: ${amountText} $m00n calibrated`,
-      `fid ${viewerContext?.fid ?? '????'} scanning for anomalies`,
-      `${addresses.length} wallets tethered`,
-      replyText,
-      `scan phase ➜ ${scanPhase.toUpperCase()}`
-    ];
-  }, [
-    airdropData?.amount,
-    addresses.length,
-    engagementData?.replyCount,
-    scanPhase,
-    viewerContext?.fid
-  ]);
-
-  const tickerMessage =
-    tickerMessages.length > 0
-      ? tickerMessages[tickerIndex % tickerMessages.length]
-      : 'm00n cabal online';
-
-  useEffect(() => {
-    if (tickerMessages.length === 0) {
-      return undefined;
-    }
-    const interval = window.setInterval(() => {
-      setTickerIndex((prev) => (prev + 1) % tickerMessages.length);
-    }, 4200);
-    return () => window.clearInterval(interval);
-  }, [tickerMessages.length]);
-
-  const handleTickerAdvance = () => {
-    if (tickerMessages.length === 0) return;
-    setTickerIndex((prev) => (prev + 1) % tickerMessages.length);
-  };
 
   useEffect(() => {
     const bootstrapSdk = async () => {
@@ -403,7 +358,7 @@ export default function MiniAppPage() {
       airdropData.amount
     )} $m00n tokens 🌙✨`;
     const finalText = miniAppUrl
-      ? `${baseText}\n\n${miniAppUrl}`
+      ? `${baseText} ${miniAppUrl}`.trim()
       : 'Signal lost. The cabal portal is sealed for now.';
 
     const shareWallet = dropAddress ?? primaryAddress ?? '';
@@ -432,7 +387,7 @@ export default function MiniAppPage() {
   };
 
   const PANEL_CLASS =
-    'bg-black/45 border border-[var(--monad-purple)] rounded-2xl p-6 text-left backdrop-blur';
+    'bg-black/45 border border-[var(--monad-purple)] rounded-2xl p-6 backdrop-blur';
 
   const renderSessionCard = (fid?: number, wallet?: string | null, extraClass = '') => (
     <div
@@ -462,7 +417,6 @@ export default function MiniAppPage() {
           style={
             {
               left: `${drop.left}%`,
-              color: drop.color,
               animationDuration: `${drop.duration}s`,
               animationDelay: `${drop.delay}s`,
               '--scale': drop.scale
@@ -472,21 +426,6 @@ export default function MiniAppPage() {
           {drop.emoji}
         </span>
       ))}
-    </div>
-  );
-
-  const MyspaceTicker = () => (
-    <div className="myspace-ticker">
-      <div className="ticker-content">
-        <span key={`${tickerIndex}-${tickerMessage}`} className="ticker-message">
-          {tickerMessage}
-        </span>
-      </div>
-      <div className="ticker-controls">
-        <button type="button" className="ticker-button" onClick={handleTickerAdvance}>
-          NEXT
-        </button>
-      </div>
     </div>
   );
 
@@ -510,7 +449,6 @@ export default function MiniAppPage() {
     <div className="relative min-h-screen overflow-hidden">
       <BackgroundOrbs />
       <StickerRain />
-      <MyspaceTicker />
       {content}
     </div>
   );
@@ -543,9 +481,6 @@ export default function MiniAppPage() {
           OPEN CLAIM SITE
         </button>
       </div>
-      <p className="text-xs opacity-75">
-        Unlocks route to claim: <span className="font-mono">{CLAIM_URL}</span>
-      </p>
     </div>
   );
 
@@ -618,47 +553,42 @@ export default function MiniAppPage() {
   if (!userData) {
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
-        <div className="max-w-2xl w-full text-center space-y-8 scanline">
-          <div className="space-y-2">
+        <div className="w-full max-w-xl space-y-5">
+          <div className={`${PANEL_CLASS} text-center space-y-3`}>
             <h1 className="pixel-font text-2xl md:text-3xl glow-purple">m00n Cabal Check</h1>
-            <p className="text-lg opacity-90">Check your $m00n eligibility.</p>
+            <p className="text-base opacity-80">
+              Scan your Farcaster FID to see if you made the drop.
+            </p>
           </div>
 
-          {renderSessionCard(viewerContext?.fid, primaryAddress)}
+          {renderSessionCard(viewerContext?.fid, primaryAddress, 'text-center md:text-left')}
 
-          {isMiniApp === false ? (
-            <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-4 backdrop-blur">
-              <p className="text-base">
-                This portal must run inside Warpcast. Tap below to open it with your Farcaster
-                session.
-              </p>
+          <div className={`${PANEL_CLASS} space-y-4`}>
+            <p className="text-base">{currentDescription}</p>
+            <div className="w-full h-1.5 bg-gray-900 rounded-full overflow-hidden">
+              <div className="h-full status-progress" style={{ width: `${scanProgress}%` }} />
+            </div>
+            {!isMiniApp && (
               <a
                 href="https://warpcast.com/~/add-mini-app?domain=m00nad.vercel.app"
-                className="pixel-font inline-block px-6 py-3 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
+                className="pixel-font inline-block px-6 py-2 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all text-xs tracking-[0.3em]"
               >
                 OPEN IN WARPCAST
               </a>
-            </div>
-          ) : (
-            <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-4 backdrop-blur">
-              <p className="text-base">{currentDescription}</p>
-              <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                <div className="h-full status-progress" style={{ width: `${scanProgress}%` }} />
-              </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          <button
-            onClick={handleSignIn}
-            className="pixel-font px-8 py-4 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all transform hover:scale-105 glow-purple disabled:opacity-40"
-            disabled={!statusState.actionable}
-          >
-            {statusState.label}
-          </button>
-
-          <p className="text-xs opacity-70">{statusState.detail}</p>
-
-          {error && <p className="text-red-400 mt-4">{error}</p>}
+          <div className="text-center space-y-2">
+            <button
+              onClick={handleSignIn}
+              className="pixel-font w-full px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all disabled:opacity-40 text-xs tracking-[0.4em]"
+              disabled={!statusState.actionable}
+            >
+              {statusState.label}
+            </button>
+            <p className="text-xs opacity-70">{statusState.detail}</p>
+            {error && <p className="text-red-400">{error}</p>}
+          </div>
         </div>
       </div>
     );
@@ -684,16 +614,6 @@ export default function MiniAppPage() {
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
         <div className="max-w-3xl w-full space-y-6 scanline p-8 bg-black/50 rounded-lg border-2 border-[var(--monad-purple)]">
-          <div className="flex justify-center">
-            <button
-              type="button"
-              onClick={handleOpenClaimSite}
-              className="pixel-font text-xs tracking-[0.4em] px-6 py-3 rounded-full border border-[var(--moss-green)] text-[var(--moss-green)] hover:bg-[var(--moss-green)] hover:text-black transition"
-            >
-              OPEN CLAIM PORTAL
-            </button>
-          </div>
-
           <div className="flex justify-center">
             <NeonHaloLogo size={150} />
           </div>
@@ -725,7 +645,7 @@ export default function MiniAppPage() {
             </div>
           </div>
 
-          {renderSessionCard(userData.fid, primaryAddress)}
+          {renderSessionCard(userData.fid, primaryAddress, 'text-left')}
           {dropAddress && dropAddress !== primaryAddress && (
             <p className="text-xs opacity-70">
               Allocation detected on{' '}
