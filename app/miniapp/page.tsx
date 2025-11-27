@@ -36,6 +36,9 @@ interface ScanStep {
   description: string;
 }
 
+const TOKEN_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
+const CLAIM_URL = 'https://clanker.world/clanker/0x22Cd99EC337a2811F594340a4A6E41e4A3022b07';
+
 export default function MiniAppPage() {
   const MINIAPP_URL = process.env.NEXT_PUBLIC_MINIAPP_URL ?? 'https://m00nad.vercel.app/miniapp';
 
@@ -53,6 +56,7 @@ export default function MiniAppPage() {
   const [addresses, setAddresses] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [scanPhase, setScanPhase] = useState<ScanPhase>('idle');
+  const [copiedContract, setCopiedContract] = useState(false);
 
   useEffect(() => {
     const bootstrapSdk = async () => {
@@ -267,6 +271,27 @@ export default function MiniAppPage() {
     return parseInt(amount).toLocaleString();
   };
 
+  const handleCopyContract = async () => {
+    try {
+      await navigator.clipboard.writeText(TOKEN_ADDRESS);
+      setCopiedContract(true);
+      setTimeout(() => setCopiedContract(false), 2500);
+    } catch (err) {
+      console.error('Failed to copy', err);
+    }
+  };
+
+  const handleOpenClaimSite = async () => {
+    try {
+      await sdk.actions.openUrl(CLAIM_URL);
+    } catch (err) {
+      console.warn('sdk.actions.openUrl failed, falling back to browser open', err);
+      if (typeof window !== 'undefined') {
+        window.open(CLAIM_URL, '_blank', 'noopener,noreferrer');
+      }
+    }
+  };
+
   const handleShare = async () => {
     if (!airdropData?.eligible || !airdropData.amount) return;
 
@@ -305,6 +330,32 @@ export default function MiniAppPage() {
       <span className="floating-orb orb-two" />
       <span className="floating-orb orb-three" />
     </>
+  );
+
+  const renderContractCard = () => (
+    <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-4 text-left backdrop-blur">
+      <div>
+        <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">m00n contract</p>
+        <p className="font-mono text-sm break-all">{TOKEN_ADDRESS}</p>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <button
+          onClick={handleCopyContract}
+          className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-all"
+        >
+          {copiedContract ? 'COPIED' : 'COPY CA'}
+        </button>
+        <button
+          onClick={handleOpenClaimSite}
+          className="pixel-font text-xs px-4 py-2 border border-[var(--moss-green)] rounded text-[var(--moss-green)] hover:bg-[var(--moss-green)] hover:text-black transition-all"
+        >
+          OPEN CLAIM SITE
+        </button>
+      </div>
+      <p className="text-xs opacity-75">
+        Unlocks route to claim: <span className="font-mono">{CLAIM_URL}</span>
+      </p>
+    </div>
   );
 
   const statusState = useMemo(() => {
@@ -483,13 +534,15 @@ export default function MiniAppPage() {
         <BackgroundOrbs />
         <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
           <div className="max-w-3xl w-full space-y-6 scanline p-8 bg-black/50 rounded-lg border-2 border-[var(--monad-purple)]">
-            <Image
-              src="/brand/logo.png"
-              alt="m00n"
-              width={100}
-              height={100}
-              className="mx-auto block"
-            />
+            <div className="flex justify-center">
+              <Image
+                src="/brand/logo.png"
+                alt="m00n"
+                width={120}
+                height={120}
+                className="block rounded-full border border-[var(--monad-purple)] bg-black/40 p-2"
+              />
+            </div>
 
             <h1 className="pixel-font text-2xl text-center glow-purple">WELCOME TO THE CABAL</h1>
 
@@ -571,6 +624,8 @@ export default function MiniAppPage() {
                 SHARE CAST
               </button>
             </div>
+
+            {renderContractCard()}
           </div>
         </div>
       </div>
@@ -582,19 +637,22 @@ export default function MiniAppPage() {
       <BackgroundOrbs />
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
         <div className="max-w-2xl w-full text-center space-y-6 scanline shake">
-          <Image
-            src="/brand/logo.png"
-            alt="m00n"
-            width={150}
-            height={150}
-            className="mx-auto block opacity-50"
-          />
+          <div className="flex justify-center">
+            <Image
+              src="/brand/logo.png"
+              alt="m00n"
+              width={150}
+              height={150}
+              className="block opacity-60 rounded-full border border-[var(--monad-purple)] bg-black/50 p-3"
+            />
+          </div>
 
           <h1 className="pixel-font text-2xl text-red-400">ACCESS DENIED</h1>
 
           <p className="text-lg opacity-70">
             You don&apos;t have to go home, but you can&apos;t stay here.
           </p>
+
           <div className="text-sm text-left bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-2">
             <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Session</p>
             <p>FID: {userData.fid}</p>
@@ -603,6 +661,7 @@ export default function MiniAppPage() {
               {primaryAddress ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}` : '—'}
             </p>
           </div>
+
           {dropAddress && dropAddress !== primaryAddress && (
             <p className="text-xs opacity-70">
               Drop checks were performed against{' '}
@@ -610,6 +669,8 @@ export default function MiniAppPage() {
               .
             </p>
           )}
+
+          <div className="w-full">{renderContractCard()}</div>
         </div>
       </div>
     </div>
