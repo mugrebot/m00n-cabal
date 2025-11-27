@@ -13,8 +13,38 @@ interface AirdropData {
   };
 }
 
+const DEFAULT_CSV_CANDIDATES = [
+  path.join(process.cwd(), '../m00n - m00n.csv.csv'),
+  path.join(__dirname, '../data/m00nad.csv')
+];
+
+function resolveCsvPath() {
+  if (process.env.AIRDROP_CSV_PATH) {
+    const resolved = path.resolve(process.cwd(), process.env.AIRDROP_CSV_PATH);
+    if (fs.existsSync(resolved)) {
+      return resolved;
+    }
+    console.warn(`[airdrop] AIRDROP_CSV_PATH set but file missing: ${resolved}`);
+  }
+
+  for (const candidate of DEFAULT_CSV_CANDIDATES) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    `Unable to locate airdrop CSV. Checked: ${[
+      process.env.AIRDROP_CSV_PATH,
+      ...DEFAULT_CSV_CANDIDATES
+    ]
+      .filter(Boolean)
+      .join(', ')}`
+  );
+}
+
 async function buildAirdropJson() {
-  const csvPath = path.join(__dirname, '../data/m00nad.csv');
+  const csvPath = resolveCsvPath();
   const outputPath = path.join(__dirname, '../public/data/m00nad_airdrop.json');
 
   try {
@@ -36,6 +66,18 @@ async function buildAirdropJson() {
       }
 
       const normalizedAddress = row.address.toLowerCase();
+      const normalizedAmount = row.amount.trim();
+
+      const numericAmount = Number(normalizedAmount);
+      if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+        console.warn(`Skipping non-positive amount for ${row.address}`);
+        continue;
+      }
+
+      if (Number.isNaN(numericAmount)) {
+        console.warn(`Skipping row with invalid amount: ${JSON.stringify(row)}`);
+        continue;
+      }
 
       if (seen.has(normalizedAddress)) {
         console.warn(`Duplicate address found: ${row.address}`);
@@ -44,7 +86,7 @@ async function buildAirdropJson() {
 
       seen.add(normalizedAddress);
       airdropData[normalizedAddress] = {
-        amount: row.amount
+        amount: normalizedAmount
       };
     }
 

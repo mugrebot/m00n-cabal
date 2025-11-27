@@ -29,10 +29,17 @@ interface ViewerContext {
   displayName?: string;
 }
 
+type ScanPhase = 'idle' | 'authenticating' | 'addresses' | 'fetching' | 'ready' | 'error';
+
+interface ScanStep {
+  key: ScanPhase;
+  label: string;
+  description: string;
+}
+
 export default function MiniAppPage() {
-  const SOUNDTRACK_URL =
-    process.env.NEXT_PUBLIC_SOUNDTRACK_URL ??
-    'https://raw.githubusercontent.com/mugrebot/m00n-cabal/main/apps/m00n-cabal/public/audio/blue.mp3';
+  const SOUNDTRACK_URL = process.env.NEXT_PUBLIC_SOUNDTRACK_URL ?? '/api/soundtrack';
+  const MINIAPP_URL = process.env.NEXT_PUBLIC_MINIAPP_URL ?? 'https://m00nad.vercel.app/miniapp';
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSdkReady, setIsSdkReady] = useState(false);
@@ -42,7 +49,6 @@ export default function MiniAppPage() {
   const [engagementData, setEngagementData] = useState<EngagementData | null>(null);
   const [showLootReveal, setShowLootReveal] = useState(false);
   const [showLorePanel, setShowLorePanel] = useState(false);
-  const [glyphIndex, setGlyphIndex] = useState(0);
   const [primaryAddress, setPrimaryAddress] = useState<string | null>(null);
   const [dropAddress, setDropAddress] = useState<string | null>(null);
   const [viewerContext, setViewerContext] = useState<ViewerContext | null>(null);
@@ -51,9 +57,11 @@ export default function MiniAppPage() {
   const [soundtrackError, setSoundtrackError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [scanPhase, setScanPhase] = useState<
-    'idle' | 'authenticating' | 'addresses' | 'fetching' | 'ready' | 'error'
-  >('idle');
+  const [scanPhase, setScanPhase] = useState<ScanPhase>('idle');
+  const [receiptStatus, setReceiptStatus] = useState<'idle' | 'generating' | 'done' | 'error'>(
+    'idle'
+  );
+  const [receiptError, setReceiptError] = useState<string | null>(null);
 
   useEffect(() => {
     const bootstrapSdk = async () => {
@@ -94,23 +102,49 @@ export default function MiniAppPage() {
     void bootstrapSdk();
   }, []);
 
-  const ritualGlyphs = useMemo(
+  const scanSteps = useMemo<ScanStep[]>(
     () => [
-      'relay tuned • awaiting wallet signal',
-      'airdrop ledger • checksum verified',
-      'engagement scanner • syncing replies',
-      'loot framework • particles stabilized'
+      {
+        key: 'idle',
+        label: 'Awaiting scan',
+        description: 'Tap SCAN FID to begin the ritual.'
+      },
+      {
+        key: 'authenticating',
+        label: 'Authenticating',
+        description: 'Awaiting Farcaster approval.'
+      },
+      {
+        key: 'addresses',
+        label: 'Syncing wallets',
+        description: 'Pulling every verified address tied to your FID.'
+      },
+      {
+        key: 'fetching',
+        label: 'Consulting ledger',
+        description: 'Checking the $m00n drop allocations.'
+      },
+      {
+        key: 'ready',
+        label: 'Drop synced',
+        description: 'Scroll down to view your fate.'
+      },
+      {
+        key: 'error',
+        label: 'Link disrupted',
+        description: 'Something went wrong. Tap RETRY SCAN.'
+      }
     ],
     []
   );
-
-  useEffect(() => {
-    if (isMiniApp === false) return;
-    const interval = setInterval(() => {
-      setGlyphIndex((prev) => (prev + 1) % ritualGlyphs.length);
-    }, 4500);
-    return () => clearInterval(interval);
-  }, [isMiniApp, ritualGlyphs.length]);
+  const resolvedPhase = scanPhase;
+  const activeStepIndex = Math.max(
+    0,
+    scanSteps.findIndex((step) => step.key === resolvedPhase)
+  );
+  const currentStep = scanSteps[activeStepIndex] ?? scanSteps[0];
+  const currentDescription = scanPhase === 'error' && error ? error : currentStep.description;
+  const scanProgress = ((activeStepIndex + 1) / scanSteps.length) * 100;
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -261,13 +295,24 @@ export default function MiniAppPage() {
   const handleShare = async () => {
     if (!airdropData?.eligible || !airdropData.amount) return;
 
-    const text = `I'm part of the m00n cabal! Receiving ${formatAmount(airdropData.amount)} $m00n tokens 🌙✨`;
-    await sdk.actions.openUrl(`https://warpcast.com/~/compose?text=${encodeURIComponent(text)}`);
+    const baseText = `I'm part of the m00n cabal! Receiving ${formatAmount(
+      airdropData.amount
+    )} $m00n tokens 🌙✨`;
+    const finalText = MINIAPP_URL
+      ? `${baseText}\n\n${MINIAPP_URL}`
+      : 'Signal lost. The cabal portal is sealed for now.';
+
+    await sdk.actions.openUrl(
+      `https://warpcast.com/~/compose?text=${encodeURIComponent(finalText)}`
+    );
   };
 
   const handleDownloadReceipt = async () => {
     const element = document.getElementById('receipt-content');
     if (!element) return;
+
+    setReceiptError(null);
+    setReceiptStatus('generating');
 
     try {
       const dataUrl = await toPng(element);
@@ -275,16 +320,16 @@ export default function MiniAppPage() {
       link.download = 'm00n-cabal-receipt.png';
       link.href = dataUrl;
       link.click();
+      setReceiptStatus('done');
+      setTimeout(() => setReceiptStatus('idle'), 4000);
     } catch (err) {
       console.error('Failed to generate receipt:', err);
+      setReceiptError('Could not render the receipt. Try again or screenshot this screen.');
+      setReceiptStatus('error');
     }
   };
 
   const tier = engagementData ? getTierByReplyCount(engagementData.replyCount) : null;
-
-  const handleGlyphCycle = () => {
-    setGlyphIndex((prev) => (prev + 1) % ritualGlyphs.length);
-  };
 
   const renderSessionCard = (fid?: number, wallet?: string | null) => (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 text-sm text-left backdrop-blur-lg">
@@ -343,10 +388,16 @@ export default function MiniAppPage() {
   );
 
   const soundtrackElement = (
-    <audio ref={audioRef} src={SOUNDTRACK_URL} loop preload="auto" className="hidden" />
+    <audio
+      ref={audioRef}
+      src={SOUNDTRACK_URL}
+      loop
+      preload="auto"
+      className="hidden"
+      playsInline
+      crossOrigin="anonymous"
+    />
   );
-
-  const statusProgress = ((glyphIndex + 1) / ritualGlyphs.length) * 100;
 
   const statusState = useMemo(() => {
     if (isMiniApp === false) {
@@ -454,23 +505,32 @@ export default function MiniAppPage() {
                 </a>
               </div>
             ) : (
-              <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-3 backdrop-blur">
+              <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-4 backdrop-blur">
                 <div className="flex items-center justify-between text-xs uppercase tracking-widest text-[var(--moss-green)]">
-                  <span>Signal feed</span>
+                  <span>Scan status</span>
                   <span>
-                    {glyphIndex + 1}/{ritualGlyphs.length}
+                    {activeStepIndex + 1}/{scanSteps.length}
                   </span>
                 </div>
-                <p className="text-base">{ritualGlyphs[glyphIndex]}</p>
+                <p className="text-base">{currentDescription}</p>
                 <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                  <div className="h-full status-progress" style={{ width: `${statusProgress}%` }} />
+                  <div className="h-full status-progress" style={{ width: `${scanProgress}%` }} />
                 </div>
-                <button
-                  onClick={handleGlyphCycle}
-                  className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-all"
-                >
-                  Cycle diagnostic
-                </button>
+                <div className="space-y-1 text-left text-xs uppercase tracking-wider">
+                  {scanSteps.map((step, idx) => (
+                    <div
+                      key={step.key}
+                      className={`flex items-center justify-between ${
+                        idx <= activeStepIndex ? 'text-[var(--moss-green)]' : 'opacity-40'
+                      }`}
+                    >
+                      <span>{step.label}</span>
+                      <span>
+                        {idx < activeStepIndex ? '✓' : idx === activeStepIndex ? '↺' : '—'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -585,9 +645,14 @@ export default function MiniAppPage() {
                   Allocation telemetry
                 </p>
                 <ul className="text-sm space-y-1 list-disc list-inside">
-                  <li>Primary wallet: {userData.verifiedAddresses[0]}</li>
-                  <li>Receipt hash ready for download</li>
-                  <li>Engagement tier weight boosts your loot narrative</li>
+                  <li>
+                    Claim wallet:{' '}
+                    {dropAddress
+                      ? `${dropAddress.slice(0, 6)}…${dropAddress.slice(-4)}`
+                      : primaryAddress
+                        ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}`
+                        : '—'}
+                  </li>
                 </ul>
               </div>
             )}
@@ -608,6 +673,19 @@ export default function MiniAppPage() {
                 DOWNLOAD RECEIPT
               </button>
             </div>
+            {receiptStatus === 'generating' && (
+              <p className="text-xs text-[var(--moss-green)] text-center mt-2">
+                Rendering receipt…
+              </p>
+            )}
+            {receiptStatus === 'done' && (
+              <p className="text-xs text-[var(--moss-green)] text-center mt-2">
+                Receipt saved. Share it with the cabal.
+              </p>
+            )}
+            {receiptStatus === 'error' && (
+              <p className="text-xs text-red-400 text-center mt-2">{receiptError}</p>
+            )}
           </div>
         </div>
       </div>
