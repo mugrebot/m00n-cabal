@@ -40,6 +40,7 @@ type ScanPhase = 'idle' | 'authenticating' | 'addresses' | 'fetching' | 'ready' 
 
 const TOKEN_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
 const CLAIM_URL = 'https://clanker.world/clanker/0x22Cd99EC337a2811F594340a4A6E41e4A3022b07';
+const CLAIM_UNLOCK_TIMESTAMP_MS = 1765482480 * 1000;
 const STICKER_EMOJIS = ['🌙', '💜', '🕸️', '🦇', '☠️', '✨', '🧬', '🛸', '🩸', '💾'];
 const STICKER_COLORS = ['#6ce5b1', '#8c54ff', '#ff9b54', '#5ea3ff', '#f7e6ff'];
 
@@ -83,6 +84,9 @@ export default function MiniAppPage() {
   const [scanPhase, setScanPhase] = useState<ScanPhase>('idle');
   const [copiedContract, setCopiedContract] = useState(false);
   const [hasZeroPoints, setHasZeroPoints] = useState(false);
+  const [timeUntilClaimMs, setTimeUntilClaimMs] = useState(() =>
+    Math.max(CLAIM_UNLOCK_TIMESTAMP_MS - Date.now(), 0)
+  );
 
   const formatAmount = (amount?: string | number) => {
     if (amount === undefined || amount === null) return '0';
@@ -142,6 +146,15 @@ export default function MiniAppPage() {
     };
 
     void bootstrapSdk();
+  }, []);
+
+  useEffect(() => {
+    const tick = () => {
+      setTimeUntilClaimMs(Math.max(CLAIM_UNLOCK_TIMESTAMP_MS - Date.now(), 0));
+    };
+
+    const intervalId = window.setInterval(tick, 1000);
+    return () => window.clearInterval(intervalId);
   }, []);
 
   const syncAddresses = async (fid: number) => {
@@ -312,6 +325,31 @@ export default function MiniAppPage() {
   const repliesCount = airdropData?.replyCount ?? engagementData?.replyCount ?? 0;
   const tier = repliesCount ? getTierByReplyCount(repliesCount) : null;
   const replyGlow = useMemo(() => getReplyGlowConfig(repliesCount), [repliesCount]);
+  const claimCountdown = useMemo(() => {
+    const totalSeconds = Math.max(Math.floor(timeUntilClaimMs / 1000), 0);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    return {
+      totalSeconds,
+      days,
+      hours,
+      minutes,
+      seconds
+    };
+  }, [timeUntilClaimMs]);
+  const countdownUnits = useMemo(
+    () => [
+      { label: 'DAYS', value: claimCountdown.days },
+      { label: 'HOURS', value: claimCountdown.hours },
+      { label: 'MINS', value: claimCountdown.minutes },
+      { label: 'SECS', value: claimCountdown.seconds }
+    ],
+    [claimCountdown.days, claimCountdown.hours, claimCountdown.minutes, claimCountdown.seconds]
+  );
+  const formatCountdownValue = (value: number) => value.toString().padStart(2, '0');
 
   const handleShare = async () => {
     if (!airdropData?.eligible || !airdropData.amount || !userData) return;
@@ -578,6 +616,33 @@ export default function MiniAppPage() {
               {userData.displayName ? `${userData.displayName} ` : ''}
               {userData.username ? `@${userData.username}` : `FID: ${userData.fid}`}
             </p>
+          </div>
+
+          <div className={`${PANEL_CLASS} text-center`}>
+            <p className="pixel-font text-[11px] uppercase tracking-[0.5em] text-[var(--moss-green)] mb-4">
+              {claimCountdown.totalSeconds > 0 ? 'Claim unlocks in' : 'Claim window active'}
+            </p>
+            {claimCountdown.totalSeconds > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {countdownUnits.map((unit) => (
+                  <div
+                    key={unit.label}
+                    className="flex flex-col items-center justify-center rounded-xl border border-white/10 bg-black/30 py-3"
+                  >
+                    <span className="text-3xl font-mono glow-green">
+                      {formatCountdownValue(unit.value)}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-[0.4em] text-[var(--moss-green)]">
+                      {unit.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-[var(--moss-green)]">
+                Claim window is live — head to the portal to execute.
+              </p>
+            )}
           </div>
 
           <div className="flex justify-center mb-6">
