@@ -14,7 +14,7 @@ interface AirdropData {
 }
 
 async function buildAirdropJson() {
-  const csvPath = path.join(__dirname, '../../m00nad - Sheet1.csv');
+  const csvPath = path.join(__dirname, '../data/m00nad.csv');
   const outputPath = path.join(__dirname, '../public/data/m00nad_airdrop.json');
 
   try {

@@ -8,8 +8,20 @@
     "version": "1",
     "name": "m00n Cabal Check",
     "iconUrl": "https://m00nad.vercel.app/brand/logo.png",
+    "subtitle": "Retro portal into the m00n cabal",
+    "description": "Step into a purple 8-bit dungeon, authenticate with Farcaster, and discover whether you are part of the $m00n airdrop cabal. Eligible wallets see their allocation, loot-tier lore, share buttons, and receipts; everyone else gets the torches and a locked gate.",
+    "primaryCategory": "finance",
+    "tags": ["social", "m00n", "monad", "airdrop", "retro"],
+    "tagline": "Reveal your $m00n fate in monad purple.",
+    "imageUrl": "https://m00nad.vercel.app/brand/banner.png",
+    "heroImageUrl": "https://m00nad.vercel.app/brand/banner.png",
+    "buttonTitle": "Enter the Cabal",
     "splashImageUrl": "https://m00nad.vercel.app/brand/banner.png",
     "splashBackgroundColor": "#130B25",
-    "homeUrl": "https://m00nad.vercel.app/miniapp"
+    "homeUrl": "https://m00nad.vercel.app/miniapp",
+    "ogTitle": "m00n Cabal Check",
+    "ogDescription": "Authenticate with Farcaster, check the $m00n airdrop ledger, and unlock loot-tier lore if you are in the cabal.",
+    "ogImageUrl": "https://m00nad.vercel.app/brand/banner.png",
+    "castShareUrl": "https://m00nad.vercel.app/miniapp"
   }
 }

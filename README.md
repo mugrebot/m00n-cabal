@@ -47,7 +47,7 @@ Edit `.env` and add:
 - `NEYNAR_API_KEY`: Your Neynar API key from https://neynar.com
 - `NEXT_PUBLIC_MINIAPP_URL`: Your deployed app URL
 
-4. Build the airdrop data:
+4. Build the airdrop data (CSV lives in `data/m00nad.csv`):
 
 ```bash
 bun run scripts/build-airdrop-json.ts
