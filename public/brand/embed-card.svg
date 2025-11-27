@@ -1,0 +1,26 @@
+<svg width="1200" height="800" viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12051F"/>
+      <stop offset="50%" stop-color="#2A0F48"/>
+      <stop offset="100%" stop-color="#11071C"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8C54FF" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#6CE5B1" stop-opacity="0.7"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" rx="56" fill="url(#bg)"/>
+  <rect x="40" y="40" width="1120" height="720" rx="48" fill="none" stroke="url(#glow)" stroke-width="4" opacity="0.8"/>
+  <g fill="#FFFFFF">
+    <text x="600" y="300" font-family="'Press Start 2P', 'Courier New', monospace" font-size="42" text-anchor="middle" letter-spacing="10">m00n cabal check</text>
+    <text x="600" y="370" font-family="'Press Start 2P', 'Courier New', monospace" font-size="26" text-anchor="middle" fill="#6CE5B1" letter-spacing="8">scan your fid · unlock the drop</text>
+  </g>
+  <circle cx="220" cy="200" r="110" fill="none" stroke="url(#glow)" stroke-width="4" opacity="0.6"/>
+  <circle cx="980" cy="620" r="140" fill="none" stroke="url(#glow)" stroke-width="3" opacity="0.4"/>
+  <g transform="translate(420 460)">
+    <rect width="360" height="120" rx="28" fill="#1A0F2F" stroke="#8C54FF" stroke-width="3"/>
+    <text x="180" y="70" font-family="'Press Start 2P', 'Courier New', monospace" font-size="24" text-anchor="middle" fill="#FFFFFF">133,618,386 $m00n</text>
+  </g>
+</svg>
+

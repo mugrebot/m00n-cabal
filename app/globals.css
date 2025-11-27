@@ -157,11 +157,283 @@ body::before {
     0 0 30px rgba(108, 229, 177, 0.2);
 }
 
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 20% 20%, rgba(140, 84, 255, 0.12), transparent 55%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.floating-orb {
+  position: fixed;
+  width: 240px;
+  height: 240px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(108, 229, 177, 0.3), transparent 70%);
+  filter: blur(4px);
+  opacity: 0.35;
+  animation: orbDrift 22s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.orb-one {
+  top: 10%;
+  left: -80px;
+}
+
+.orb-two {
+  bottom: 5%;
+  right: -40px;
+  animation-duration: 26s;
+  animation-delay: 4s;
+}
+
+.orb-three {
+  top: 30%;
+  right: 20%;
+  animation-duration: 28s;
+  animation-delay: 2s;
+}
+
+.scanner-bar {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent, rgba(140, 84, 255, 0.3), transparent);
+  animation: scannerSweep 5s linear infinite;
+  mix-blend-mode: screen;
+}
+
+.status-progress {
+  background: linear-gradient(90deg, rgba(108, 229, 177, 0.8), rgba(140, 84, 255, 0.9));
+  animation: progressPulse 1.2s ease-in-out infinite;
+}
+
+.sticker-rain {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.sticker-rain .sticker {
+  position: absolute;
+  top: -10%;
+  font-size: clamp(16px, 3vw, 34px);
+  animation: stickerFall var(--duration, 12s) linear infinite;
+  filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.4));
+}
+
+.myspace-ticker {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(720px, calc(100% - 32px));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  background: linear-gradient(120deg, rgba(140, 84, 255, 0.25), rgba(19, 11, 37, 0.9));
+  box-shadow: 0 0 18px rgba(140, 84, 255, 0.35);
+  z-index: 11;
+  backdrop-filter: blur(8px);
+}
+
+.myspace-ticker .ticker-label {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--moss-green);
+  white-space: nowrap;
+}
+
+.ticker-content {
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+  height: 20px;
+}
+
+.ticker-message {
+  position: absolute;
+  width: 100%;
+  animation: tickerSlide 4.2s linear infinite;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.ticker-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.ticker-button {
+  font-size: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.neon-logo-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  padding: 8px;
+}
+
+.neon-halo {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(140, 84, 255, 0.5);
+  box-shadow: 0 0 35px rgba(140, 84, 255, 0.6);
+  animation: neonPulse 3.4s ease-in-out infinite;
+}
+
+.neon-halo.halo-sm {
+  inset: 12px;
+  opacity: 0.6;
+  animation-duration: 2.6s;
+}
+
+.neon-logo-core {
+  position: relative;
+  border-radius: 50%;
+  padding: 12px;
+  background: radial-gradient(circle, rgba(19, 11, 37, 0.8), rgba(19, 11, 37, 0.35));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.neon-logo-img {
+  border-radius: 50%;
+  border: 1px solid rgba(140, 84, 255, 0.4);
+}
+
+.myspace-pill-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.myspace-pill {
+  border: 1px dashed rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  padding: 10px 14px;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 0 12px rgba(140, 84, 255, 0.3);
+}
+
+.chaos-toggle {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  border: 1px solid rgba(108, 229, 177, 0.8);
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.4);
+  transition: all 0.2s ease;
+}
+
+.chaos-toggle:hover {
+  background: rgba(108, 229, 177, 0.2);
+  color: var(--monad-dark);
+}
+
+@keyframes orbDrift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(10px, -20px, 0) scale(1.08);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes scannerSweep {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes progressPulse {
+  0% {
+    filter: drop-shadow(0 0 2px rgba(108, 229, 177, 0.6));
+  }
+  50% {
+    filter: drop-shadow(0 0 8px rgba(140, 84, 255, 0.8));
+  }
+  100% {
+    filter: drop-shadow(0 0 2px rgba(108, 229, 177, 0.6));
+  }
+}
+
+@keyframes stickerFall {
+  0% {
+    transform: translateY(-10vh) rotate(0deg) scale(var(--scale, 1));
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(110vh) rotate(360deg) scale(var(--scale, 1));
+    opacity: 0.5;
+  }
+}
+
+@keyframes tickerSlide {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes neonPulse {
+  0%,
+  100% {
+    opacity: 0.8;
+    box-shadow: 0 0 20px rgba(140, 84, 255, 0.45);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 40px rgba(108, 229, 177, 0.55);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .crt-flicker {
     animation: none;
   }
   .shake {
+    animation: none;
+  }
+  .floating-orb,
+  .sticker-rain .sticker,
+  .ticker-message,
+  .neon-halo {
     animation: none;
   }
 }

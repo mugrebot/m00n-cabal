@@ -1,4 +1,4 @@
-export default function MiniAppHead() {
+export default function RootHead() {
   const miniAppUrl = 'https://m00nad.vercel.app/miniapp';
   const bannerUrl = 'https://m00nad.vercel.app/api/embed-card';
   const splashUrl = 'https://m00nad.vercel.app/brand/splash.svg';

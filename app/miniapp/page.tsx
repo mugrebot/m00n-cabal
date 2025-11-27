@@ -1,6 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode
+} from 'react';
 import Image from 'next/image';
 import sdk from '@farcaster/miniapp-sdk';
 import { getTierByReplyCount } from '@/app/lib/tiers';
@@ -38,6 +45,7 @@ interface ScanStep {
 
 const TOKEN_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
 const CLAIM_URL = 'https://clanker.world/clanker/0x22Cd99EC337a2811F594340a4A6E41e4A3022b07';
+const STICKER_EMOJIS = ['🌙', '💜', '🕸️', '🦇', '☠️', '✨', '🧬', '🛸', '🩸', '💾'];
 
 export default function MiniAppPage() {
   const MINIAPP_URL = process.env.NEXT_PUBLIC_MINIAPP_URL ?? 'https://m00nad.vercel.app/miniapp';
@@ -57,6 +65,82 @@ export default function MiniAppPage() {
   const [error, setError] = useState<string | null>(null);
   const [scanPhase, setScanPhase] = useState<ScanPhase>('idle');
   const [copiedContract, setCopiedContract] = useState(false);
+  const [tickerIndex, setTickerIndex] = useState(0);
+  const [isChaosMode, setIsChaosMode] = useState(true);
+
+  const miniAppOrigin = useMemo(() => {
+    try {
+      return new URL(MINIAPP_URL).origin;
+    } catch {
+      return 'https://m00nad.vercel.app';
+    }
+  }, [MINIAPP_URL]);
+
+  const formatAmount = (amount?: string | number) => {
+    if (amount === undefined || amount === null) return '0';
+    const numeric = typeof amount === 'string' ? parseInt(amount, 10) : amount;
+    if (Number.isNaN(numeric)) return '0';
+    return numeric.toLocaleString();
+  };
+
+  const fallingStickers = useMemo(
+    () =>
+      Array.from({ length: 22 }).map((_, idx) => ({
+        id: idx,
+        emoji: STICKER_EMOJIS[idx % STICKER_EMOJIS.length],
+        left: Math.random() * 100,
+        duration: 10 + Math.random() * 10,
+        delay: Math.random() * -15,
+        scale: 0.7 + Math.random() * 0.8
+      })),
+    []
+  );
+
+  const tickerMessages = useMemo(() => {
+    const amountText = formatAmount(airdropData?.amount ?? 0);
+    const replyText = engagementData?.replyCount
+      ? `${engagementData.replyCount} replies logged`
+      : 'waiting for chatter';
+
+    return [
+      `m00npapi.eth just glitter-bombed your HUD`,
+      `ledger ping: ${amountText} $m00n calibrated`,
+      `fid ${viewerContext?.fid ?? '????'} scanning for anomalies`,
+      `${addresses.length} wallets tethered`,
+      replyText,
+      `scan phase ➜ ${scanPhase.toUpperCase()}`
+    ];
+  }, [
+    airdropData?.amount,
+    addresses.length,
+    engagementData?.replyCount,
+    scanPhase,
+    viewerContext?.fid
+  ]);
+
+  const tickerMessage =
+    tickerMessages.length > 0
+      ? tickerMessages[tickerIndex % tickerMessages.length]
+      : 'm00n cabal online';
+
+  useEffect(() => {
+    if (tickerMessages.length === 0) {
+      return undefined;
+    }
+    const interval = window.setInterval(() => {
+      setTickerIndex((prev) => (prev + 1) % tickerMessages.length);
+    }, 4200);
+    return () => window.clearInterval(interval);
+  }, [tickerMessages.length]);
+
+  const handleChaosToggle = () => {
+    setIsChaosMode((prev) => !prev);
+  };
+
+  const handleTickerAdvance = () => {
+    if (tickerMessages.length === 0) return;
+    setTickerIndex((prev) => (prev + 1) % tickerMessages.length);
+  };
 
   useEffect(() => {
     const bootstrapSdk = async () => {
@@ -267,10 +351,6 @@ export default function MiniAppPage() {
     }
   }, [addresses, viewerContext]);
 
-  const formatAmount = (amount: string) => {
-    return parseInt(amount).toLocaleString();
-  };
-
   const handleCopyContract = async () => {
     try {
       await navigator.clipboard.writeText(TOKEN_ADDRESS);
@@ -292,8 +372,10 @@ export default function MiniAppPage() {
     }
   };
 
+  const tier = engagementData ? getTierByReplyCount(engagementData.replyCount) : null;
+
   const handleShare = async () => {
-    if (!airdropData?.eligible || !airdropData.amount) return;
+    if (!airdropData?.eligible || !airdropData.amount || !userData) return;
 
     const baseText = `I'm part of the m00n cabal! Receiving ${formatAmount(
       airdropData.amount
@@ -302,12 +384,24 @@ export default function MiniAppPage() {
       ? `${baseText}\n\n${MINIAPP_URL}`
       : 'Signal lost. The cabal portal is sealed for now.';
 
-    await sdk.actions.openUrl(
-      `https://warpcast.com/~/compose?text=${encodeURIComponent(finalText)}`
-    );
-  };
+    const shareWallet = dropAddress ?? primaryAddress ?? '';
+    const embedUrl = new URL(`${miniAppOrigin}/api/embed-card`);
+    embedUrl.searchParams.set('amount', airdropData.amount);
+    if (userData.username) embedUrl.searchParams.set('username', userData.username);
+    if (userData.displayName) embedUrl.searchParams.set('displayName', userData.displayName);
+    embedUrl.searchParams.set('fid', String(userData.fid));
+    if (tier?.name) embedUrl.searchParams.set('tier', tier.name);
+    if (shareWallet) embedUrl.searchParams.set('wallet', shareWallet);
+    if (engagementData?.replyCount !== undefined) {
+      embedUrl.searchParams.set('replies', String(engagementData.replyCount));
+    }
 
-  const tier = engagementData ? getTierByReplyCount(engagementData.replyCount) : null;
+    const composeUrl = new URL('https://warpcast.com/~/compose');
+    composeUrl.searchParams.set('text', finalText);
+    composeUrl.searchParams.append('embeds[]', embedUrl.toString());
+
+    await sdk.actions.openUrl(composeUrl.toString());
+  };
 
   const renderSessionCard = (fid?: number, wallet?: string | null) => (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 text-sm text-left backdrop-blur-lg">
@@ -321,6 +415,77 @@ export default function MiniAppPage() {
           {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : '—'}
         </p>
       </div>
+    </div>
+  );
+
+  const StickerRain = () => {
+    if (!isChaosMode) {
+      return null;
+    }
+
+    return (
+      <div className="sticker-rain" aria-hidden="true">
+        {fallingStickers.map((drop) => (
+          <span
+            key={drop.id}
+            className="sticker"
+            style={
+              {
+                left: `${drop.left}%`,
+                animationDuration: `${drop.duration}s`,
+                animationDelay: `${drop.delay}s`,
+                '--scale': drop.scale
+              } as CSSProperties
+            }
+          >
+            {drop.emoji}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  const MyspaceTicker = () => (
+    <div className="myspace-ticker">
+      <div className="ticker-label">LIVE STATUS</div>
+      <div className="ticker-content">
+        <span key={`${tickerIndex}-${tickerMessage}`} className="ticker-message">
+          {tickerMessage}
+        </span>
+      </div>
+      <div className="ticker-controls">
+        <button type="button" className="ticker-button" onClick={handleChaosToggle}>
+          {isChaosMode ? 'FREEZE GLITTER' : 'UNLEASH GLITTER'}
+        </button>
+        <button type="button" className="ticker-button" onClick={handleTickerAdvance}>
+          NEXT
+        </button>
+      </div>
+    </div>
+  );
+
+  const NeonHaloLogo = ({ size = 140 }: { size?: number }) => (
+    <div className="neon-logo-wrapper" style={{ width: size, height: size }}>
+      <span className="neon-halo" />
+      <span className="neon-halo halo-sm" />
+      <div className="neon-logo-core">
+        <Image
+          src="/brand/logo.png"
+          alt="m00n"
+          width={size - 24}
+          height={size - 24}
+          className="neon-logo-img"
+        />
+      </div>
+    </div>
+  );
+
+  const renderShell = (content: ReactNode) => (
+    <div className="relative min-h-screen overflow-hidden">
+      <BackgroundOrbs />
+      {isChaosMode && <StickerRain />}
+      <MyspaceTicker />
+      {content}
     </div>
   );
 
@@ -425,103 +590,101 @@ export default function MiniAppPage() {
   }, [isMiniApp, isSdkReady, airdropData, error, scanPhase]);
 
   if (!userData) {
-    return (
-      <div className="relative min-h-screen overflow-hidden">
-        <BackgroundOrbs />
-        <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
-          <div className="max-w-2xl w-full text-center space-y-8 scanline">
-            <div className="relative mx-auto w-full overflow-hidden rounded-3xl border border-[var(--monad-purple)] bg-black/30 shadow-[0_0_40px_rgba(140,84,255,0.35)]">
-              <Image
-                src="/brand/banner.png"
-                alt="m00n Cabal"
-                width={1200}
-                height={600}
-                className="w-full h-[240px] md:h-[340px] object-cover opacity-95"
-                priority
-              />
-              <span className="scanner-bar" />
-            </div>
-
-            <div className="space-y-2">
-              <h1 className="pixel-font text-2xl md:text-3xl glow-purple">m00n Cabal Check</h1>
-              <p className="text-lg opacity-90">Check your $m00n eligibility.</p>
-            </div>
-
-            {renderSessionCard(viewerContext?.fid, primaryAddress)}
-
-            {isMiniApp === false ? (
-              <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-4 backdrop-blur">
-                <p className="text-base">
-                  This portal must run inside Warpcast. Tap below to open it with your Farcaster
-                  session.
-                </p>
-                <a
-                  href="https://warpcast.com/~/add-mini-app?domain=m00nad.vercel.app"
-                  className="pixel-font inline-block px-6 py-3 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
-                >
-                  OPEN IN WARPCAST
-                </a>
-              </div>
-            ) : (
-              <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-4 backdrop-blur">
-                <div className="flex items-center justify-between text-xs uppercase tracking-widest text-[var(--moss-green)]">
-                  <span>Scan status</span>
-                  <span>
-                    {activeStepIndex + 1}/{scanSteps.length}
-                  </span>
-                </div>
-                <p className="text-base">{currentDescription}</p>
-                <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                  <div className="h-full status-progress" style={{ width: `${scanProgress}%` }} />
-                </div>
-                <div className="space-y-1 text-left text-xs uppercase tracking-wider">
-                  {scanSteps.map((step, idx) => (
-                    <div
-                      key={step.key}
-                      className={`flex items-center justify-between ${
-                        idx <= activeStepIndex ? 'text-[var(--moss-green)]' : 'opacity-40'
-                      }`}
-                    >
-                      <span>{step.label}</span>
-                      <span>
-                        {idx < activeStepIndex ? '✓' : idx === activeStepIndex ? '↺' : '—'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <button
-              onClick={handleSignIn}
-              className="pixel-font px-8 py-4 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all transform hover:scale-105 glow-purple disabled:opacity-40"
-              disabled={!statusState.actionable}
-            >
-              {statusState.label}
-            </button>
-
-            <p className="text-xs opacity-70">{statusState.detail}</p>
-
-            {error && <p className="text-red-400 mt-4">{error}</p>}
+    return renderShell(
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
+        <div className="max-w-2xl w-full text-center space-y-8 scanline">
+          <div className="relative mx-auto w-full overflow-hidden rounded-3xl border border-[var(--monad-purple)] bg-black/30 shadow-[0_0_40px_rgba(140,84,255,0.35)]">
+            <Image
+              src="/brand/banner.png"
+              alt="m00n Cabal"
+              width={1200}
+              height={600}
+              className="w-full h-[240px] md:h-[340px] object-cover opacity-95"
+              priority
+            />
+            <span className="scanner-bar" />
           </div>
+
+          <div className="space-y-2">
+            <h1 className="pixel-font text-2xl md:text-3xl glow-purple">m00n Cabal Check</h1>
+            <p className="text-lg opacity-90">Check your $m00n eligibility.</p>
+          </div>
+
+          {renderSessionCard(viewerContext?.fid, primaryAddress)}
+
+          {isMiniApp === false ? (
+            <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-4 backdrop-blur">
+              <p className="text-base">
+                This portal must run inside Warpcast. Tap below to open it with your Farcaster
+                session.
+              </p>
+              <a
+                href="https://warpcast.com/~/add-mini-app?domain=m00nad.vercel.app"
+                className="pixel-font inline-block px-6 py-3 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
+              >
+                OPEN IN WARPCAST
+              </a>
+            </div>
+          ) : (
+            <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-4 backdrop-blur">
+              <div className="flex items-center justify-between text-xs uppercase tracking-widest text-[var(--moss-green)]">
+                <span>Scan status</span>
+                <span>
+                  {activeStepIndex + 1}/{scanSteps.length}
+                </span>
+              </div>
+              <p className="text-base">{currentDescription}</p>
+              <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                <div className="h-full status-progress" style={{ width: `${scanProgress}%` }} />
+              </div>
+              <div className="space-y-1 text-left text-xs uppercase tracking-wider">
+                {scanSteps.map((step, idx) => (
+                  <div
+                    key={step.key}
+                    className={`flex items-center justify-between ${
+                      idx <= activeStepIndex ? 'text-[var(--moss-green)]' : 'opacity-40'
+                    }`}
+                  >
+                    <span>{step.label}</span>
+                    <span>{idx < activeStepIndex ? '✓' : idx === activeStepIndex ? '↺' : '—'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="myspace-pill-grid">
+            <div className="myspace-pill">Step 1 · Tap scan</div>
+            <div className="myspace-pill">Step 2 · Approve mini app</div>
+            <div className="myspace-pill">Step 3 · Watch the glitter fall</div>
+          </div>
+
+          <button
+            onClick={handleSignIn}
+            className="pixel-font px-8 py-4 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all transform hover:scale-105 glow-purple disabled:opacity-40"
+            disabled={!statusState.actionable}
+          >
+            {statusState.label}
+          </button>
+
+          <p className="text-xs opacity-70">{statusState.detail}</p>
+
+          {error && <p className="text-red-400 mt-4">{error}</p>}
         </div>
       </div>
     );
   }
 
   if (isLoading) {
-    return (
-      <div className="relative min-h-screen overflow-hidden">
-        <BackgroundOrbs />
-        <div className="min-h-screen flex items-center justify-center relative z-10">
-          <div className="text-center space-y-4 crt-flicker">
-            <div className="pixel-font text-xl glow-purple">LOADING...</div>
-            <div className="w-64 h-2 bg-gray-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[var(--monad-purple)] animate-pulse"
-                style={{ width: '60%' }}
-              />
-            </div>
+    return renderShell(
+      <div className="min-h-screen flex items-center justify-center relative z-10">
+        <div className="text-center space-y-4 crt-flicker">
+          <div className="pixel-font text-xl glow-purple">LOADING...</div>
+          <div className="w-64 h-2 bg-gray-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[var(--monad-purple)] animate-pulse"
+              style={{ width: '60%' }}
+            />
           </div>
         </div>
       </div>
@@ -529,149 +692,144 @@ export default function MiniAppPage() {
   }
 
   if (airdropData?.eligible) {
-    return (
-      <div className="relative min-h-screen overflow-hidden">
-        <BackgroundOrbs />
-        <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
-          <div className="max-w-3xl w-full space-y-6 scanline p-8 bg-black/50 rounded-lg border-2 border-[var(--monad-purple)]">
-            <div className="flex justify-center">
-              <Image
-                src="/brand/logo.png"
-                alt="m00n"
-                width={120}
-                height={120}
-                className="block rounded-full border border-[var(--monad-purple)] bg-black/40 p-2"
-              />
-            </div>
-
-            <h1 className="pixel-font text-2xl text-center glow-purple">WELCOME TO THE CABAL</h1>
-
-            <div className="text-center space-y-4">
-              <p className="text-3xl font-bold glow-green">
-                {formatAmount(airdropData.amount!)} $m00n
-              </p>
-
-              <p className="text-lg">
-                {userData.displayName ? `${userData.displayName} ` : ''}
-                {userData.username ? `@${userData.username}` : `FID: ${userData.fid}`}
-              </p>
-            </div>
-
-            {renderSessionCard(userData.fid, primaryAddress)}
-            {dropAddress && dropAddress !== primaryAddress && (
-              <p className="text-xs opacity-70">
-                Allocation detected on{' '}
-                <span className="font-mono">{`${dropAddress.slice(0, 6)}…${dropAddress.slice(-4)}`}</span>
-                .
-              </p>
-            )}
-
-            {tier && engagementData?.isFollowing && (
-              <div
-                className={`mt-6 p-6 bg-purple-900/30 rounded-lg border border-[var(--moss-green)] ${showLootReveal ? 'crt-flicker' : ''}`}
-              >
-                <h3 className="pixel-font text-lg mb-3 text-[var(--moss-green)]">
-                  {tier.icon} {tier.title}
-                </h3>
-                <p className="text-sm mb-4 italic">{tier.flavorText}</p>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Tier: {tier.name}</span>
-                    <span>Replies: {engagementData.replyCount}</span>
-                  </div>
-                  <div className="w-full h-3 bg-gray-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-[var(--monad-purple)] to-[var(--moss-green)] transition-all duration-1000"
-                      style={{ width: `${tier.progressPercentage}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div className="text-center">
-              <button
-                onClick={() => setShowLorePanel((prev) => !prev)}
-                className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
-              >
-                {showLorePanel ? 'Hide detail scan' : 'Reveal detail scan'}
-              </button>
-            </div>
-
-            {showLorePanel && (
-              <div className="p-4 border border-[var(--monad-purple)] rounded-lg bg-black/40 space-y-2 text-left">
-                <p className="text-sm uppercase tracking-wide text-[var(--moss-green)]">
-                  Allocation telemetry
-                </p>
-                <ul className="text-sm space-y-1 list-disc list-inside">
-                  <li>
-                    Claim wallet:{' '}
-                    {dropAddress
-                      ? `${dropAddress.slice(0, 6)}…${dropAddress.slice(-4)}`
-                      : primaryAddress
-                        ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}`
-                        : '—'}
-                  </li>
-                </ul>
-              </div>
-            )}
-
-            <div className="flex justify-center mt-8">
-              <button
-                onClick={handleShare}
-                className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
-              >
-                SHARE CAST
-              </button>
-            </div>
-
-            {renderContractCard()}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative min-h-screen overflow-hidden">
-      <BackgroundOrbs />
+    return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
-        <div className="max-w-2xl w-full text-center space-y-6 scanline shake">
+        <div className="max-w-3xl w-full space-y-6 scanline p-8 bg-black/50 rounded-lg border-2 border-[var(--monad-purple)]">
           <div className="flex justify-center">
-            <Image
-              src="/brand/logo.png"
-              alt="m00n"
-              width={150}
-              height={150}
-              className="block opacity-60 rounded-full border border-[var(--monad-purple)] bg-black/50 p-3"
-            />
+            <NeonHaloLogo size={150} />
           </div>
 
-          <h1 className="pixel-font text-2xl text-red-400">ACCESS DENIED</h1>
+          <h1 className="pixel-font text-2xl text-center glow-purple">WELCOME TO THE CABAL</h1>
 
-          <p className="text-lg opacity-70">
-            You don&apos;t have to go home, but you can&apos;t stay here.
-          </p>
+          <div className="text-center space-y-4">
+            <p className="text-3xl font-bold glow-green">
+              {formatAmount(airdropData.amount!)} $m00n
+            </p>
 
-          <div className="text-sm text-left bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-2">
-            <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Session</p>
-            <p>FID: {userData.fid}</p>
-            <p>
-              Wallet:{' '}
-              {primaryAddress ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}` : '—'}
+            <p className="text-lg">
+              {userData.displayName ? `${userData.displayName} ` : ''}
+              {userData.username ? `@${userData.username}` : `FID: ${userData.fid}`}
             </p>
           </div>
 
+          {renderSessionCard(userData.fid, primaryAddress)}
           {dropAddress && dropAddress !== primaryAddress && (
             <p className="text-xs opacity-70">
-              Drop checks were performed against{' '}
+              Allocation detected on{' '}
               <span className="font-mono">{`${dropAddress.slice(0, 6)}…${dropAddress.slice(-4)}`}</span>
               .
             </p>
           )}
 
-          <div className="w-full">{renderContractCard()}</div>
+          <div className="myspace-pill-grid">
+            <div className="myspace-pill">Tier · {tier?.name ?? 'Unranked'}</div>
+            <div className="myspace-pill">Replies · {engagementData?.replyCount ?? 0}</div>
+            <div className="myspace-pill">
+              {engagementData?.isFollowing ? 'Following m00npapi' : 'Follow for loot'}
+            </div>
+          </div>
+
+          {tier && engagementData?.isFollowing && (
+            <div
+              className={`mt-6 p-6 bg-purple-900/30 rounded-lg border border-[var(--moss-green)] ${
+                showLootReveal ? 'crt-flicker' : ''
+              }`}
+            >
+              <h3 className="pixel-font text-lg mb-3 text-[var(--moss-green)]">
+                {tier.icon} {tier.title}
+              </h3>
+              <p className="text-sm mb-4 italic">{tier.flavorText}</p>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Tier: {tier.name}</span>
+                  <span>Replies: {engagementData.replyCount}</span>
+                </div>
+                <div className="w-full h-3 bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-[var(--monad-purple)] to-[var(--moss-green)] transition-all duration-1000"
+                    style={{ width: `${tier.progressPercentage}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="text-center">
+            <button
+              onClick={() => setShowLorePanel((prev) => !prev)}
+              className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
+            >
+              {showLorePanel ? 'Hide detail scan' : 'Reveal detail scan'}
+            </button>
+          </div>
+
+          {showLorePanel && (
+            <div className="p-4 border border-[var(--monad-purple)] rounded-lg bg-black/40 space-y-2 text-left">
+              <p className="text-sm uppercase tracking-wide text-[var(--moss-green)]">
+                Allocation telemetry
+              </p>
+              <ul className="text-sm space-y-1 list-disc list-inside">
+                <li>
+                  Claim wallet:{' '}
+                  {dropAddress
+                    ? `${dropAddress.slice(0, 6)}…${dropAddress.slice(-4)}`
+                    : primaryAddress
+                      ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}`
+                      : '—'}
+                </li>
+              </ul>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-4 mt-8 sm:flex-row sm:items-center sm:justify-center">
+            <button
+              onClick={handleShare}
+              className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
+            >
+              SHARE CAST
+            </button>
+            <button type="button" className="chaos-toggle" onClick={handleChaosToggle}>
+              {isChaosMode ? 'Freeze glitter overlay' : 'Resume glitter overlay'}
+            </button>
+          </div>
+
+          {renderContractCard()}
         </div>
+      </div>
+    );
+  }
+
+  return renderShell(
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
+      <div className="max-w-2xl w-full text-center space-y-6 scanline shake">
+        <div className="flex justify-center">
+          <NeonHaloLogo size={160} />
+        </div>
+
+        <h1 className="pixel-font text-2xl text-red-400">ACCESS DENIED</h1>
+
+        <p className="text-lg opacity-70">
+          You don&apos;t have to go home, but you can&apos;t stay here.
+        </p>
+
+        <div className="text-sm text-left bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-2">
+          <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Session</p>
+          <p>FID: {userData.fid}</p>
+          <p>
+            Wallet:{' '}
+            {primaryAddress ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}` : '—'}
+          </p>
+        </div>
+
+        {dropAddress && dropAddress !== primaryAddress && (
+          <p className="text-xs opacity-70">
+            Drop checks were performed against{' '}
+            <span className="font-mono">{`${dropAddress.slice(0, 6)}…${dropAddress.slice(-4)}`}</span>
+            .
+          </p>
+        )}
+
+        <div className="w-full">{renderContractCard()}</div>
       </div>
     </div>
   );
