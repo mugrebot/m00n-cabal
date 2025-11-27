@@ -40,7 +40,7 @@ type ScanPhase = 'idle' | 'authenticating' | 'addresses' | 'fetching' | 'ready' 
 
 const TOKEN_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
 const CLAIM_URL = 'https://clanker.world/clanker/0x22Cd99EC337a2811F594340a4A6E41e4A3022b07';
-const CLAIM_UNLOCK_TIMESTAMP_MS = 1765482480 * 1000;
+const CLAIM_UNLOCK_TIMESTAMP_MS = 1764272894 * 1000;
 const STICKER_EMOJIS = ['🌙', '💜', '🕸️', '🦇', '☠️', '✨', '🧬', '🛸', '🩸', '💾'];
 const STICKER_COLORS = ['#6ce5b1', '#8c54ff', '#ff9b54', '#5ea3ff', '#f7e6ff'];
 
