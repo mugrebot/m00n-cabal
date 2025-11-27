@@ -84,6 +84,16 @@ export default function MiniAppPage() {
     void bootstrapSdk();
   }, []);
 
+  const ritualGlyphs = useMemo(
+    () => [
+      'relay tuned • awaiting wallet signal',
+      'airdrop ledger • checksum verified',
+      'engagement scanner • syncing replies',
+      'loot framework • particles stabilized'
+    ],
+    []
+  );
+
   useEffect(() => {
     if (isMiniApp === false) return;
     const interval = setInterval(() => {
@@ -119,16 +129,6 @@ export default function MiniAppPage() {
     setPrimaryAddress(fetchedAddresses[0] ?? null);
     return fetchedAddresses;
   };
-
-  const ritualGlyphs = useMemo(
-    () => [
-      'relay tuned • awaiting wallet signal',
-      'airdrop ledger • checksum verified',
-      'engagement scanner • syncing replies',
-      'loot framework • particles stabilized'
-    ],
-    []
-  );
 
   const handleSignIn = async () => {
     try {
