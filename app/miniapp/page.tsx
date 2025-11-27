@@ -10,7 +10,6 @@ interface UserData {
   fid: number;
   username?: string;
   displayName?: string;
-  custodyAddress?: string;
   verifiedAddresses: string[];
 }
 
@@ -87,7 +86,7 @@ export default function MiniAppPage() {
 
       const addressData = (await addressesResponse.json()) as { addresses: string[] };
       const addresses = addressData.addresses ?? [];
-      const primaryAddress = addresses[0] || user.custodyAddress;
+      const primaryAddress = addresses[0];
 
       if (!primaryAddress) {
         setError('No verified address available. Add a wallet in Warpcast and retry.');
@@ -98,7 +97,6 @@ export default function MiniAppPage() {
         fid: user.fid,
         username: user.username,
         displayName: user.displayName,
-        custodyAddress: user.custodyAddress,
         verifiedAddresses: addresses
       });
 
@@ -305,7 +303,7 @@ export default function MiniAppPage() {
                 Allocation telemetry
               </p>
               <ul className="text-sm space-y-1 list-disc list-inside">
-                <li>Primary wallet: {userData.verifiedAddresses[0] ?? userData.custodyAddress}</li>
+                <li>Primary wallet: {userData.verifiedAddresses[0]}</li>
                 <li>Receipt hash ready for download</li>
                 <li>Engagement tier weight boosts your loot narrative</li>
               </ul>
