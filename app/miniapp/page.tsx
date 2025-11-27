@@ -295,11 +295,16 @@ export default function MiniAppPage() {
 
   const handleOpenClaimSite = async () => {
     try {
-      await sdk.actions.openUrl({ url: CLAIM_URL });
+      await sdk.actions.openMiniApp({ url: CLAIM_URL });
     } catch (err) {
-      console.warn('sdk.actions.openUrl failed, falling back to browser open', err);
+      console.warn('openMiniApp failed, falling back to openUrl', err);
       if (typeof window !== 'undefined') {
-        window.open(CLAIM_URL, '_blank', 'noopener,noreferrer');
+        try {
+          await sdk.actions.openUrl({ url: CLAIM_URL });
+        } catch (fallbackErr) {
+          console.warn('openUrl fallback failed, opening new tab', fallbackErr);
+          window.open(CLAIM_URL, '_blank', 'noopener,noreferrer');
+        }
       }
     }
   };
