@@ -23,9 +23,16 @@ interface EngagementData {
   isFollowing: boolean;
 }
 
+interface ViewerContext {
+  fid: number;
+  username?: string;
+  displayName?: string;
+}
+
 export default function MiniAppPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSdkReady, setIsSdkReady] = useState(false);
+  const [isMiniApp, setIsMiniApp] = useState<boolean | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [airdropData, setAirdropData] = useState<AirdropData | null>(null);
   const [engagementData, setEngagementData] = useState<EngagementData | null>(null);
@@ -33,13 +40,32 @@ export default function MiniAppPage() {
   const [showLorePanel, setShowLorePanel] = useState(false);
   const [glyphIndex, setGlyphIndex] = useState(0);
   const [primaryAddress, setPrimaryAddress] = useState<string | null>(null);
+  const [viewerContext, setViewerContext] = useState<ViewerContext | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const bootstrapSdk = async () => {
       try {
+        const insideMiniApp = await sdk.isInMiniApp();
+        setIsMiniApp(insideMiniApp);
+
+        if (!insideMiniApp) {
+          setError('Open this mini app inside Warpcast to connect your FID.');
+          setIsLoading(false);
+          return;
+        }
+
         await sdk.actions.ready();
         setIsSdkReady(true);
+
+        const context = await sdk.context;
+        if (context.user) {
+          setViewerContext({
+            fid: context.user.fid,
+            username: context.user.username,
+            displayName: context.user.displayName
+          });
+        }
       } catch (err) {
         console.error('Failed to call sdk.actions.ready()', err);
         setError('Unable to connect to the Farcaster SDK bridge. Reload to try again.');
@@ -77,6 +103,12 @@ export default function MiniAppPage() {
         setError('No Farcaster user detected. Please try again.');
         return;
       }
+
+      setViewerContext({
+        fid: user.fid,
+        username: user.username,
+        displayName: user.displayName
+      });
 
       const addressesResponse = await fetch(`/api/addresses?fid=${user.fid}`);
       if (!addressesResponse.ok) {
@@ -159,6 +191,21 @@ export default function MiniAppPage() {
     setGlyphIndex((prev) => (prev + 1) % ritualGlyphs.length);
   };
 
+  const renderSessionCard = (fid?: number, wallet?: string | null) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 text-sm text-left">
+      <div>
+        <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Connected FID</p>
+        <p className="font-mono text-base">{fid ?? '—'}</p>
+      </div>
+      <div>
+        <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Wallet</p>
+        <p className="font-mono text-base">
+          {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : '—'}
+        </p>
+      </div>
+    </div>
+  );
+
   if (!userData) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
@@ -179,21 +226,40 @@ export default function MiniAppPage() {
             <p className="text-lg opacity-90">Check your $m00n eligibility.</p>
           </div>
 
-          <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-2">
-            <p className="text-sm uppercase tracking-wide text-[var(--moss-green)]">Signal feed</p>
-            <p className="text-base">{ritualGlyphs[glyphIndex]}</p>
-            <button
-              onClick={handleGlyphCycle}
-              className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-all"
-            >
-              Cycle diagnostic
-            </button>
-          </div>
+          {viewerContext && renderSessionCard(viewerContext.fid, primaryAddress)}
+
+          {isMiniApp === false ? (
+            <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-4">
+              <p className="text-base">
+                This portal must run inside Warpcast. Tap below to open it with your Farcaster
+                session.
+              </p>
+              <a
+                href="https://warpcast.com/~/add-mini-app?domain=m00nad.vercel.app"
+                className="pixel-font inline-block px-6 py-3 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
+              >
+                OPEN IN WARPCAST
+              </a>
+            </div>
+          ) : (
+            <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-2">
+              <p className="text-sm uppercase tracking-wide text-[var(--moss-green)]">
+                Signal feed
+              </p>
+              <p className="text-base">{ritualGlyphs[glyphIndex]}</p>
+              <button
+                onClick={handleGlyphCycle}
+                className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-all"
+              >
+                Cycle diagnostic
+              </button>
+            </div>
+          )}
 
           <button
             onClick={handleSignIn}
             className="pixel-font px-8 py-4 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all transform hover:scale-105 glow-purple disabled:opacity-40"
-            disabled={isLoading || !isSdkReady}
+            disabled={isLoading || !isSdkReady || isMiniApp === false}
           >
             {!isSdkReady ? 'SYNCING SDK...' : isLoading ? 'CONNECTING...' : 'SCAN FID'}
           </button>
