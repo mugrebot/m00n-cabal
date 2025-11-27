@@ -60,6 +60,7 @@ export default function MiniAppPage() {
 
         await sdk.actions.ready();
         setIsSdkReady(true);
+        setIsLoading(false);
 
         const context = await sdk.context;
         if (context.user) {
