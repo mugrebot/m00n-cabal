@@ -1,26 +1,167 @@
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+@import 'tailwindcss';
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --monad-purple: #8c54ff;
+  --monad-dark: #130b25;
+  --monad-highlight: #f7e6ff;
+  --moss-green: #6ce5b1;
+  --shadow-color: rgba(140, 84, 255, 0.4);
+  --background: var(--monad-dark);
+  --foreground: var(--monad-highlight);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Press Start 2P', monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--monad-dark);
+  color: var(--monad-highlight);
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(ellipse at center, transparent 0%, rgba(19, 11, 37, 0.4) 100%),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(140, 84, 255, 0.03) 2px,
+      rgba(140, 84, 255, 0.03) 4px
+    );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.pixel-font {
+  font-family: 'Press Start 2P', monospace;
+}
+
+@keyframes flicker {
+  0% {
+    opacity: 1;
+  }
+  10% {
+    opacity: 0.9;
+  }
+  20% {
+    opacity: 1;
+  }
+  30% {
+    opacity: 0.95;
+  }
+  40% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  60% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.95;
+  }
+  80% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.crt-flicker {
+  animation: flicker 0.15s infinite;
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    transform: translateX(-2px);
+  }
+  20%,
+  40%,
+  60%,
+  80% {
+    transform: translateX(2px);
+  }
+}
+
+.shake {
+  animation: shake 0.5s;
+}
+
+.scanline {
+  position: relative;
+}
+
+.scanline::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  background: linear-gradient(to bottom, transparent 50%, rgba(140, 84, 255, 0.03) 50%);
+  background-size: 100% 4px;
+  pointer-events: none;
+}
+
+.glow-purple {
+  text-shadow:
+    0 0 10px var(--shadow-color),
+    0 0 20px var(--shadow-color),
+    0 0 30px var(--shadow-color);
+}
+
+.glow-green {
+  text-shadow:
+    0 0 10px rgba(108, 229, 177, 0.6),
+    0 0 20px rgba(108, 229, 177, 0.4),
+    0 0 30px rgba(108, 229, 177, 0.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crt-flicker {
+    animation: none;
+  }
+  .shake {
+    animation: none;
+  }
 }
