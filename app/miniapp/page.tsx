@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import sdk from '@farcaster/miniapp-sdk';
 import { toPng } from 'html-to-image';
@@ -42,8 +42,9 @@ export default function MiniAppPage() {
   const [primaryAddress, setPrimaryAddress] = useState<string | null>(null);
   const [viewerContext, setViewerContext] = useState<ViewerContext | null>(null);
   const [addresses, setAddresses] = useState<string[]>([]);
-  const [addresses, setAddresses] = useState<string[]>([]);
+  const [isSoundtrackPlaying, setIsSoundtrackPlaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     const bootstrapSdk = async () => {
@@ -90,6 +91,22 @@ export default function MiniAppPage() {
     }, 4500);
     return () => clearInterval(interval);
   }, [isMiniApp, ritualGlyphs.length]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const handlePlay = () => setIsSoundtrackPlaying(true);
+    const handleStop = () => setIsSoundtrackPlaying(false);
+    audio.addEventListener('play', handlePlay);
+    audio.addEventListener('pause', handleStop);
+    audio.addEventListener('ended', handleStop);
+    return () => {
+      audio.removeEventListener('play', handlePlay);
+      audio.removeEventListener('pause', handleStop);
+      audio.removeEventListener('ended', handleStop);
+      audio.pause();
+    };
+  }, []);
 
   const syncAddresses = async (fid: number) => {
     const response = await fetch(`/api/addresses?fid=${fid}`);
@@ -235,11 +252,39 @@ export default function MiniAppPage() {
     </>
   );
 
+  const handleSoundtrackToggle = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      void audio.play();
+    } else {
+      audio.pause();
+    }
+  };
+
+  const SoundtrackControl = () => (
+    <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-3 backdrop-blur">
+      <p className="text-sm uppercase tracking-wide text-[var(--moss-green)]">Soundtrack</p>
+      <p className="text-xs opacity-70">Blue • m00n cabal mix</p>
+      <button
+        onClick={handleSoundtrackToggle}
+        className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-all"
+      >
+        {isSoundtrackPlaying ? 'PAUSE SOUNDTRACK' : 'PLAY SOUNDTRACK'}
+      </button>
+    </div>
+  );
+
+  const soundtrackElement = (
+    <audio ref={audioRef} src="/audio/blue.mp3" loop preload="auto" className="hidden" />
+  );
+
   const statusProgress = ((glyphIndex + 1) / ritualGlyphs.length) * 100;
 
   if (!userData) {
     return (
       <div className="relative min-h-screen overflow-hidden">
+        {soundtrackElement}
         <BackgroundOrbs />
         <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
           <div className="max-w-2xl w-full text-center space-y-8 scanline">
@@ -296,6 +341,8 @@ export default function MiniAppPage() {
               </div>
             )}
 
+            {isMiniApp !== false && <SoundtrackControl />}
+
             <button
               onClick={handleSignIn}
               className="pixel-font px-8 py-4 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all transform hover:scale-105 glow-purple disabled:opacity-40"
@@ -314,6 +361,7 @@ export default function MiniAppPage() {
   if (isLoading) {
     return (
       <div className="relative min-h-screen overflow-hidden">
+        {soundtrackElement}
         <BackgroundOrbs />
         <div className="min-h-screen flex items-center justify-center relative z-10">
           <div className="text-center space-y-4 crt-flicker">
@@ -333,6 +381,7 @@ export default function MiniAppPage() {
   if (airdropData?.eligible) {
     return (
       <div className="relative min-h-screen overflow-hidden">
+        {soundtrackElement}
         <BackgroundOrbs />
         <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
           <div
@@ -401,6 +450,8 @@ export default function MiniAppPage() {
               </div>
             )}
 
+            {isMiniApp !== false && <SoundtrackControl />}
+
             <div className="flex gap-4 justify-center mt-8">
               <button
                 onClick={handleShare}
@@ -422,26 +473,30 @@ export default function MiniAppPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
-      <div className="max-w-2xl w-full text-center space-y-6 scanline shake">
-        <Image
-          src="/brand/logo.png"
-          alt="m00n"
-          width={150}
-          height={150}
-          className="mx-auto opacity-50"
-        />
+    <div className="relative min-h-screen overflow-hidden">
+      {soundtrackElement}
+      <BackgroundOrbs />
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
+        <div className="max-w-2xl w-full text-center space-y-6 scanline shake">
+          <Image
+            src="/brand/logo.png"
+            alt="m00n"
+            width={150}
+            height={150}
+            className="mx-auto opacity-50"
+          />
 
-        <h1 className="pixel-font text-2xl text-red-400">ACCESS DENIED</h1>
+          <h1 className="pixel-font text-2xl text-red-400">ACCESS DENIED</h1>
 
-        <p className="text-lg opacity-70">you are not part of the cabal maybe next time</p>
-        <div className="text-sm text-left bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-2">
-          <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Session</p>
-          <p>FID: {userData.fid}</p>
-          <p>
-            Wallet:{' '}
-            {primaryAddress ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}` : '—'}
-          </p>
+          <p className="text-lg opacity-70">you are not part of the cabal maybe next time</p>
+          <div className="text-sm text-left bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-2">
+            <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Session</p>
+            <p>FID: {userData.fid}</p>
+            <p>
+              Wallet:{' '}
+              {primaryAddress ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}` : '—'}
+            </p>
+          </div>
         </div>
       </div>
     </div>
