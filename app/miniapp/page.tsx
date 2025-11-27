@@ -42,212 +42,6 @@ const TOKEN_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
 const CLAIM_URL =
   'https://clanker.onchain.cooking/?token=0x22cd99ec337a2811f594340a4a6e41e4a3022b07&risk=warn&riskTag=Warning';
 const CLAIM_UNLOCK_TIMESTAMP_MS = 1764272894 * 1000;
-const MINI_APP_DOCS_TEXT = `Logo
-
-Introduction
-
-Why Mini Apps?
-
-Getting Started
-
-Guides
-
-Loading your app
-
-Sharing your app
-
-Interacting with Ethereum wallets
-
-Interacting with Solana wallets
-
-Publishing your app
-
-App Discovery & Search
-
-Domain migration
-
-Sending notifications
-
-Authenticating users
-
-Universal Links
-
-Share Extensions
-
-Manifest vs Embed Guide
-
-FAQ
-
-[for AI agents and LLMs] Checklist and guidelines
-
-SDK
-
-What's New
-
-Context
-
-Quick Auth
-
-Actions
-
-addMiniApp
-
-close
-
-composeCast
-
-ready
-
-openUrl
-
-openMiniApp
-
-signIn
-
-viewProfile
-
-viewCast
-
-swapToken
-
-sendToken
-
-viewToken
-
-requestCameraAndMicrophoneAccess
-
-signManifest (experimental)
-
-Haptics
-
-Back navigation
-
-Ethereum wallet
-
-Solana wallet
-
-Detecting chains & capabilities
-
-Mini app detection
-
-Events
-
-Compatibility
-
-Reference
-
-Search...
-
-Logo
-
-Blog
-
-llms.txt
-
-Examples
-
-Rewards
-
-Ask in ChatGPT
-
-On this page
-
-Usage
-
-Parameters
-
-sellToken (optional)
-
-buyToken (optional)
-
-sellAmount (optional)
-
-Return Value
-
-swapToken
-
-Open the swap form with pre-filled tokens. The user will be able to modify the swap before executing the transaction.
-
-Usage
-
-import { sdk } from '@farcaster/miniapp-sdk'
-
-await sdk.actions.swapToken({
-  sellToken,
-  buyToken,
-  sellAmount,
-})
-
-Parameters
-
-sellToken (optional)
-Type: string
-CAIP-19 asset ID
-For example, Base USDC: eip155:8453/erc20:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
-
-buyToken (optional)
-Type: string
-CAIP-19 asset ID
-For example, OP ETH: eip155:10/native
-
-sellAmount (optional)
-Type: string
-Sell token amount, as numeric string
-For example, 1 USDC: 1000000
-
-Return Value
-
-type SwapTokenDetails = {
-  /**
-   * Array of tx identifiers in order of execution.
-   * Some swaps will have both an approval and swap tx.
-   */
-  transactions: \`0x\${string}\`[];
-};
-
-type SwapTokenErrorDetails = {
-  /**
-   * Error code.
-   */
-  error: string;
-  /**
-   * Error message.
-   */
-  message?: string;
-};
-
-export type SwapErrorReason = "rejected_by_user" | "swap_failed";
-
-export type SwapTokenResult =
-  | {
-      success: true;
-      swap: SwapTokenDetails;
-    }
-  | {
-      success: false;
-      reason: SwapErrorReason;
-      error?: SwapTokenErrorDetails;
-    };
-
-Edit on GitHub
-
-Last updated: 9/13/25, 11:03 PM
-
-viewCast
-
-Previous
-
-Shift
-
-←
-
-sendToken
-
-Next
-
-Shift
-
-→`;
 const STICKER_EMOJIS = ['🌙', '💜', '🕸️', '🦇', '☠️', '✨', '🧬', '🛸', '🩸', '💾'];
 const STICKER_COLORS = ['#6ce5b1', '#8c54ff', '#ff9b54', '#5ea3ff', '#f7e6ff'];
 
@@ -282,7 +76,6 @@ export default function MiniAppPage() {
   const [airdropData, setAirdropData] = useState<AirdropData | null>(null);
   const [engagementData, setEngagementData] = useState<EngagementData | null>(null);
   const [showLootReveal, setShowLootReveal] = useState(false);
-  const [showDocsPanel, setShowDocsPanel] = useState(false);
   const [primaryAddress, setPrimaryAddress] = useState<string | null>(null);
   const [dropAddress, setDropAddress] = useState<string | null>(null);
   const [viewerContext, setViewerContext] = useState<ViewerContext | null>(null);
@@ -514,7 +307,7 @@ export default function MiniAppPage() {
     }
   };
 
-  const handleCopyClaimWallet = async (address?: string | null) => {
+  const handleCopyWallet = async (address?: string | null) => {
     if (!address) return;
     try {
       await navigator.clipboard.writeText(address);
@@ -544,7 +337,6 @@ export default function MiniAppPage() {
   const repliesCount = airdropData?.replyCount ?? engagementData?.replyCount ?? 0;
   const tier = repliesCount ? getTierByReplyCount(repliesCount) : null;
   const replyGlow = useMemo(() => getReplyGlowConfig(repliesCount), [repliesCount]);
-  const claimWallet = dropAddress ?? primaryAddress ?? null;
   const claimCountdown = useMemo(() => {
     const totalSeconds = Math.max(Math.floor(timeUntilClaimMs / 1000), 0);
     const days = Math.floor(totalSeconds / 86400);
@@ -600,9 +392,19 @@ export default function MiniAppPage() {
       </div>
       <div>
         <p className="uppercase text-[var(--moss-green)] text-[11px] tracking-[0.4em]">Wallet</p>
-        <p className="font-mono text-lg leading-tight">
-          {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : '—'}
-        </p>
+        <div className="flex items-center gap-3 font-mono text-lg leading-tight">
+          <span className="break-all">
+            {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : '—'}
+          </span>
+          {wallet && (
+            <button
+              onClick={() => handleCopyWallet(wallet)}
+              className="pixel-font text-[10px] px-3 py-1 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
+            >
+              {copiedWallet ? 'COPIED' : 'COPY'}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -917,33 +719,6 @@ export default function MiniAppPage() {
             </div>
           )}
 
-          <div className={`${PANEL_CLASS} space-y-3`}>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <p className="uppercase text-[var(--moss-green)] text-xs tracking-[0.4em]">
-                  Claim wallet
-                </p>
-                <p className="font-mono text-sm break-all px-1">
-                  {claimWallet ?? 'No wallet detected'}
-                </p>
-              </div>
-              <button
-                onClick={() => handleCopyClaimWallet(claimWallet)}
-                disabled={!claimWallet}
-                className="pixel-font text-[11px] px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors disabled:opacity-40"
-              >
-                {copiedWallet ? 'COPIED' : 'COPY WALLET'}
-              </button>
-            </div>
-            {dropAddress && dropAddress !== primaryAddress && (
-              <p className="text-xs opacity-70">
-                Allocation detected on{' '}
-                <span className="font-mono">{`${dropAddress.slice(0, 6)}…${dropAddress.slice(-4)}`}</span>
-                , different from your primary Warpcast wallet.
-              </p>
-            )}
-          </div>
-
           <div className="flex justify-center mt-8">
             <button
               onClick={handleShare}
@@ -954,29 +729,6 @@ export default function MiniAppPage() {
           </div>
 
           {renderContractCard()}
-
-          <div className={`${PANEL_CLASS} space-y-3`}>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <p className="uppercase text-[var(--moss-green)] text-[11px] tracking-[0.4em]">
-                  Farcaster Mini App docs
-                </p>
-                <p className="text-xs opacity-70">llms.txt quick reference for AI + humans</p>
-              </div>
-              <button
-                onClick={() => setShowDocsPanel((prev) => !prev)}
-                className="pixel-font text-[10px] px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
-              >
-                {showDocsPanel ? 'Hide reference' : 'Show reference'}
-              </button>
-            </div>
-
-            {showDocsPanel && (
-              <div className="max-h-64 overflow-y-auto text-left font-mono text-[11px] leading-relaxed whitespace-pre-wrap opacity-80 border border-white/10 rounded-xl p-4 bg-black/30">
-                {MINI_APP_DOCS_TEXT}
-              </div>
-            )}
-          </div>
         </div>
       </div>
     );
@@ -998,10 +750,20 @@ export default function MiniAppPage() {
         <div className="text-sm text-left bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-6 space-y-3">
           <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Session</p>
           <p>FID: {userData.fid}</p>
-          <p>
-            Wallet:{' '}
-            {primaryAddress ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}` : '—'}
-          </p>
+          <div className="flex items-center gap-3 font-mono text-base">
+            <span>
+              Wallet:{' '}
+              {primaryAddress ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}` : '—'}
+            </span>
+            {primaryAddress && (
+              <button
+                onClick={() => handleCopyWallet(primaryAddress)}
+                className="pixel-font text-[10px] px-3 py-1 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
+              >
+                {copiedWallet ? 'COPIED' : 'COPY'}
+              </button>
+            )}
+          </div>
         </div>
 
         {dropAddress && dropAddress !== primaryAddress && (
