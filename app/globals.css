@@ -222,11 +222,10 @@ body::after {
 .sticker-rain .sticker {
   position: absolute;
   top: -10%;
-  font-size: clamp(16px, 3vw, 32px);
-  font-family: 'Press Start 2P', monospace;
-  animation: stickerFall var(--duration, 14s) steps(16) infinite;
+  font-size: clamp(16px, 3vw, 36px);
+  animation: stickerFall var(--duration, 12s) linear infinite;
   filter: drop-shadow(0 0 6px rgba(0, 0, 0, 0.45));
-  text-shadow: 0 0 6px rgba(255, 255, 255, 0.25);
+  text-shadow: 0 0 4px rgba(255, 255, 255, 0.3);
 }
 
 .neon-logo-wrapper {
@@ -352,7 +351,6 @@ body::after {
   }
   .floating-orb,
   .sticker-rain .sticker,
-  .ticker-message,
   .neon-halo {
     animation: none;
   }

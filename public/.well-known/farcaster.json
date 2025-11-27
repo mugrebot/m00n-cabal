@@ -3,8 +3,8 @@
     "name": "m00nad cabal check",
     "version": "1",
     "iconUrl": "https://m00nad.vercel.app/brand/logo.png",
-    "homeUrl": "https://m00nad.vercel.app/miniapp/",
-    "imageUrl": "https://m00nad.vercel.app/api/embed-card",
+    "homeUrl": "https://m00nad.vercel.app/miniapp",
+    "imageUrl": "https://m00nad.vercel.app/brand/banner.png",
     "buttonTitle": "Enter m00n Cabal",
     "splashImageUrl": "https://m00nad.vercel.app/brand/splash.svg",
     "splashBackgroundColor": "#130B25",
@@ -17,7 +17,7 @@
     "tagline": "Reveal your m00n",
     "ogTitle": "m00n cabal check",
     "ogDescription": "are you in the cabal?",
-    "ogImageUrl": "https://m00nad.vercel.app/api/embed-card"
+    "ogImageUrl": "https://m00nad.vercel.app/brand/banner.png"
   },
   "accountAssociation": {
     "header": "eyJmaWQiOjk5MzMsInR5cGUiOiJjdXN0b2R5Iiwia2V5IjoiMHg4MjBBRTA1MDM2RTI2OUJlY2JEM0IwMWFBN2UzMGJCYzlmNzUwMjZEIn0",

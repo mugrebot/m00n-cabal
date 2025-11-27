@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 const MINIAPP_URL = 'https://m00nad.vercel.app/miniapp/';
-const EMBED_IMAGE_URL = 'https://m00nad.vercel.app/api/embed-card';
+const EMBED_IMAGE_URL = 'https://m00nad.vercel.app/brand/banner.png';
 const SPLASH_URL = 'https://m00nad.vercel.app/brand/splash.svg';
 const embedConfig = {
   version: '1',

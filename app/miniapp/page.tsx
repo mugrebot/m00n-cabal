@@ -45,7 +45,8 @@ interface ScanStep {
 
 const TOKEN_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
 const CLAIM_URL = 'https://clanker.world/clanker/0x22Cd99EC337a2811F594340a4A6E41e4A3022b07';
-const STICKER_EMOJIS = ['🌙', '★', '✦', '✧', '☆'];
+const STICKER_EMOJIS = ['🌙', '💜', '🕸️', '🦇', '☠️', '✨', '🧬', '🛸', '🩸', '💾'];
+const STICKER_COLORS = ['#6ce5b1', '#8c54ff', '#ff9b54', '#5ea3ff', '#f7e6ff'];
 
 interface ReplyGlow {
   color: string;
@@ -89,14 +90,6 @@ export default function MiniAppPage() {
   const [scanPhase, setScanPhase] = useState<ScanPhase>('idle');
   const [copiedContract, setCopiedContract] = useState(false);
 
-  const miniAppOrigin = useMemo(() => {
-    try {
-      return new URL(miniAppUrl).origin;
-    } catch {
-      return 'https://m00nad.vercel.app';
-    }
-  }, [miniAppUrl]);
-
   const formatAmount = (amount?: string | number) => {
     if (amount === undefined || amount === null) return '0';
     const numeric = typeof amount === 'string' ? parseInt(amount, 10) : amount;
@@ -106,12 +99,13 @@ export default function MiniAppPage() {
 
   const fallingStickers = useMemo(
     () =>
-      Array.from({ length: 20 }).map((_, idx) => ({
+      Array.from({ length: 22 }).map((_, idx) => ({
         id: idx,
         emoji: STICKER_EMOJIS[idx % STICKER_EMOJIS.length],
+        color: STICKER_COLORS[idx % STICKER_COLORS.length],
         left: Math.random() * 100,
-        duration: 12 + Math.random() * 8,
-        delay: Math.random() * -18,
+        duration: 10 + Math.random() * 10,
+        delay: Math.random() * -15,
         scale: 0.7 + Math.random() * 0.8
       })),
     []
@@ -357,31 +351,10 @@ export default function MiniAppPage() {
     const baseText = `I'm part of the m00n cabal! Receiving ${formatAmount(
       airdropData.amount
     )} $m00n tokens 🌙✨`;
-    const finalText = miniAppUrl
-      ? `${baseText} ${miniAppUrl}`.trim()
-      : 'Signal lost. The cabal portal is sealed for now.';
-
-    const shareWallet = dropAddress ?? primaryAddress ?? '';
-    const embedUrl = new URL(`${miniAppOrigin}/api/embed-card`);
-    embedUrl.searchParams.set('amount', airdropData.amount);
-    if (userData.username) embedUrl.searchParams.set('username', userData.username);
-    if (userData.displayName) embedUrl.searchParams.set('displayName', userData.displayName);
-    embedUrl.searchParams.set('fid', String(userData.fid));
-    if (tier?.name) embedUrl.searchParams.set('tier', tier.name);
-    if (shareWallet) embedUrl.searchParams.set('wallet', shareWallet);
-    if (engagementData?.replyCount !== undefined) {
-      embedUrl.searchParams.set('replies', String(engagementData.replyCount));
-    }
-
-    try {
-      await fetch(embedUrl.toString(), { cache: 'no-store' });
-    } catch (prefetchErr) {
-      console.warn('Failed to prefetch embed card', prefetchErr);
-    }
+    const finalText = miniAppUrl ? `${baseText} ${miniAppUrl}` : baseText;
 
     const composeUrl = new URL('https://warpcast.com/~/compose');
     composeUrl.searchParams.set('text', finalText);
-    composeUrl.searchParams.append('embeds[]', embedUrl.toString());
 
     await sdk.actions.openUrl(composeUrl.toString());
   };
@@ -417,6 +390,7 @@ export default function MiniAppPage() {
           style={
             {
               left: `${drop.left}%`,
+              color: drop.color,
               animationDuration: `${drop.duration}s`,
               animationDelay: `${drop.delay}s`,
               '--scale': drop.scale
