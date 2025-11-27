@@ -65,7 +65,7 @@ export default function MiniAppPage() {
       setIsLoading(true);
       setError(null);
 
-      const result = await sdk.actions.signIn();
+      const result = await sdk.actions.signIn({});
       const user = result?.user;
 
       if (!user) {
