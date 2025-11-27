@@ -45,7 +45,7 @@ interface ScanStep {
 
 const TOKEN_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
 const CLAIM_URL = 'https://clanker.world/clanker/0x22Cd99EC337a2811F594340a4A6E41e4A3022b07';
-const STICKER_EMOJIS = ['🌙', '💜', '🕸️', '🦇', '☠️', '✨', '🧬', '🛸', '🩸', '💾'];
+const STICKER_EMOJIS = ['🌙', '★', '✦', '✧', '☆'];
 
 interface ReplyGlow {
   color: string;
@@ -387,7 +387,7 @@ export default function MiniAppPage() {
   };
 
   const PANEL_CLASS =
-    'bg-black/45 border border-[var(--monad-purple)] rounded-2xl p-6 backdrop-blur';
+    'bg-black/45 border border-[var(--monad-purple)] rounded-2xl px-6 py-5 backdrop-blur';
 
   const renderSessionCard = (fid?: number, wallet?: string | null, extraClass = '') => (
     <div
@@ -561,7 +561,7 @@ export default function MiniAppPage() {
             </p>
           </div>
 
-          {renderSessionCard(viewerContext?.fid, primaryAddress, 'text-center md:text-left')}
+          {renderSessionCard(viewerContext?.fid, primaryAddress)}
 
           <div className={`${PANEL_CLASS} space-y-4`}>
             <p className="text-base">{currentDescription}</p>
@@ -645,7 +645,7 @@ export default function MiniAppPage() {
             </div>
           </div>
 
-          {renderSessionCard(userData.fid, primaryAddress, 'text-left')}
+          {renderSessionCard(userData.fid, primaryAddress)}
           {dropAddress && dropAddress !== primaryAddress && (
             <p className="text-xs opacity-70">
               Allocation detected on{' '}
@@ -738,7 +738,7 @@ export default function MiniAppPage() {
           You don&apos;t have to go home, but you can&apos;t stay here.
         </p>
 
-        <div className="text-sm text-left bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-2">
+        <div className="text-sm text-left bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-5 space-y-2">
           <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Session</p>
           <p>FID: {userData.fid}</p>
           <p>
