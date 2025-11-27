@@ -30,6 +30,10 @@ interface ViewerContext {
 }
 
 export default function MiniAppPage() {
+  const SOUNDTRACK_URL =
+    process.env.NEXT_PUBLIC_SOUNDTRACK_URL ??
+    'https://raw.githubusercontent.com/mugrebot/m00n-cabal/main/apps/m00n-cabal/public/audio/blue.mp3';
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSdkReady, setIsSdkReady] = useState(false);
   const [isMiniApp, setIsMiniApp] = useState<boolean | null>(null);
@@ -44,6 +48,7 @@ export default function MiniAppPage() {
   const [viewerContext, setViewerContext] = useState<ViewerContext | null>(null);
   const [addresses, setAddresses] = useState<string[]>([]);
   const [isSoundtrackPlaying, setIsSoundtrackPlaying] = useState(false);
+  const [soundtrackError, setSoundtrackError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [scanPhase, setScanPhase] = useState<
@@ -136,34 +141,42 @@ export default function MiniAppPage() {
   };
 
   const handleSignIn = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      setScanPhase('authenticating');
+    setIsLoading(true);
+    setError(null);
+    setScanPhase('authenticating');
 
+    let activeContext = viewerContext;
+
+    try {
       const nonce =
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
           : `${Date.now()}`;
       await sdk.actions.signIn({ nonce });
-
       const context = await sdk.context;
-      const user = context.user;
-
-      if (!user) {
-        setError('No Farcaster user detected. Please try again.');
-        setScanPhase('error');
-        return;
+      if (context.user) {
+        activeContext = {
+          fid: context.user.fid,
+          username: context.user.username,
+          displayName: context.user.displayName
+        };
+        setViewerContext(activeContext);
       }
+    } catch (authErr) {
+      console.warn('Sign in failed, falling back to cached context', authErr);
+    }
 
-      setViewerContext({
-        fid: user.fid,
-        username: user.username,
-        displayName: user.displayName
-      });
+    if (!activeContext) {
+      setError('Failed to authenticate. Please try again.');
+      setScanPhase('error');
+      setIsLoading(false);
+      return;
+    }
 
+    try {
       setScanPhase('addresses');
-      const fetchedAddresses = addresses.length > 0 ? addresses : await syncAddresses(user.fid);
+      const fetchedAddresses =
+        addresses.length > 0 ? addresses : await syncAddresses(activeContext.fid);
       const derivedPrimaryAddress = fetchedAddresses[0];
 
       if (!derivedPrimaryAddress) {
@@ -172,23 +185,25 @@ export default function MiniAppPage() {
         return;
       }
 
-      setPrimaryAddress(derivedPrimaryAddress);
-
       setDropAddress(null);
       let matchedAddress: string | null = null;
       let matchedResult: AirdropData | null = null;
 
       for (const addr of fetchedAddresses) {
         setScanPhase('fetching');
-        const response = await fetch(`/api/airdrop?address=${addr}`);
-        const result = (await response.json()) as AirdropData;
-        if (result.eligible) {
-          matchedAddress = addr;
-          matchedResult = result;
-          break;
-        }
-        if (!matchedResult) {
-          matchedResult = result;
+        try {
+          const response = await fetch(`/api/airdrop?address=${addr}`);
+          const result = (await response.json()) as AirdropData;
+          if (result.eligible) {
+            matchedAddress = addr;
+            matchedResult = result;
+            break;
+          }
+          if (!matchedResult) {
+            matchedResult = result;
+          }
+        } catch (airdropErr) {
+          console.error('Failed to fetch airdrop for address', addr, airdropErr);
         }
       }
 
@@ -200,39 +215,44 @@ export default function MiniAppPage() {
       setPrimaryAddress(derivedPrimaryAddress);
 
       setUserData({
-        fid: user.fid,
-        username: user.username,
-        displayName: user.displayName,
+        fid: activeContext.fid,
+        username: activeContext.username,
+        displayName: activeContext.displayName,
         verifiedAddresses: fetchedAddresses
       });
 
-      setScanPhase('fetching');
       if (matchedResult) {
         setAirdropData(matchedResult);
       }
 
-      const engagementResponse = await fetch(`/api/engagement?fid=${user.fid}`);
-      if (engagementResponse.ok) {
-        const engagementResult = await engagementResponse.json();
-        setEngagementData(engagementResult);
+      setScanPhase('fetching');
+      try {
+        const engagementResponse = await fetch(`/api/engagement?fid=${activeContext.fid}`);
+        if (engagementResponse.ok) {
+          const engagementResult = await engagementResponse.json();
+          setEngagementData(engagementResult);
 
-        if (
-          matchedResult?.eligible &&
-          engagementResult.isFollowing &&
-          engagementResult.replyCount > 0
-        ) {
-          setShowLootReveal(true);
+          if (
+            matchedResult?.eligible &&
+            engagementResult.isFollowing &&
+            engagementResult.replyCount > 0
+          ) {
+            setShowLootReveal(true);
+          }
         }
+      } catch (engagementErr) {
+        console.error('Failed to fetch engagement data', engagementErr);
       }
+
       setScanPhase('ready');
     } catch (err) {
-      console.error('Sign in error:', err);
-      setError('Failed to authenticate. Please try again.');
+      console.error('Failed to complete scan:', err);
+      setError('Unable to complete the scan. Please try again.');
       setScanPhase('error');
     } finally {
       setIsLoading(false);
     }
-  }, [addresses]);
+  }, [addresses, viewerContext]);
 
   const formatAmount = (amount: string) => {
     return parseInt(amount).toLocaleString();
@@ -292,8 +312,17 @@ export default function MiniAppPage() {
   const handleSoundtrackToggle = () => {
     const audio = audioRef.current;
     if (!audio) return;
+    setSoundtrackError(null);
     if (audio.paused) {
-      void audio.play();
+      audio
+        .play()
+        .then(() => {
+          setIsSoundtrackPlaying(true);
+        })
+        .catch((err) => {
+          console.error('Failed to start soundtrack', err);
+          setSoundtrackError('Unable to start audio. Make sure your volume is up and tap again.');
+        });
     } else {
       audio.pause();
     }
@@ -309,11 +338,12 @@ export default function MiniAppPage() {
       >
         {isSoundtrackPlaying ? 'PAUSE SOUNDTRACK' : 'PLAY SOUNDTRACK'}
       </button>
+      {soundtrackError && <p className="text-xs text-red-400">{soundtrackError}</p>}
     </div>
   );
 
   const soundtrackElement = (
-    <audio ref={audioRef} src="/audio/blue.mp3" loop preload="auto" className="hidden" />
+    <audio ref={audioRef} src={SOUNDTRACK_URL} loop preload="auto" className="hidden" />
   );
 
   const statusProgress = ((glyphIndex + 1) / ritualGlyphs.length) * 100;
