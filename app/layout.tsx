@@ -12,19 +12,38 @@ const geistMono = Geist_Mono({
   subsets: ['latin']
 });
 
+const MINIAPP_URL = 'https://m00nad.vercel.app/miniapp';
+const EMBED_IMAGE_URL = 'https://m00nad.vercel.app/api/embed-card';
+const SPLASH_URL = 'https://m00nad.vercel.app/brand/splash.svg';
+const embedConfig = {
+  version: '1',
+  imageUrl: EMBED_IMAGE_URL,
+  button: {
+    title: 'm00n cabal check',
+    action: {
+      type: 'launch_frame',
+      name: 'm00n Cabal Check',
+      url: MINIAPP_URL,
+      splashImageUrl: SPLASH_URL,
+      splashBackgroundColor: '#130B25'
+    }
+  }
+};
+const embedJson = JSON.stringify(embedConfig);
+
 export const metadata: Metadata = {
   title: 'm00n Cabal Check',
   description: 'Scan your Farcaster FID to see if you made the m00n airdrop cabal.',
   openGraph: {
     title: 'm00n Cabal Check',
     description: 'Scan your Farcaster FID to see if you made the m00n airdrop cabal.',
-    url: 'https://m00nad.vercel.app/miniapp',
+    url: MINIAPP_URL,
     images: [
       {
-        url: 'https://m00nad.vercel.app/brand/banner.png',
+        url: EMBED_IMAGE_URL,
         width: 1200,
-        height: 630,
-        alt: 'm00n cabal banner'
+        height: 800,
+        alt: 'm00n cabal embed art'
       }
     ]
   },
@@ -32,7 +51,11 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'm00n Cabal Check',
     description: 'Scan your Farcaster FID to see if you made the m00n airdrop cabal.',
-    images: ['https://m00nad.vercel.app/brand/banner.png']
+    images: [EMBED_IMAGE_URL]
+  },
+  other: {
+    'fc:miniapp': embedJson,
+    'fc:frame': embedJson
   }
 };
 

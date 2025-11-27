@@ -47,6 +47,27 @@ const TOKEN_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
 const CLAIM_URL = 'https://clanker.world/clanker/0x22Cd99EC337a2811F594340a4A6E41e4A3022b07';
 const STICKER_EMOJIS = ['🌙', '💜', '🕸️', '🦇', '☠️', '✨', '🧬', '🛸', '🩸', '💾'];
 
+interface ReplyGlow {
+  color: string;
+  shadow: string;
+}
+
+const getReplyGlowConfig = (count: number): ReplyGlow => {
+  if (count > 200) {
+    return { color: '#ff9b54', shadow: 'rgba(255, 155, 84, 0.55)' };
+  }
+  if (count > 100) {
+    return { color: '#8c54ff', shadow: 'rgba(140, 84, 255, 0.55)' };
+  }
+  if (count > 50) {
+    return { color: '#5ea3ff', shadow: 'rgba(94, 163, 255, 0.6)' };
+  }
+  if (count > 1) {
+    return { color: '#6ce5b1', shadow: 'rgba(108, 229, 177, 0.55)' };
+  }
+  return { color: '#8c54ff', shadow: 'rgba(140, 84, 255, 0.25)' };
+};
+
 export default function MiniAppPage() {
   const MINIAPP_URL = process.env.NEXT_PUBLIC_MINIAPP_URL ?? 'https://m00nad.vercel.app/miniapp';
 
@@ -373,6 +394,8 @@ export default function MiniAppPage() {
   };
 
   const tier = engagementData ? getTierByReplyCount(engagementData.replyCount) : null;
+  const repliesCount = engagementData?.replyCount ?? 0;
+  const replyGlow = useMemo(() => getReplyGlowConfig(repliesCount), [repliesCount]);
 
   const handleShare = async () => {
     if (!airdropData?.eligible || !airdropData.amount || !userData) return;
@@ -627,37 +650,12 @@ export default function MiniAppPage() {
             </div>
           ) : (
             <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-4 backdrop-blur">
-              <div className="flex items-center justify-between text-xs uppercase tracking-widest text-[var(--moss-green)]">
-                <span>Scan status</span>
-                <span>
-                  {activeStepIndex + 1}/{scanSteps.length}
-                </span>
-              </div>
               <p className="text-base">{currentDescription}</p>
               <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
                 <div className="h-full status-progress" style={{ width: `${scanProgress}%` }} />
               </div>
-              <div className="space-y-1 text-left text-xs uppercase tracking-wider">
-                {scanSteps.map((step, idx) => (
-                  <div
-                    key={step.key}
-                    className={`flex items-center justify-between ${
-                      idx <= activeStepIndex ? 'text-[var(--moss-green)]' : 'opacity-40'
-                    }`}
-                  >
-                    <span>{step.label}</span>
-                    <span>{idx < activeStepIndex ? '✓' : idx === activeStepIndex ? '↺' : '—'}</span>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
-
-          <div className="myspace-pill-grid">
-            <div className="myspace-pill">Step 1 · Tap scan</div>
-            <div className="myspace-pill">Step 2 · Approve mini app</div>
-            <div className="myspace-pill">Step 3 · Watch the glitter fall</div>
-          </div>
 
           <button
             onClick={handleSignIn}
@@ -712,6 +710,20 @@ export default function MiniAppPage() {
             </p>
           </div>
 
+          <div className="flex justify-center">
+            <div
+              className="pixel-font text-[11px] uppercase tracking-[0.5em] px-6 py-3 rounded-full"
+              style={{
+                border: `2px solid ${replyGlow.color}`,
+                color: replyGlow.color,
+                boxShadow: `0 0 22px ${replyGlow.shadow}`,
+                background: 'rgba(0, 0, 0, 0.45)'
+              }}
+            >
+              {repliesCount} replies logged
+            </div>
+          </div>
+
           {renderSessionCard(userData.fid, primaryAddress)}
           {dropAddress && dropAddress !== primaryAddress && (
             <p className="text-xs opacity-70">
@@ -721,21 +733,17 @@ export default function MiniAppPage() {
             </p>
           )}
 
-          <div className="myspace-pill-grid">
-            <div className="myspace-pill">Tier · {tier?.name ?? 'Unranked'}</div>
-            <div className="myspace-pill">Replies · {engagementData?.replyCount ?? 0}</div>
-            <div className="myspace-pill">
-              {engagementData?.isFollowing ? 'Following m00npapi' : 'Follow for loot'}
-            </div>
-          </div>
-
           {tier && engagementData?.isFollowing && (
             <div
-              className={`mt-6 p-6 bg-purple-900/30 rounded-lg border border-[var(--moss-green)] ${
+              className={`mt-6 p-6 bg-purple-900/30 rounded-lg border ${
                 showLootReveal ? 'crt-flicker' : ''
               }`}
+              style={{
+                borderColor: replyGlow.color,
+                boxShadow: `0 0 28px ${replyGlow.shadow}`
+              }}
             >
-              <h3 className="pixel-font text-lg mb-3 text-[var(--moss-green)]">
+              <h3 className="pixel-font text-lg mb-3" style={{ color: replyGlow.color }}>
                 {tier.icon} {tier.title}
               </h3>
               <p className="text-sm mb-4 italic">{tier.flavorText}</p>
