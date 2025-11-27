@@ -1,9 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import sdk from '@farcaster/miniapp-sdk';
-import { toPng } from 'html-to-image';
 import { getTierByReplyCount } from '@/app/lib/tiers';
 
 interface UserData {
@@ -38,7 +37,6 @@ interface ScanStep {
 }
 
 export default function MiniAppPage() {
-  const SOUNDTRACK_URL = process.env.NEXT_PUBLIC_SOUNDTRACK_URL ?? '/api/soundtrack';
   const MINIAPP_URL = process.env.NEXT_PUBLIC_MINIAPP_URL ?? 'https://m00nad.vercel.app/miniapp';
 
   const [isLoading, setIsLoading] = useState(true);
@@ -53,15 +51,8 @@ export default function MiniAppPage() {
   const [dropAddress, setDropAddress] = useState<string | null>(null);
   const [viewerContext, setViewerContext] = useState<ViewerContext | null>(null);
   const [addresses, setAddresses] = useState<string[]>([]);
-  const [isSoundtrackPlaying, setIsSoundtrackPlaying] = useState(false);
-  const [soundtrackError, setSoundtrackError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [scanPhase, setScanPhase] = useState<ScanPhase>('idle');
-  const [receiptStatus, setReceiptStatus] = useState<'idle' | 'generating' | 'done' | 'error'>(
-    'idle'
-  );
-  const [receiptError, setReceiptError] = useState<string | null>(null);
 
   useEffect(() => {
     const bootstrapSdk = async () => {
@@ -145,22 +136,6 @@ export default function MiniAppPage() {
   const currentStep = scanSteps[activeStepIndex] ?? scanSteps[0];
   const currentDescription = scanPhase === 'error' && error ? error : currentStep.description;
   const scanProgress = ((activeStepIndex + 1) / scanSteps.length) * 100;
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    const handlePlay = () => setIsSoundtrackPlaying(true);
-    const handleStop = () => setIsSoundtrackPlaying(false);
-    audio.addEventListener('play', handlePlay);
-    audio.addEventListener('pause', handleStop);
-    audio.addEventListener('ended', handleStop);
-    return () => {
-      audio.removeEventListener('play', handlePlay);
-      audio.removeEventListener('pause', handleStop);
-      audio.removeEventListener('ended', handleStop);
-      audio.pause();
-    };
-  }, []);
 
   const syncAddresses = async (fid: number) => {
     const response = await fetch(`/api/addresses?fid=${fid}`);
@@ -307,28 +282,6 @@ export default function MiniAppPage() {
     );
   };
 
-  const handleDownloadReceipt = async () => {
-    const element = document.getElementById('receipt-content');
-    if (!element) return;
-
-    setReceiptError(null);
-    setReceiptStatus('generating');
-
-    try {
-      const dataUrl = await toPng(element);
-      const link = document.createElement('a');
-      link.download = 'm00n-cabal-receipt.png';
-      link.href = dataUrl;
-      link.click();
-      setReceiptStatus('done');
-      setTimeout(() => setReceiptStatus('idle'), 4000);
-    } catch (err) {
-      console.error('Failed to generate receipt:', err);
-      setReceiptError('Could not render the receipt. Try again or screenshot this screen.');
-      setReceiptStatus('error');
-    }
-  };
-
   const tier = engagementData ? getTierByReplyCount(engagementData.replyCount) : null;
 
   const renderSessionCard = (fid?: number, wallet?: string | null) => (
@@ -352,51 +305,6 @@ export default function MiniAppPage() {
       <span className="floating-orb orb-two" />
       <span className="floating-orb orb-three" />
     </>
-  );
-
-  const handleSoundtrackToggle = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    setSoundtrackError(null);
-    if (audio.paused) {
-      audio
-        .play()
-        .then(() => {
-          setIsSoundtrackPlaying(true);
-        })
-        .catch((err) => {
-          console.error('Failed to start soundtrack', err);
-          setSoundtrackError('Unable to start audio. Make sure your volume is up and tap again.');
-        });
-    } else {
-      audio.pause();
-    }
-  };
-
-  const SoundtrackControl = () => (
-    <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-3 backdrop-blur">
-      <p className="text-sm uppercase tracking-wide text-[var(--moss-green)]">Soundtrack</p>
-      <p className="text-xs opacity-70">Blue • m00n cabal mix</p>
-      <button
-        onClick={handleSoundtrackToggle}
-        className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-all"
-      >
-        {isSoundtrackPlaying ? 'PAUSE SOUNDTRACK' : 'PLAY SOUNDTRACK'}
-      </button>
-      {soundtrackError && <p className="text-xs text-red-400">{soundtrackError}</p>}
-    </div>
-  );
-
-  const soundtrackElement = (
-    <audio
-      ref={audioRef}
-      src={SOUNDTRACK_URL}
-      loop
-      preload="auto"
-      className="hidden"
-      playsInline
-      crossOrigin="anonymous"
-    />
   );
 
   const statusState = useMemo(() => {
@@ -468,7 +376,6 @@ export default function MiniAppPage() {
   if (!userData) {
     return (
       <div className="relative min-h-screen overflow-hidden">
-        {soundtrackElement}
         <BackgroundOrbs />
         <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
           <div className="max-w-2xl w-full text-center space-y-8 scanline">
@@ -534,8 +441,6 @@ export default function MiniAppPage() {
               </div>
             )}
 
-            {isMiniApp !== false && <SoundtrackControl />}
-
             <button
               onClick={handleSignIn}
               className="pixel-font px-8 py-4 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all transform hover:scale-105 glow-purple disabled:opacity-40"
@@ -556,7 +461,6 @@ export default function MiniAppPage() {
   if (isLoading) {
     return (
       <div className="relative min-h-screen overflow-hidden">
-        {soundtrackElement}
         <BackgroundOrbs />
         <div className="min-h-screen flex items-center justify-center relative z-10">
           <div className="text-center space-y-4 crt-flicker">
@@ -576,14 +480,16 @@ export default function MiniAppPage() {
   if (airdropData?.eligible) {
     return (
       <div className="relative min-h-screen overflow-hidden">
-        {soundtrackElement}
         <BackgroundOrbs />
         <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
-          <div
-            id="receipt-content"
-            className="max-w-3xl w-full space-y-6 scanline p-8 bg-black/50 rounded-lg border-2 border-[var(--monad-purple)]"
-          >
-            <Image src="/brand/logo.png" alt="m00n" width={100} height={100} className="mx-auto" />
+          <div className="max-w-3xl w-full space-y-6 scanline p-8 bg-black/50 rounded-lg border-2 border-[var(--monad-purple)]">
+            <Image
+              src="/brand/logo.png"
+              alt="m00n"
+              width={100}
+              height={100}
+              className="mx-auto block"
+            />
 
             <h1 className="pixel-font text-2xl text-center glow-purple">WELCOME TO THE CABAL</h1>
 
@@ -657,35 +563,14 @@ export default function MiniAppPage() {
               </div>
             )}
 
-            {isMiniApp !== false && <SoundtrackControl />}
-
-            <div className="flex gap-4 justify-center mt-8">
+            <div className="flex justify-center mt-8">
               <button
                 onClick={handleShare}
                 className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
               >
                 SHARE CAST
               </button>
-              <button
-                onClick={handleDownloadReceipt}
-                className="pixel-font px-6 py-3 bg-[var(--moss-green)] text-black rounded hover:bg-opacity-90 transition-all"
-              >
-                DOWNLOAD RECEIPT
-              </button>
             </div>
-            {receiptStatus === 'generating' && (
-              <p className="text-xs text-[var(--moss-green)] text-center mt-2">
-                Rendering receipt…
-              </p>
-            )}
-            {receiptStatus === 'done' && (
-              <p className="text-xs text-[var(--moss-green)] text-center mt-2">
-                Receipt saved. Share it with the cabal.
-              </p>
-            )}
-            {receiptStatus === 'error' && (
-              <p className="text-xs text-red-400 text-center mt-2">{receiptError}</p>
-            )}
           </div>
         </div>
       </div>
@@ -694,7 +579,6 @@ export default function MiniAppPage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      {soundtrackElement}
       <BackgroundOrbs />
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
         <div className="max-w-2xl w-full text-center space-y-6 scanline shake">
@@ -703,12 +587,14 @@ export default function MiniAppPage() {
             alt="m00n"
             width={150}
             height={150}
-            className="mx-auto opacity-50"
+            className="mx-auto block opacity-50"
           />
 
           <h1 className="pixel-font text-2xl text-red-400">ACCESS DENIED</h1>
 
-          <p className="text-lg opacity-70">you are not part of the cabal maybe next time</p>
+          <p className="text-lg opacity-70">
+            You don&apos;t have to go home, but you can&apos;t stay here.
+          </p>
           <div className="text-sm text-left bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-4 space-y-2">
             <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Session</p>
             <p>FID: {userData.fid}</p>
