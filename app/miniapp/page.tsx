@@ -39,7 +39,8 @@ interface ViewerContext {
 type ScanPhase = 'idle' | 'authenticating' | 'addresses' | 'fetching' | 'ready' | 'error';
 
 const TOKEN_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
-const CLAIM_URL = 'https://clanker.world/clanker/0x22Cd99EC337a2811F594340a4A6E41e4A3022b07';
+const CLAIM_URL =
+  'https://clanker.onchain.cooking/?token=0x22cd99ec337a2811f594340a4a6e41e4a3022b07&risk=warn&riskTag=Warning';
 const CLAIM_UNLOCK_TIMESTAMP_MS = 1764272894 * 1000;
 const MINI_APP_DOCS_TEXT = `Logo
 
@@ -281,7 +282,6 @@ export default function MiniAppPage() {
   const [airdropData, setAirdropData] = useState<AirdropData | null>(null);
   const [engagementData, setEngagementData] = useState<EngagementData | null>(null);
   const [showLootReveal, setShowLootReveal] = useState(false);
-  const [showLorePanel, setShowLorePanel] = useState(false);
   const [showDocsPanel, setShowDocsPanel] = useState(false);
   const [primaryAddress, setPrimaryAddress] = useState<string | null>(null);
   const [dropAddress, setDropAddress] = useState<string | null>(null);
@@ -290,6 +290,7 @@ export default function MiniAppPage() {
   const [error, setError] = useState<string | null>(null);
   const [scanPhase, setScanPhase] = useState<ScanPhase>('idle');
   const [copiedContract, setCopiedContract] = useState(false);
+  const [copiedWallet, setCopiedWallet] = useState(false);
   const [hasZeroPoints, setHasZeroPoints] = useState(false);
   const [timeUntilClaimMs, setTimeUntilClaimMs] = useState(() =>
     Math.max(CLAIM_UNLOCK_TIMESTAMP_MS - Date.now(), 0)
@@ -513,6 +514,17 @@ export default function MiniAppPage() {
     }
   };
 
+  const handleCopyClaimWallet = async (address?: string | null) => {
+    if (!address) return;
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopiedWallet(true);
+      setTimeout(() => setCopiedWallet(false), 2500);
+    } catch (err) {
+      console.error('Failed to copy wallet', err);
+    }
+  };
+
   const handleOpenClaimSite = async () => {
     try {
       await sdk.actions.openMiniApp({ url: CLAIM_URL });
@@ -532,6 +544,7 @@ export default function MiniAppPage() {
   const repliesCount = airdropData?.replyCount ?? engagementData?.replyCount ?? 0;
   const tier = repliesCount ? getTierByReplyCount(repliesCount) : null;
   const replyGlow = useMemo(() => getReplyGlowConfig(repliesCount), [repliesCount]);
+  const claimWallet = dropAddress ?? primaryAddress ?? null;
   const claimCountdown = useMemo(() => {
     const totalSeconds = Math.max(Math.floor(timeUntilClaimMs / 1000), 0);
     const days = Math.floor(totalSeconds / 86400);
@@ -904,32 +917,32 @@ export default function MiniAppPage() {
             </div>
           )}
 
-          <div className="text-center mt-6">
-            <button
-              onClick={() => setShowLorePanel((prev) => !prev)}
-              className="pixel-font text-xs px-6 py-3 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
-            >
-              {showLorePanel ? 'Hide detail scan' : 'Reveal detail scan'}
-            </button>
-          </div>
-
-          {showLorePanel && (
-            <div className="p-6 border border-[var(--monad-purple)] rounded-lg bg-black/40 space-y-3 text-left">
-              <p className="text-sm uppercase tracking-wide text-[var(--moss-green)]">
-                Allocation telemetry
-              </p>
-              <ul className="text-sm space-y-1 list-disc list-inside">
-                <li>
-                  Claim wallet:{' '}
-                  {dropAddress
-                    ? `${dropAddress.slice(0, 6)}…${dropAddress.slice(-4)}`
-                    : primaryAddress
-                      ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}`
-                      : '—'}
-                </li>
-              </ul>
+          <div className={`${PANEL_CLASS} space-y-3`}>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="uppercase text-[var(--moss-green)] text-xs tracking-[0.4em]">
+                  Claim wallet
+                </p>
+                <p className="font-mono text-sm break-all px-1">
+                  {claimWallet ?? 'No wallet detected'}
+                </p>
+              </div>
+              <button
+                onClick={() => handleCopyClaimWallet(claimWallet)}
+                disabled={!claimWallet}
+                className="pixel-font text-[11px] px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors disabled:opacity-40"
+              >
+                {copiedWallet ? 'COPIED' : 'COPY WALLET'}
+              </button>
             </div>
-          )}
+            {dropAddress && dropAddress !== primaryAddress && (
+              <p className="text-xs opacity-70">
+                Allocation detected on{' '}
+                <span className="font-mono">{`${dropAddress.slice(0, 6)}…${dropAddress.slice(-4)}`}</span>
+                , different from your primary Warpcast wallet.
+              </p>
+            )}
+          </div>
 
           <div className="flex justify-center mt-8">
             <button
