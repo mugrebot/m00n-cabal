@@ -316,11 +316,10 @@ export default function MiniAppPage() {
     )} $m00n tokens 🌙✨`;
     const finalText = `${baseText}\n\n${SHARE_URL}`;
 
-    const composeUrl = new URL('https://warpcast.com/~/compose');
-    composeUrl.searchParams.set('text', finalText);
-    composeUrl.searchParams.append('embeds[]', SHARE_URL);
-
-    await sdk.actions.openUrl(composeUrl.toString());
+    await sdk.actions.composeCast({
+      text: finalText,
+      embeds: [SHARE_URL]
+    });
   };
 
   const PANEL_CLASS =
