@@ -81,8 +81,8 @@ async function getM00npapiInfo() {
   }
 }
 
-async function countReplies(viewerFid: number): Promise<number> {
-  const cacheKey = `replies-${viewerFid}`;
+async function countReplies(viewerFid: number, parentFid: number): Promise<number> {
+  const cacheKey = `replies-${viewerFid}-${parentFid}`;
   const cached = getCached<number>(cacheKey);
   if (cached !== null) return cached;
 
@@ -94,7 +94,7 @@ async function countReplies(viewerFid: number): Promise<number> {
     for (let i = 0; i < maxPages; i++) {
       const url = new URL(`${NEYNAR_API_BASE}/v2/farcaster/casts`);
       url.searchParams.append('fid', viewerFid.toString());
-      url.searchParams.append('parent_username', M00NPAPI_USERNAME);
+      url.searchParams.append('parent_fid', parentFid.toString());
       url.searchParams.append('limit', '30');
       if (cursor) {
         url.searchParams.append('cursor', cursor);
@@ -202,7 +202,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [replyCount, isFollowing] = await Promise.all([
-      countReplies(viewerFid),
+      countReplies(viewerFid, moonpapiInfo.fid),
       checkIfFollowing(moonpapiInfo.fid, viewerFid)
     ]);
 

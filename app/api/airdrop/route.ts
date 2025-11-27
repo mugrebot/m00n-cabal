@@ -15,7 +15,8 @@ export async function GET(request: NextRequest) {
   if (allocation) {
     return NextResponse.json({
       eligible: true,
-      amount: allocation.amount
+      amount: allocation.amount,
+      replyCount: allocation.replyCount ?? null
     });
   }
 
@@ -39,7 +40,8 @@ export async function POST(request: NextRequest) {
     if (allocation) {
       return NextResponse.json({
         eligible: true,
-        amount: allocation.amount
+        amount: allocation.amount,
+        replyCount: allocation.replyCount ?? null
       });
     }
 

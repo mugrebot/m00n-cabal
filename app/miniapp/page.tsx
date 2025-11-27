@@ -22,6 +22,7 @@ interface UserData {
 interface AirdropData {
   eligible: boolean;
   amount?: string;
+  replyCount?: number | null;
 }
 
 interface EngagementData {
@@ -294,7 +295,7 @@ export default function MiniAppPage() {
 
   const handleOpenClaimSite = async () => {
     try {
-      await sdk.actions.openUrl(CLAIM_URL);
+      await sdk.actions.openUrl({ url: CLAIM_URL });
     } catch (err) {
       console.warn('sdk.actions.openUrl failed, falling back to browser open', err);
       if (typeof window !== 'undefined') {
@@ -303,8 +304,8 @@ export default function MiniAppPage() {
     }
   };
 
-  const tier = engagementData ? getTierByReplyCount(engagementData.replyCount) : null;
-  const repliesCount = engagementData?.replyCount ?? 0;
+  const repliesCount = airdropData?.replyCount ?? engagementData?.replyCount ?? 0;
+  const tier = repliesCount ? getTierByReplyCount(repliesCount) : null;
   const replyGlow = useMemo(() => getReplyGlowConfig(repliesCount), [repliesCount]);
 
   const handleShare = async () => {
@@ -313,10 +314,11 @@ export default function MiniAppPage() {
     const baseText = `I'm part of the m00n cabal! Receiving ${formatAmount(
       airdropData.amount
     )} $m00n tokens 🌙✨`;
-    const finalText = `${baseText} ${SHARE_URL}`;
+    const finalText = `${baseText}\n\n${SHARE_URL}`;
 
     const composeUrl = new URL('https://warpcast.com/~/compose');
     composeUrl.searchParams.set('text', finalText);
+    composeUrl.searchParams.append('embeds[]', SHARE_URL);
 
     await sdk.actions.openUrl(composeUrl.toString());
   };
@@ -614,7 +616,7 @@ export default function MiniAppPage() {
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>Tier: {tier.name}</span>
-                  <span>Replies: {engagementData.replyCount}</span>
+                  <span>Replies: {repliesCount}</span>
                 </div>
                 <div className="w-full h-3 bg-gray-800 rounded-full overflow-hidden">
                   <div

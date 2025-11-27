@@ -5,12 +5,17 @@ import { parse } from 'csv-parse/sync';
 interface CsvRow {
   address: string;
   amount: string;
+  reply_count?: string;
+  replyCount?: string;
+}
+
+interface AirdropAllocation {
+  amount: string;
+  replyCount?: number;
 }
 
 interface AirdropData {
-  [lowercaseAddress: string]: {
-    amount: string;
-  };
+  [lowercaseAddress: string]: AirdropAllocation;
 }
 
 const DEFAULT_CSV_CANDIDATES = [
@@ -84,9 +89,17 @@ async function buildAirdropJson() {
         continue;
       }
 
+      const replyRaw = row.reply_count ?? row.replyCount ?? '';
+      const parsedReplyCount = Number(replyRaw);
+      const replyCount =
+        Number.isFinite(parsedReplyCount) && parsedReplyCount > 0
+          ? Math.floor(parsedReplyCount)
+          : undefined;
+
       seen.add(normalizedAddress);
       airdropData[normalizedAddress] = {
-        amount: normalizedAmount
+        amount: normalizedAmount,
+        ...(replyCount !== undefined ? { replyCount } : {})
       };
     }
 
