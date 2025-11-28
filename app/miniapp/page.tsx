@@ -651,13 +651,14 @@ export default function MiniAppPage() {
         break;
     }
 
+    const previewPositions = (lpPositions ?? []).slice(0, 2);
     const positionsPreview =
       lpStatus === 'HAS_LP' && positionCount > 0 ? (
         <div className={`${PANEL_CLASS} text-left space-y-2`}>
           <p className="uppercase text-[var(--moss-green)] text-[11px] tracking-[0.4em]">
             LP SIGILS
           </p>
-          {lpPositions.slice(0, 2).map((position) => (
+          {previewPositions.map((position) => (
             <div key={position.tokenId} className="text-sm opacity-85">
               <p>Token #{position.tokenId}</p>
               <p className="text-xs opacity-70">
