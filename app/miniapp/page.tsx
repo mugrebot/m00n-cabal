@@ -11,6 +11,7 @@ import {
 import Image from 'next/image';
 import sdk from '@farcaster/miniapp-sdk';
 import { getTierByReplyCount } from '@/app/lib/tiers';
+import { getPersonaCopy, type PersonaActionId, type LpStatus } from '@/app/copy/persona';
 
 interface UserData {
   fid: number;
@@ -52,17 +53,20 @@ const LP_DOCS_URL =
 const ADMIN_FID = 9933;
 const STICKER_EMOJIS = ['🌙', '💜', '🕸️', '🦇', '☠️', '✨', '🧬', '🛸', '🩸', '💾'];
 const STICKER_COLORS = ['#6ce5b1', '#8c54ff', '#ff9b54', '#5ea3ff', '#f7e6ff'];
+const HOLDER_CHAT_URL =
+  process.env.NEXT_PUBLIC_HOLDER_CHAT_URL ?? 'https://warpcast.com/~/channel/m00n';
+const HEAVEN_MODE_URL = process.env.NEXT_PUBLIC_HEAVEN_URL ?? 'https://warpcast.com/~/channel/m00n';
 const truncateAddress = (value?: string | null) =>
   value ? `${value.slice(0, 6)}…${value.slice(-4)}` : null;
 
-type UserPersona = 'eligible_holder' | 'lp_gate' | 'locked_out';
-type LpStatus = 'DISCONNECTED' | 'CHECKING' | 'NO_LP' | 'HAS_LP' | 'ERROR';
-type AdminPortalView =
-  | 'default'
+type UserPersona =
   | 'claimed_sold'
   | 'claimed_held'
   | 'claimed_bought_more'
-  | 'lp_gate';
+  | 'lp_gate'
+  | 'eligible_holder'
+  | 'locked_out';
+type AdminPortalView = 'default' | UserPersona;
 
 interface LpPosition {
   tokenId: string;
@@ -138,17 +142,51 @@ export default function MiniAppPage() {
     return numeric.toLocaleString();
   };
 
-  const userPersona: UserPersona = useMemo(() => {
-    if (airdropData?.eligible) {
-      return 'eligible_holder';
+  const isAdmin = viewerContext?.fid === ADMIN_FID;
+
+  const classifyEligiblePersona = useCallback((amount: number, replyCount: number): UserPersona => {
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return 'locked_out';
     }
-    if (LP_GATE_ENABLED && userData && !airdropData?.eligible) {
+    if (replyCount >= 20 || amount > 100000) {
+      return 'claimed_bought_more';
+    }
+    if (replyCount >= 5) {
+      return 'claimed_held';
+    }
+    if (replyCount >= 0) {
+      return 'claimed_sold';
+    }
+    return 'eligible_holder';
+  }, []);
+
+  const derivedPersona: UserPersona = useMemo(() => {
+    if (!userData) {
+      return 'locked_out';
+    }
+    if (hasZeroPoints) {
+      return 'locked_out';
+    }
+    if (airdropData?.eligible) {
+      const amount = Number(airdropData.amount ?? '0');
+      const replyCount = engagementData?.replyCount ?? 0;
+      return classifyEligiblePersona(amount, replyCount);
+    }
+    if (LP_GATE_ENABLED) {
       return 'lp_gate';
     }
     return 'locked_out';
-  }, [airdropData?.eligible, userData]);
+  }, [
+    airdropData?.amount,
+    airdropData?.eligible,
+    classifyEligiblePersona,
+    engagementData?.replyCount,
+    hasZeroPoints,
+    userData
+  ]);
 
-  const isAdmin = viewerContext?.fid === ADMIN_FID;
+  const adminPersonaOverride = isAdmin && adminPortalView !== 'default' ? adminPortalView : null;
+  const effectivePersona: UserPersona = adminPersonaOverride ?? derivedPersona;
 
   useEffect(() => {
     if (!isAdmin && adminPortalView !== 'default') {
@@ -210,8 +248,12 @@ export default function MiniAppPage() {
   }, []);
 
   useEffect(() => {
-    if (userPersona !== 'lp_gate') {
-      setLpGateState({ lpStatus: 'DISCONNECTED' });
+    if (effectivePersona !== 'lp_gate') {
+      setLpGateState({
+        lpStatus: 'DISCONNECTED',
+        walletAddress: primaryAddress ?? null,
+        lpPositions: []
+      });
       setIsLpLoungeOpen(false);
       return;
     }
@@ -267,7 +309,7 @@ export default function MiniAppPage() {
     return () => {
       cancelled = true;
     };
-  }, [userPersona, primaryAddress, lpRefreshNonce]);
+  }, [effectivePersona, primaryAddress, lpRefreshNonce]);
 
   useEffect(() => {
     const tick = () => {
@@ -438,6 +480,17 @@ export default function MiniAppPage() {
     }
   };
 
+  const openExternalUrl = async (url: string) => {
+    try {
+      await sdk.actions.openUrl({ url });
+    } catch (err) {
+      console.warn('Failed to open external url via sdk', err);
+      if (typeof window !== 'undefined') {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    }
+  };
+
   const handleOpenClaimSite = async () => {
     try {
       await sdk.actions.openMiniApp({ url: CLAIM_URL });
@@ -455,25 +508,19 @@ export default function MiniAppPage() {
   };
 
   const handleOpenLpSite = async () => {
-    try {
-      await sdk.actions.openUrl({ url: LP_MINT_URL });
-    } catch (err) {
-      console.warn('Failed to open LP site via sdk, falling back to window', err);
-      if (typeof window !== 'undefined') {
-        window.open(LP_MINT_URL, '_blank', 'noopener,noreferrer');
-      }
-    }
+    await openExternalUrl(LP_MINT_URL);
   };
 
   const handleOpenLpDocs = async () => {
-    try {
-      await sdk.actions.openUrl({ url: LP_DOCS_URL });
-    } catch (err) {
-      console.warn('Failed to open LP docs via sdk, falling back to window', err);
-      if (typeof window !== 'undefined') {
-        window.open(LP_DOCS_URL, '_blank', 'noopener,noreferrer');
-      }
-    }
+    await openExternalUrl(LP_DOCS_URL);
+  };
+
+  const handleOpenHolderChat = async () => {
+    await openExternalUrl(HOLDER_CHAT_URL);
+  };
+
+  const handleOpenHeavenMode = async () => {
+    await openExternalUrl(HEAVEN_MODE_URL);
   };
 
   const handleRetryLpStatus = () => {
@@ -484,6 +531,66 @@ export default function MiniAppPage() {
     if (lpGateState.lpStatus === 'HAS_LP') {
       setIsLpLoungeOpen(true);
     }
+  };
+
+  const personaActionHandlers: Record<PersonaActionId, (() => void) | undefined> = {
+    lp_connect_wallet: handleSignIn,
+    lp_become_lp: handleOpenLpSite,
+    lp_open_docs: handleOpenLpDocs,
+    lp_try_again: handleRetryLpStatus,
+    lp_enter_lounge: handleEnterLpLounge,
+    lp_manage: handleOpenLpSite,
+    open_claim: handleOpenClaimSite,
+    open_chat: handleOpenHolderChat,
+    open_heaven_mode: handleOpenHeavenMode,
+    learn_more: handleOpenLpDocs
+  };
+
+  const renderCopyBody = (lines: string[]) => (
+    <div className="space-y-2 text-sm opacity-80">
+      {lines.map((line, idx) => (
+        <p key={`${line}-${idx}`}>{line}</p>
+      ))}
+    </div>
+  );
+
+  const renderPersonaCtas = (
+    copy: ReturnType<typeof getPersonaCopy>,
+    options?: { disablePrimary?: boolean; disableSecondary?: boolean }
+  ) => {
+    if (!copy.primaryCta && !copy.secondaryCta) {
+      return null;
+    }
+
+    const primaryHandler = copy.primaryCta
+      ? personaActionHandlers[copy.primaryCta.actionId]
+      : undefined;
+    const secondaryHandler = copy.secondaryCta
+      ? personaActionHandlers[copy.secondaryCta.actionId]
+      : undefined;
+
+    return (
+      <div className="flex flex-col sm:flex-row sm:justify-center gap-3">
+        {copy.primaryCta && (
+          <button
+            onClick={primaryHandler}
+            disabled={!primaryHandler || options?.disablePrimary}
+            className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-colors disabled:opacity-40"
+          >
+            {copy.primaryCta.label}
+          </button>
+        )}
+        {copy.secondaryCta && (
+          <button
+            onClick={secondaryHandler}
+            disabled={!secondaryHandler || options?.disableSecondary}
+            className="pixel-font px-6 py-3 border border-[var(--monad-purple)] text-[var(--monad-purple)] rounded-lg hover:bg-[var(--monad-purple)] hover:text-white transition-colors disabled:opacity-40"
+          >
+            {copy.secondaryCta.label}
+          </button>
+        )}
+      </div>
+    );
   };
 
   const repliesCount = airdropData?.replyCount ?? engagementData?.replyCount ?? 0;
@@ -565,93 +672,13 @@ export default function MiniAppPage() {
     const { lpStatus, walletAddress, lpPositions } = lpGateState;
     const truncatedWallet = truncateAddress(walletAddress);
     const positionCount = lpPositions?.length ?? 0;
-
-    let title = 'LP Cabal Gate';
-    let body: ReactNode = (
-      <p className="text-sm opacity-80">
-        To unlock the inner room you need an LP sigil in the m00nad / W-MON pool.
-      </p>
-    );
-    let primaryLabel = '';
-    let primaryAction: (() => void) | null = null;
-    let primaryDisabled = false;
-    let secondaryLabel: string | null = null;
-    let secondaryAction: (() => void) | null = null;
-    let showLoader = false;
-
-    switch (lpStatus) {
-      case 'DISCONNECTED':
-        title = '🜁 LP Cabal Gate';
-        body = (
-          <p className="text-sm opacity-80">
-            You bought m00nad, but the door stays closed. Connect a wallet so I can scan the m00n /
-            W-MON LP sigil.
-          </p>
-        );
-        primaryLabel = 'CONNECT WALLET';
-        primaryAction = handleSignIn;
-        secondaryLabel = 'BECOME LP';
-        secondaryAction = handleOpenLpSite;
-        break;
-      case 'CHECKING':
-        title = '🔍 Scanning Liquidity Sigils…';
-        body = (
-          <p className="text-sm opacity-80">
-            Give me a beat while I crawl your LP positions. This only takes a moment.
-          </p>
-        );
-        primaryLabel = 'SCANNING';
-        primaryDisabled = true;
-        showLoader = true;
-        break;
-      case 'NO_LP':
-        title = '🚫 No LP. No Entry.';
-        body = (
-          <div className="space-y-2 text-sm opacity-85">
-            <p>You&apos;ve touched m00nad, but you&apos;re not in the m00n / W-MON LP.</p>
-            <p className="opacity-70">This room is for the liquidity cabal only.</p>
-          </div>
-        );
-        primaryLabel = 'BECOME LP';
-        primaryAction = handleOpenLpSite;
-        secondaryLabel = 'WHY LP MATTERS?';
-        secondaryAction = handleOpenLpDocs;
-        break;
-      case 'HAS_LP':
-        title = '✅ Welcome, LP Cabalist';
-        body = (
-          <div className="space-y-2 text-sm opacity-85">
-            {truncatedWallet && <p>Wallet: {truncatedWallet}</p>}
-            <p>
-              Detected {positionCount} live LP {positionCount === 1 ? 'position' : 'positions'} in
-              the m00n / W-MON pool.
-            </p>
-            <p className="opacity-70">You&apos;re cleared to enter the lounge.</p>
-          </div>
-        );
-        primaryLabel = 'ENTER LP LOUNGE';
-        primaryAction = handleEnterLpLounge;
-        secondaryLabel = 'MANAGE LP';
-        secondaryAction = handleOpenLpSite;
-        break;
-      case 'ERROR':
-        title = '⚠️ Ritual Jammed';
-        body = (
-          <div className="space-y-2 text-sm opacity-85">
-            <p>Something broke while reading your LP sigils.</p>
-            <p className="opacity-70">Try again, or open the LP site to double-check manually.</p>
-          </div>
-        );
-        primaryLabel = 'TRY AGAIN';
-        primaryAction = handleRetryLpStatus;
-        secondaryLabel = 'OPEN LP SITE';
-        secondaryAction = handleOpenLpSite;
-        break;
-      default:
-        break;
-    }
-
+    const copy = getPersonaCopy({
+      persona: 'lp_gate',
+      lpState: { status: lpStatus, positionCount }
+    });
+    const showLoader = lpStatus === 'CHECKING';
     const previewPositions = (lpPositions ?? []).slice(0, 2);
+
     const positionsPreview =
       lpStatus === 'HAS_LP' && positionCount > 0 ? (
         <div className={`${PANEL_CLASS} text-left space-y-2`}>
@@ -678,8 +705,11 @@ export default function MiniAppPage() {
           <div className="flex justify-center">
             <NeonHaloLogo size={140} />
           </div>
-          <h1 className="pixel-font text-2xl glow-purple">{title}</h1>
-          <div className="space-y-4">{body}</div>
+          <h1 className="pixel-font text-2xl glow-purple">{copy.title}</h1>
+          {renderCopyBody(copy.body)}
+          {truncatedWallet && lpStatus === 'HAS_LP' && (
+            <p className="text-xs opacity-60">Wallet: {truncatedWallet}</p>
+          )}
           {showLoader && (
             <div className="flex justify-center">
               <div className="w-24 h-1.5 bg-gray-800 rounded-full overflow-hidden">
@@ -687,25 +717,7 @@ export default function MiniAppPage() {
               </div>
             </div>
           )}
-          <div className="flex flex-col sm:flex-row sm:justify-center gap-3">
-            {primaryLabel && (
-              <button
-                onClick={primaryAction ?? undefined}
-                disabled={!primaryAction || primaryDisabled}
-                className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-colors disabled:opacity-40"
-              >
-                {primaryLabel}
-              </button>
-            )}
-            {secondaryLabel && (
-              <button
-                onClick={secondaryAction ?? undefined}
-                className="pixel-font px-6 py-3 border border-[var(--monad-purple)] text-[var(--monad-purple)] rounded-lg hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
-              >
-                {secondaryLabel}
-              </button>
-            )}
-          </div>
+          {renderPersonaCtas(copy, { disablePrimary: lpStatus === 'CHECKING' })}
           {positionsPreview}
           <div className="text-xs opacity-60">
             Need help?{' '}
@@ -780,62 +792,25 @@ export default function MiniAppPage() {
     );
   };
 
-  const renderAdminClaimPanel = () =>
-    renderShell(
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
-        <div className="max-w-2xl w-full space-y-6 text-center scanline bg-black/50 border border-[var(--monad-purple)] rounded-3xl px-8 py-12">
-          <div className="flex justify-center">
-            <NeonHaloLogo size={150} />
-          </div>
-          <h1 className="pixel-font text-3xl glow-purple">CLAIM CONSOLE</h1>
-          <p className="text-sm opacity-80">
-            Only fid 9933 can operate the drop while the rest of Warpcast stays sealed out.
-          </p>
-          <button
-            onClick={handleOpenClaimSite}
-            className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-colors"
-          >
-            OPEN CLAIM SITE
-          </button>
-          {renderContractCard()}
-        </div>
-      </div>
-    );
-
-  const renderLockedForMaintenance = () =>
-    renderShell(
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
-        <div className="max-w-xl w-full text-center space-y-4 scanline bg-black/45 border border-white/10 rounded-3xl px-6 py-8">
-          <h1 className="pixel-font text-2xl text-red-400">PORTAL OFFLINE</h1>
-          <p className="text-sm opacity-80">
-            This mini app is restricted to the cabal operator while maintenance is underway.
-          </p>
-          <p className="text-xs opacity-60">Please check back later.</p>
-        </div>
-      </div>
-    );
-
-  const renderClaimedSoldPortal = () =>
-    renderShell(
+  const renderClaimedSoldPortal = () => {
+    const copy = getPersonaCopy({ persona: 'claimed_sold' });
+    return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-2xl w-full text-center space-y-6 scanline bg-black/55 border border-red-600 rounded-3xl px-8 py-12">
           <div className="flex justify-center">
             <NeonHaloLogo size={140} />
           </div>
-          <h1 className="pixel-font text-3xl text-red-500">REST IN PISS</h1>
-          <p className="text-sm opacity-80">
-            You dumped your m00nad the second you could. This chamber stays locked until you prove
-            otherwise.
-          </p>
-          <div className="text-xs opacity-60">
-            Tip: whisper to the cabal, or buy back if you want another shot.
-          </div>
+          <h1 className="pixel-font text-3xl text-red-500">{copy.title}</h1>
+          {renderCopyBody(copy.body)}
+          {renderPersonaCtas(copy)}
         </div>
       </div>
     );
+  };
 
-  const renderClaimedHeldPortal = () =>
-    renderShell(
+  const renderClaimedHeldPortal = () => {
+    const copy = getPersonaCopy({ persona: 'claimed_held' });
+    return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-3xl w-full space-y-6 scanline bg-black/45 border border-[var(--monad-purple)] rounded-3xl px-8 py-10">
           <div className="flex items-center justify-between">
@@ -847,6 +822,8 @@ export default function MiniAppPage() {
               <p className="text-xs opacity-70">Hold-mode group line</p>
             </div>
           </div>
+          <div className="text-center space-y-3">{renderCopyBody(copy.body)}</div>
+          {renderPersonaCtas(copy)}
           <div className="bg-black/50 border border-white/10 rounded-2xl p-4 space-y-3 text-left h-64 overflow-y-auto">
             <div>
               <p className="text-xs text-[var(--moss-green)]">oracle.m00n</p>
@@ -876,25 +853,192 @@ export default function MiniAppPage() {
         </div>
       </div>
     );
+  };
 
-  const renderClaimedBoughtMorePortal = () =>
-    renderShell(
+  const renderClaimedBoughtMorePortal = () => {
+    const copy = getPersonaCopy({ persona: 'claimed_bought_more' });
+    return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-3xl w-full space-y-6 text-center scanline bg-black/45 border border-white/20 rounded-3xl px-8 py-10">
           <div className="flex justify-center">
             <div className="w-48 h-48 rounded-full bg-gradient-to-br from-purple-200 via-pink-200 to-white blur-2xl opacity-70" />
           </div>
-          <h1 className="pixel-font text-3xl text-white">HEAVENLY ACCUMULATION</h1>
-          <p className="text-sm opacity-80">
-            You not only claimed—you kept buying. Enjoy the faux-angelic view while the cabal
-            decides your next ceremony.
-          </p>
-          <div className="text-xs opacity-60">
-            Solitaire mini-game arriving soon. Until then, bask in the neon ether.
-          </div>
+          <h1 className="pixel-font text-3xl text-white">{copy.title}</h1>
+          {renderCopyBody(copy.body)}
+          {renderPersonaCtas(copy)}
         </div>
       </div>
     );
+  };
+
+  const renderEligibleHolderPanel = () => {
+    if (!airdropData || !userData) {
+      return renderLockedOutPanel();
+    }
+    const copy = getPersonaCopy({ persona: 'eligible_holder' });
+    return renderShell(
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
+        <div className="max-w-3xl w-full space-y-8 scanline p-10 bg-black/50 rounded-lg border-2 border-[var(--monad-purple)]">
+          <div className="flex justify-center mb-2">
+            <NeonHaloLogo size={150} />
+          </div>
+          <h1 className="pixel-font text-2xl text-center glow-purple">{copy.title}</h1>
+          {renderCopyBody(copy.body)}
+          {renderPersonaCtas(copy)}
+
+          <div className="text-center space-y-4">
+            <p className="text-3xl font-bold glow-green">
+              {formatAmount(airdropData.amount!)} $m00n
+            </p>
+            <p className="text-lg">
+              {userData.displayName ? `${userData.displayName} ` : ''}
+              {userData.username ? `@${userData.username}` : `FID: ${userData.fid}`}
+            </p>
+          </div>
+
+          <div className={`${PANEL_CLASS} text-center`}>
+            <p className="pixel-font text-[11px] uppercase tracking-[0.5em] text-[var(--moss-green)] mb-4">
+              {claimCountdown.totalSeconds > 0 ? 'Claim unlocks in' : 'Claim window active'}
+            </p>
+            {claimCountdown.totalSeconds > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {countdownUnits.map((unit) => (
+                  <div
+                    key={unit.label}
+                    className="flex flex-col items-center justify-center rounded-xl border border-white/10 bg-black/30 py-3"
+                  >
+                    <span className="text-3xl font-mono glow-green">
+                      {formatCountdownValue(unit.value)}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-[0.4em] text-[var(--moss-green)]">
+                      {unit.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-[var(--moss-green)]">
+                Claim window is live — head to the portal to execute.
+              </p>
+            )}
+          </div>
+
+          <div className="flex justify-center mb-6">
+            <div
+              className="pixel-font text-[11px] uppercase tracking-[0.5em] px-8 py-3 rounded-full"
+              style={{
+                border: `2px solid ${replyGlow.color}`,
+                color: replyGlow.color,
+                boxShadow: `0 0 22px ${replyGlow.shadow}`,
+                background: 'rgba(0, 0, 0, 0.45)'
+              }}
+            >
+              {repliesCount} replies logged
+            </div>
+          </div>
+
+          <div className="mb-2">{renderSessionCard(userData?.fid, primaryAddress)}</div>
+          {dropAddress && dropAddress !== primaryAddress && (
+            <p className="text-xs opacity-70">
+              Allocation detected on{' '}
+              <span className="font-mono">{`${dropAddress.slice(0, 6)}…${dropAddress.slice(-4)}`}</span>
+              .
+            </p>
+          )}
+
+          {tier && engagementData?.isFollowing && (
+            <div
+              className={`mt-8 p-8 bg-purple-900/30 rounded-lg border ${
+                showLootReveal ? 'crt-flicker' : ''
+              }`}
+              style={{
+                borderColor: replyGlow.color,
+                boxShadow: `0 0 28px ${replyGlow.shadow}`
+              }}
+            >
+              <h3 className="pixel-font text-lg mb-3" style={{ color: replyGlow.color }}>
+                {tier.icon} {tier.title}
+              </h3>
+              <p className="text-sm mb-4 italic">{tier.flavorText}</p>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Tier: {tier.name}</span>
+                  <span>Replies: {repliesCount}</span>
+                </div>
+                <div className="w-full h-3 bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-[var(--monad-purple)] to-[var(--moss-green)] transition-all duration-1000"
+                    style={{ width: `${tier.progressPercentage}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-center mt-8">
+            <button
+              onClick={handleShare}
+              className="pixel-font px-6 py-2 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
+            >
+              SHARE CAST
+            </button>
+          </div>
+
+          {renderContractCard()}
+        </div>
+      </div>
+    );
+  };
+
+  const renderLockedOutPanel = () => {
+    const copy = getPersonaCopy({ persona: 'locked_out' });
+    return renderShell(
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
+        <div className="max-w-2xl w-full text-center space-y-6 scanline shake">
+          <div className="flex justify-center">
+            <NeonHaloLogo size={160} />
+          </div>
+
+          <h1 className="pixel-font text-2xl text-red-400">{copy.title}</h1>
+          {renderCopyBody(copy.body)}
+          {renderPersonaCtas(copy)}
+
+          {userData && (
+            <div className="text-sm text-left bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-6 space-y-3">
+              <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Session</p>
+              <p>FID: {userData.fid}</p>
+              <div className="flex items-center gap-3 font-mono text-base">
+                <span>
+                  Wallet:{' '}
+                  {primaryAddress
+                    ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}`
+                    : '—'}
+                </span>
+                {primaryAddress && (
+                  <button
+                    onClick={() => handleCopyWallet(primaryAddress)}
+                    className="pixel-font text-[10px] px-3 py-1 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
+                  >
+                    {copiedWallet ? 'COPIED' : 'COPY'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {dropAddress && dropAddress !== primaryAddress && (
+            <p className="text-xs opacity-70">
+              Drop checks were performed against{' '}
+              <span className="font-mono">{`${dropAddress.slice(0, 6)}…${dropAddress.slice(-4)}`}</span>
+              .
+            </p>
+          )}
+
+          <div className="w-full">{renderContractCard()}</div>
+        </div>
+      </div>
+    );
+  };
 
   const StickerRain = () => (
     <div className="sticker-rain" aria-hidden="true">
@@ -942,6 +1086,8 @@ export default function MiniAppPage() {
       { id: 'claimed_sold', label: 'Claimed + sold' },
       { id: 'claimed_held', label: 'Claimed + held' },
       { id: 'claimed_bought_more', label: 'Claimed + bought' },
+      { id: 'eligible_holder', label: 'Claim console' },
+      { id: 'locked_out', label: 'Lockout gate' },
       { id: 'lp_gate', label: 'No claim + LP' }
     ];
 
@@ -953,6 +1099,12 @@ export default function MiniAppPage() {
           </p>
           <p className="text-xs opacity-70">Preview each basket instantly</p>
         </div>
+        <button
+          onClick={handleOpenClaimSite}
+          className="w-full text-xs px-3 py-2 rounded-lg border border-[var(--moss-green)] text-[var(--moss-green)] hover:bg-[var(--moss-green)] hover:text-black transition-colors"
+        >
+          Open claim site
+        </button>
         <div className="grid grid-cols-1 gap-2">
           {portals.map((portal) => (
             <button
@@ -1145,15 +1297,6 @@ export default function MiniAppPage() {
     );
   }
 
-  if (userData) {
-    if (!isAdmin) {
-      return renderLockedForMaintenance();
-    }
-    if (adminPortalView === 'default') {
-      return renderAdminClaimPanel();
-    }
-  }
-
   if (isAdmin && adminPortalView !== 'default') {
     switch (adminPortalView) {
       case 'claimed_sold':
@@ -1163,179 +1306,34 @@ export default function MiniAppPage() {
       case 'claimed_bought_more':
         return renderClaimedBoughtMorePortal();
       case 'lp_gate':
-        if (isLpLoungeOpen && lpGateState.lpStatus === 'HAS_LP') {
-          return renderLpLoungePanel();
-        }
-        return renderLpGatePanel();
+        return isLpLoungeOpen && lpGateState.lpStatus === 'HAS_LP'
+          ? renderLpLoungePanel()
+          : renderLpGatePanel();
+      case 'eligible_holder':
+        return renderEligibleHolderPanel();
+      case 'locked_out':
+        return renderLockedOutPanel();
       default:
         break;
     }
   }
 
-  if (airdropData?.eligible) {
-    return renderShell(
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
-        <div className="max-w-3xl w-full space-y-8 scanline p-10 bg-black/50 rounded-lg border-2 border-[var(--monad-purple)]">
-          <div className="flex justify-center mb-2">
-            <NeonHaloLogo size={150} />
-          </div>
-
-          <h1 className="pixel-font text-2xl text-center glow-purple">WELCOME TO THE CABAL</h1>
-
-          <div className="text-center space-y-4">
-            <p className="text-3xl font-bold glow-green">
-              {formatAmount(airdropData.amount!)} $m00n
-            </p>
-
-            <p className="text-lg">
-              {userData.displayName ? `${userData.displayName} ` : ''}
-              {userData.username ? `@${userData.username}` : `FID: ${userData.fid}`}
-            </p>
-          </div>
-
-          <div className={`${PANEL_CLASS} text-center`}>
-            <p className="pixel-font text-[11px] uppercase tracking-[0.5em] text-[var(--moss-green)] mb-4">
-              {claimCountdown.totalSeconds > 0 ? 'Claim unlocks in' : 'Claim window active'}
-            </p>
-            {claimCountdown.totalSeconds > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                {countdownUnits.map((unit) => (
-                  <div
-                    key={unit.label}
-                    className="flex flex-col items-center justify-center rounded-xl border border-white/10 bg-black/30 py-3"
-                  >
-                    <span className="text-3xl font-mono glow-green">
-                      {formatCountdownValue(unit.value)}
-                    </span>
-                    <span className="text-[10px] uppercase tracking-[0.4em] text-[var(--moss-green)]">
-                      {unit.label}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-[var(--moss-green)]">
-                Claim window is live — head to the portal to execute.
-              </p>
-            )}
-          </div>
-
-          <div className="flex justify-center mb-6">
-            <div
-              className="pixel-font text-[11px] uppercase tracking-[0.5em] px-8 py-3 rounded-full"
-              style={{
-                border: `2px solid ${replyGlow.color}`,
-                color: replyGlow.color,
-                boxShadow: `0 0 22px ${replyGlow.shadow}`,
-                background: 'rgba(0, 0, 0, 0.45)'
-              }}
-            >
-              {repliesCount} replies logged
-            </div>
-          </div>
-
-          <div className="mb-2">{renderSessionCard(userData.fid, primaryAddress)}</div>
-          {dropAddress && dropAddress !== primaryAddress && (
-            <p className="text-xs opacity-70">
-              Allocation detected on{' '}
-              <span className="font-mono">{`${dropAddress.slice(0, 6)}…${dropAddress.slice(-4)}`}</span>
-              .
-            </p>
-          )}
-
-          {tier && engagementData?.isFollowing && (
-            <div
-              className={`mt-8 p-8 bg-purple-900/30 rounded-lg border ${
-                showLootReveal ? 'crt-flicker' : ''
-              }`}
-              style={{
-                borderColor: replyGlow.color,
-                boxShadow: `0 0 28px ${replyGlow.shadow}`
-              }}
-            >
-              <h3 className="pixel-font text-lg mb-3" style={{ color: replyGlow.color }}>
-                {tier.icon} {tier.title}
-              </h3>
-              <p className="text-sm mb-4 italic">{tier.flavorText}</p>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Tier: {tier.name}</span>
-                  <span>Replies: {repliesCount}</span>
-                </div>
-                <div className="w-full h-3 bg-gray-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-[var(--monad-purple)] to-[var(--moss-green)] transition-all duration-1000"
-                    style={{ width: `${tier.progressPercentage}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex justify-center mt-8">
-            <button
-              onClick={handleShare}
-              className="pixel-font px-6 py-2 bg-[var(--monad-purple)] text-white rounded hover:bg-opacity-90 transition-all"
-            >
-              SHARE CAST
-            </button>
-          </div>
-
-          {renderContractCard()}
-        </div>
-      </div>
-    );
+  switch (effectivePersona) {
+    case 'claimed_sold':
+      return renderClaimedSoldPortal();
+    case 'claimed_held':
+      return renderClaimedHeldPortal();
+    case 'claimed_bought_more':
+      return renderClaimedBoughtMorePortal();
+    case 'lp_gate':
+      if (isLpLoungeOpen && lpGateState.lpStatus === 'HAS_LP') {
+        return renderLpLoungePanel();
+      }
+      return renderLpGatePanel();
+    case 'eligible_holder':
+      return renderEligibleHolderPanel();
+    case 'locked_out':
+    default:
+      return renderLockedOutPanel();
   }
-
-  if (userPersona === 'lp_gate') {
-    if (isLpLoungeOpen && lpGateState.lpStatus === 'HAS_LP') {
-      return renderLpLoungePanel();
-    }
-    return renderLpGatePanel();
-  }
-
-  return renderShell(
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
-      <div className="max-w-2xl w-full text-center space-y-6 scanline shake">
-        <div className="flex justify-center">
-          <NeonHaloLogo size={160} />
-        </div>
-
-        <h1 className="pixel-font text-2xl text-red-400">ACCESS DENIED</h1>
-
-        <p className="text-lg opacity-70">
-          You don&apos;t have to go home, but you can&apos;t stay here.
-        </p>
-
-        <div className="text-sm text-left bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-6 space-y-3">
-          <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest">Session</p>
-          <p>FID: {userData.fid}</p>
-          <div className="flex items-center gap-3 font-mono text-base">
-            <span>
-              Wallet:{' '}
-              {primaryAddress ? `${primaryAddress.slice(0, 6)}…${primaryAddress.slice(-4)}` : '—'}
-            </span>
-            {primaryAddress && (
-              <button
-                onClick={() => handleCopyWallet(primaryAddress)}
-                className="pixel-font text-[10px] px-3 py-1 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
-              >
-                {copiedWallet ? 'COPIED' : 'COPY'}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {dropAddress && dropAddress !== primaryAddress && (
-          <p className="text-xs opacity-70">
-            Drop checks were performed against{' '}
-            <span className="font-mono">{`${dropAddress.slice(0, 6)}…${dropAddress.slice(-4)}`}</span>
-            .
-          </p>
-        )}
-
-        <div className="w-full">{renderContractCard()}</div>
-      </div>
-    </div>
-  );
 }
