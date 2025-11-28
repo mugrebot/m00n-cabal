@@ -56,6 +56,10 @@ const STICKER_COLORS = ['#6ce5b1', '#8c54ff', '#ff9b54', '#5ea3ff', '#f7e6ff'];
 const HOLDER_CHAT_URL =
   process.env.NEXT_PUBLIC_HOLDER_CHAT_URL ?? 'https://warpcast.com/~/channel/m00n';
 const HEAVEN_MODE_URL = process.env.NEXT_PUBLIC_HEAVEN_URL ?? 'https://warpcast.com/~/channel/m00n';
+const BACKSTOP_PRESET = {
+  tickLower: -106600,
+  tickUpper: -104600
+};
 const truncateAddress = (value?: string | null) =>
   value ? `${value.slice(0, 6)}…${value.slice(-4)}` : null;
 
@@ -134,6 +138,10 @@ export default function MiniAppPage() {
   const [timeUntilClaimMs, setTimeUntilClaimMs] = useState(() =>
     Math.max(CLAIM_UNLOCK_TIMESTAMP_MS - Date.now(), 0)
   );
+  const [isLpClaimModalOpen, setIsLpClaimModalOpen] = useState(false);
+  const [lpClaimAmount, setLpClaimAmount] = useState('');
+  const [isSubmittingLpClaim, setIsSubmittingLpClaim] = useState(false);
+  const [lpClaimError, setLpClaimError] = useState<string | null>(null);
 
   const formatAmount = (amount?: string | number) => {
     if (amount === undefined || amount === null) return '0';
@@ -480,6 +488,19 @@ export default function MiniAppPage() {
     }
   };
 
+  const normalizeHexValue = (value?: string | bigint | null): `0x${string}` => {
+    if (!value) return '0x0';
+    if (typeof value === 'string') {
+      if (value === '' || value === '0') return '0x0';
+      const normalized = value.startsWith('0x') ? value : `0x${BigInt(value).toString(16)}`;
+      return normalized as `0x${string}`;
+    }
+    return `0x${value.toString(16)}` as `0x${string}`;
+  };
+
+  const asHexAddress = (value: string): `0x${string}` =>
+    (value.startsWith('0x') ? value : `0x${value}`) as `0x${string}`;
+
   const openExternalUrl = async (url: string) => {
     try {
       await sdk.actions.openUrl({ url });
@@ -533,9 +554,98 @@ export default function MiniAppPage() {
     }
   };
 
+  const handleOpenLpClaimModal = () => {
+    if (!primaryAddress) {
+      void handleSignIn();
+      return;
+    }
+    setLpClaimError(null);
+    setIsLpClaimModalOpen(true);
+  };
+
+  const handleCloseLpClaimModal = () => {
+    if (isSubmittingLpClaim) return;
+    setIsLpClaimModalOpen(false);
+    setLpClaimAmount('');
+    setLpClaimError(null);
+  };
+
+  const handleSubmitLpClaim = async () => {
+    if (!primaryAddress) {
+      await handleSignIn();
+      return;
+    }
+
+    const sanitizedAmount = lpClaimAmount.trim();
+    if (!sanitizedAmount) {
+      setLpClaimError('Enter an amount to deposit.');
+      return;
+    }
+
+    setIsSubmittingLpClaim(true);
+    setLpClaimError(null);
+
+    try {
+      const response = await fetch('/api/lp-claim', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          address: primaryAddress,
+          amount: sanitizedAmount,
+          preset: 'backstop'
+        })
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null);
+        throw new Error(errorBody?.error ?? 'lp_claim_failed');
+      }
+
+      const payload = (await response.json()) as {
+        to: string;
+        data: string;
+        value?: string;
+      };
+
+      const provider =
+        (await sdk.wallet.getEthereumProvider().catch(() => undefined)) ?? sdk.wallet.ethProvider;
+
+      if (!provider || typeof provider.request !== 'function') {
+        throw new Error('wallet_unavailable');
+      }
+
+      await provider.request({
+        method: 'eth_sendTransaction',
+        params: [
+          {
+            from: asHexAddress(primaryAddress),
+            to: asHexAddress(payload.to),
+            data: payload.data as `0x${string}`,
+            value: normalizeHexValue(payload.value)
+          }
+        ]
+      });
+
+      setIsLpClaimModalOpen(false);
+      setLpClaimAmount('');
+      setLpClaimError(null);
+      setTimeout(() => {
+        setLpRefreshNonce((prev) => prev + 1);
+        setIsLpLoungeOpen(true);
+      }, 2000);
+    } catch (err) {
+      console.error('LP claim failed', err);
+      setLpClaimError(err instanceof Error ? err.message : 'lp_claim_failed');
+    } finally {
+      setIsSubmittingLpClaim(false);
+    }
+  };
+
   const personaActionHandlers: Record<PersonaActionId, (() => void) | undefined> = {
     lp_connect_wallet: handleSignIn,
-    lp_become_lp: handleOpenLpSite,
+    lp_become_lp: handleOpenLpClaimModal,
     lp_open_docs: handleOpenLpDocs,
     lp_try_again: handleRetryLpStatus,
     lp_enter_lounge: handleEnterLpLounge,
@@ -592,6 +702,75 @@ export default function MiniAppPage() {
       </div>
     );
   };
+
+  const renderLpClaimModal = () => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onClick={() => {
+          if (!isSubmittingLpClaim) {
+            handleCloseLpClaimModal();
+          }
+        }}
+      />
+      <div className="relative w-full max-w-md space-y-5 rounded-3xl border border-[var(--monad-purple)] bg-black/80 p-6 text-left shadow-2xl">
+        <div className="flex items-center justify-between">
+          <h2 className="pixel-font text-xl text-white">Claim LP Backstop</h2>
+          <button
+            onClick={handleCloseLpClaimModal}
+            className="text-sm text-white/60 hover:text-white transition-colors"
+            disabled={isSubmittingLpClaim}
+          >
+            CLOSE
+          </button>
+        </div>
+        <p className="text-sm opacity-80">
+          Deploy liquidity into the crash-backstop band ({BACKSTOP_PRESET.tickLower} →{' '}
+          {BACKSTOP_PRESET.tickUpper}) on the m00n / W-MON pool. Amount is denominated in MON /
+          W-MON.
+        </p>
+        <div className="space-y-2">
+          <label className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">
+            Amount (MON)
+          </label>
+          <input
+            type="number"
+            min="0"
+            step="0.0001"
+            value={lpClaimAmount}
+            onChange={(event) => setLpClaimAmount(event.target.value)}
+            placeholder="1.0"
+            className="w-full rounded-xl border border-white/15 bg-black/40 px-4 py-3 font-mono text-sm text-white focus:border-[var(--monad-purple)] focus:outline-none"
+            disabled={isSubmittingLpClaim}
+          />
+        </div>
+        {lpClaimError && (
+          <div className="rounded-lg border border-red-400/50 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            {lpClaimError}
+          </div>
+        )}
+        <div className="flex gap-3">
+          <button
+            onClick={handleSubmitLpClaim}
+            disabled={isSubmittingLpClaim || !lpClaimAmount.trim()}
+            className="flex-1 rounded-xl bg-[var(--monad-purple)] px-4 py-3 text-sm font-semibold text-white transition-all disabled:opacity-40"
+          >
+            {isSubmittingLpClaim ? 'CLAIMING…' : 'CLAIM LP'}
+          </button>
+          <button
+            onClick={handleCloseLpClaimModal}
+            disabled={isSubmittingLpClaim}
+            className="flex-1 rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
+          >
+            Cancel
+          </button>
+        </div>
+        <p className="text-xs opacity-60">
+          Transaction executes via the Farcaster mini wallet. Unlocks the LP lounge once confirmed.
+        </p>
+      </div>
+    </div>
+  );
 
   const repliesCount = airdropData?.replyCount ?? engagementData?.replyCount ?? 0;
   const tier = repliesCount ? getTierByReplyCount(repliesCount) : null;
@@ -1130,6 +1309,7 @@ export default function MiniAppPage() {
       <BackgroundOrbs />
       <StickerRain />
       {content}
+      {isLpClaimModalOpen && renderLpClaimModal()}
     </div>
   );
 

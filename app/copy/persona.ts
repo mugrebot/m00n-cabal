@@ -62,7 +62,7 @@ const LP_COPY: Record<LpStatus, PersonaCopy> = {
       "You've touched m00nad, but you're not in the m00n / W-MON pool.",
       'Become an LP to join the inner cabal.'
     ],
-    primaryCta: { label: 'BECOME LP', actionId: 'lp_become_lp' },
+    primaryCta: { label: 'CLAIM LP', actionId: 'lp_become_lp' },
     secondaryCta: { label: 'WHY LP MATTERS?', actionId: 'lp_open_docs' }
   },
   HAS_LP: {
