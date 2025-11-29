@@ -11,7 +11,9 @@ import {
 import Image from 'next/image';
 import sdk from '@farcaster/miniapp-sdk';
 import { encodeFunctionData, erc20Abi, formatUnits, parseUnits } from 'viem';
-import { WagmiConfig, createConfig, http } from 'wagmi';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { WagmiConfig, createConfig, http, useSendCalls } from 'wagmi';
+import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector';
 import { getTierByReplyCount } from '@/app/lib/tiers';
 import { getPersonaCopy, type PersonaActionId, type LpStatus } from '@/app/copy/persona';
 
@@ -61,7 +63,6 @@ const HOLDER_CHAT_URL =
   process.env.NEXT_PUBLIC_HOLDER_CHAT_URL ?? 'https://warpcast.com/~/channel/m00n';
 const HEAVEN_MODE_URL = process.env.NEXT_PUBLIC_HEAVEN_URL ?? 'https://warpcast.com/~/channel/m00n';
 const CHAIN_CAIP = 'eip155:143';
-const MONAD_CHAIN_ID_HEX = '0x8f'; // 143
 const MON_NATIVE_CAIP = `${CHAIN_CAIP}/native`;
 const WMON_CAIP = `${CHAIN_CAIP}/erc20:${WMON_ADDRESS.toLowerCase()}`;
 const MOON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_ADDRESS.toLowerCase()}`;
@@ -138,10 +139,13 @@ const monadChain = {
 
 const wagmiConfig = createConfig({
   chains: [monadChain],
+  connectors: [miniAppConnector()],
   transports: {
     [monadChain.id]: http(monadChain.rpcUrls.default.http[0]!)
   }
 });
+
+const queryClient = new QueryClient();
 
 function MiniAppPageInner() {
   const [isLoading, setIsLoading] = useState(true);
@@ -180,6 +184,8 @@ function MiniAppPageInner() {
   const [fundingRefreshNonce, setFundingRefreshNonce] = useState(0);
   const [isApprovingMoon, setIsApprovingMoon] = useState(false);
   const [swapInFlight, setSwapInFlight] = useState<'wmon' | 'moon' | null>(null);
+
+  const { sendCalls } = useSendCalls();
   const [tokenDecimals, setTokenDecimals] = useState({ wmon: 18, moon: 18 });
 
   const formatAmount = (amount?: string | number) => {
@@ -528,16 +534,6 @@ function MiniAppPageInner() {
     }
   };
 
-  const normalizeHexValue = (value?: string | bigint | null): `0x${string}` => {
-    if (!value) return '0x0';
-    if (typeof value === 'string') {
-      if (value === '' || value === '0') return '0x0';
-      const normalized = value.startsWith('0x') ? value : `0x${BigInt(value).toString(16)}`;
-      return normalized as `0x${string}`;
-    }
-    return `0x${value.toString(16)}` as `0x${string}`;
-  };
-
   const asHexAddress = (value: string): `0x${string}` =>
     (value.startsWith('0x') ? value : `0x${value}`) as `0x${string}`;
 
@@ -791,28 +787,6 @@ function MiniAppPageInner() {
     setLpClaimError(null);
 
     try {
-      const provider = await getMiniWalletProvider();
-      if (!provider || typeof provider.request !== 'function') {
-        throw new Error('wallet_unavailable');
-      }
-
-      // Detect wallet chain to avoid accidentally sending LP txs on Base
-      try {
-        const chainIdResult = (await (
-          provider.request as (args: { method: string; params?: unknown }) => Promise<unknown>
-        )({ method: 'eth_chainId' })) as string | undefined;
-
-        if (chainIdResult && chainIdResult.toLowerCase() !== MONAD_CHAIN_ID_HEX) {
-          setLpClaimError(
-            `Warp wallet is on chain ${chainIdResult}, but LP ritual must run on Monad (chainId 143). Switch networks in your wallet and retry.`
-          );
-          setIsSubmittingLpClaim(false);
-          return;
-        }
-      } catch (chainError) {
-        console.warn('Failed to read wallet chainId; continuing anyway', chainError);
-      }
-
       const response = await fetch('/api/lp-claim', {
         method: 'POST',
         headers: {
@@ -839,7 +813,7 @@ function MiniAppPageInner() {
       const calls: Array<{
         to: `0x${string}`;
         data: `0x${string}`;
-        value?: `0x${string}`;
+        value?: bigint;
       }> = [];
 
       if (needsApproval) {
@@ -857,54 +831,21 @@ function MiniAppPageInner() {
         calls.push({
           to: asHexAddress(TOKEN_ADDRESS),
           data: approveData,
-          value: '0x0'
+          value: BigInt(0)
         });
       }
+
+      const rawValue = (payload.value ?? '').trim();
+      const callValue =
+        rawValue && rawValue !== '0' && rawValue !== '0x0' ? BigInt(rawValue) : BigInt(0);
 
       calls.push({
         to: asHexAddress(payload.to),
         data: payload.data as `0x${string}`,
-        value: normalizeHexValue(payload.value)
+        value: callValue > BigInt(0) ? callValue : undefined
       });
 
-      // Prefer batched approve + mint via wallet_sendCalls (EIP-5792) on the Warp wallet
-      try {
-        await (
-          provider.request as (args: { method: string; params?: unknown }) => Promise<unknown>
-        )({
-          method: 'wallet_sendCalls',
-          params: [{ calls }]
-        });
-      } catch (batchError) {
-        console.warn('wallet_sendCalls failed, falling back to sequential txs', batchError);
-
-        // Fallback: sequential approve then mint
-        if (needsApproval) {
-          await provider.request({
-            method: 'eth_sendTransaction',
-            params: [
-              {
-                from: asHexAddress(miniWalletAddress),
-                to: asHexAddress(TOKEN_ADDRESS),
-                data: calls[0].data,
-                value: '0x0'
-              }
-            ]
-          });
-        }
-
-        await provider.request({
-          method: 'eth_sendTransaction',
-          params: [
-            {
-              from: asHexAddress(miniWalletAddress),
-              to: asHexAddress(payload.to),
-              data: payload.data as `0x${string}`,
-              value: normalizeHexValue(payload.value)
-            }
-          ]
-        });
-      }
+      await sendCalls({ calls });
 
       setIsLpClaimModalOpen(false);
       setLpClaimAmount('');
@@ -936,40 +877,17 @@ function MiniAppPageInner() {
     setIsApprovingMoon(true);
     setLpClaimError(null);
     try {
-      const provider = await getMiniWalletProvider();
-      if (!provider || typeof provider.request !== 'function') {
-        throw new Error('wallet_unavailable');
-      }
-
-      // Ensure approvals run on Monad, not Base
-      try {
-        const chainIdResult = (await (
-          provider.request as (args: { method: string; params?: unknown }) => Promise<unknown>
-        )({ method: 'eth_chainId' })) as string | undefined;
-
-        if (chainIdResult && chainIdResult.toLowerCase() !== MONAD_CHAIN_ID_HEX) {
-          setLpClaimError(
-            `Warp wallet is on chain ${chainIdResult}, but approvals must be on Monad (chainId 143). Switch networks in your wallet and retry.`
-          );
-          return;
-        }
-      } catch (chainError) {
-        console.warn('Failed to read wallet chainId before approve; continuing anyway', chainError);
-      }
-
       const data = encodeFunctionData({
         abi: erc20Abi,
         functionName: 'approve',
         args: [asHexAddress(POSITION_MANAGER_ADDRESS), amountToApprove]
       });
-      await provider.request({
-        method: 'eth_sendTransaction',
-        params: [
+      await sendCalls({
+        calls: [
           {
-            from: asHexAddress(miniWalletAddress),
             to: asHexAddress(TOKEN_ADDRESS),
             data,
-            value: '0x0'
+            value: BigInt(0)
           }
         ]
       });
@@ -2078,8 +1996,10 @@ function MiniAppPageInner() {
 
 export default function MiniAppPage() {
   return (
-    <WagmiConfig config={wagmiConfig}>
-      <MiniAppPageInner />
-    </WagmiConfig>
+    <QueryClientProvider client={queryClient}>
+      <WagmiConfig config={wagmiConfig}>
+        <MiniAppPageInner />
+      </WagmiConfig>
+    </QueryClientProvider>
   );
 }
