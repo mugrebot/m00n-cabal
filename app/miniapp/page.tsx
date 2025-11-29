@@ -12,7 +12,7 @@ import Image from 'next/image';
 import sdk from '@farcaster/miniapp-sdk';
 import { encodeFunctionData, erc20Abi, formatUnits, parseUnits } from 'viem';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { WagmiConfig, createConfig, http, useSendCalls } from 'wagmi';
+import { WagmiConfig, createConfig, http } from 'wagmi';
 import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector';
 import { getTierByReplyCount } from '@/app/lib/tiers';
 import { getPersonaCopy, type PersonaActionId, type LpStatus } from '@/app/copy/persona';
@@ -202,9 +202,37 @@ function MiniAppPageInner() {
   const [fundingRefreshNonce, setFundingRefreshNonce] = useState(0);
   const [isApprovingMoon, setIsApprovingMoon] = useState(false);
   const [swapInFlight, setSwapInFlight] = useState<'wmon' | 'moon' | null>(null);
-
-  const { sendCalls } = useSendCalls();
   const [tokenDecimals, setTokenDecimals] = useState({ wmon: 18, moon: 18 });
+
+  const sendCallsViaProvider = useCallback(
+    async ({ calls }: { calls: { to: `0x${string}`; data: `0x${string}`; value?: bigint }[] }) => {
+      const provider = await getMiniWalletProvider();
+      if (!provider || typeof provider.request !== 'function' || !miniWalletAddress) {
+        throw new Error('wallet_provider_unavailable');
+      }
+
+      const request = provider.request.bind(provider) as <T>(args: {
+        method: string;
+        params?: unknown[];
+      }) => Promise<T>;
+
+      for (const call of calls) {
+        const tx = {
+          from: miniWalletAddress,
+          to: call.to,
+          data: call.data,
+          value:
+            call.value && call.value > BigInt(0) ? `0x${call.value.toString(16)}` : ('0x0' as const)
+        };
+        // Sequentially send each transaction; Monad does not yet support wallet_sendCalls.
+        await request({
+          method: 'eth_sendTransaction',
+          params: [tx]
+        });
+      }
+    },
+    [getMiniWalletProvider, miniWalletAddress]
+  );
 
   const formatAmount = (amount?: string | number) => {
     if (amount === undefined || amount === null) return '0';
@@ -1006,7 +1034,7 @@ function MiniAppPageInner() {
         value: callValue > BigInt(0) ? callValue : undefined
       });
 
-      await sendCalls({ calls });
+      await sendCallsViaProvider({ calls });
 
       setIsLpClaimModalOpen(false);
       setLpClaimAmount('');
@@ -1049,7 +1077,7 @@ function MiniAppPageInner() {
         functionName: 'approve',
         args: [asHexAddress(POSITION_MANAGER_ADDRESS), amountToApprove]
       });
-      await sendCalls({
+      await sendCallsViaProvider({
         calls: [
           {
             to: asHexAddress(TOKEN_ADDRESS),
@@ -1330,7 +1358,7 @@ function MiniAppPageInner() {
                       functionName: 'approve',
                       args: [asHexAddress(POSITION_MANAGER_ADDRESS), amountToApprove]
                     });
-                    await sendCalls({
+                    await sendCallsViaProvider({
                       calls: [
                         {
                           to: asHexAddress(WMON_ADDRESS),
