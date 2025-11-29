@@ -182,15 +182,23 @@ export async function POST(request: NextRequest) {
       currentTick
     );
 
-    // Treat the user input as WMON (token1) and derive the required m00n (token0)
-    const position = Position.fromAmount1({
+    // Follow the Uniswap v4 docs pattern: build a Position from explicit
+    // token0/token1 desired amounts instead of the token1-only helper.
+    // We treat the user's input as the WMON (token1) cap, and provision an
+    // equal notional amount of m00n (token0). The SDK will compute the exact
+    // mintAmounts and any leftover tokens simply stay in the wallet.
+    const amount1Desired = amountWei.toString(); // WMON input
+    const amount0Desired = amountWei.toString(); // symmetric m00n budget
+
+    const position = Position.fromAmounts({
       pool,
       tickLower,
       tickUpper,
-      amount1: amountWei.toString()
+      amount0: amount0Desired,
+      amount1: amount1Desired,
+      useFullPrecision: true
     });
 
-    // Let the SDK compute the precise mint amounts implied by this band + WMON input.
     const currentBlock = await publicClient.getBlock();
     const currentTimestamp = Number(currentBlock.timestamp);
     const deadlineSeconds = currentTimestamp + DEADLINE_SECONDS;
