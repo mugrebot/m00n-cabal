@@ -44,6 +44,29 @@ const monadChainId =
   Number.isFinite(envChainId) && envChainId > 0 ? envChainId : DEFAULT_MONAD_CHAIN_ID;
 const monadRpcUrl = (process.env.MONAD_RPC_URL ?? '').trim() || DEFAULT_MONAD_RPC_URL;
 
+// Monkey-patch Position.mintAmountsWithSlippage to clamp any negative max amounts to zero.
+// This keeps the helper safe in edge bands (e.g. position entirely in token1) while
+// preserving the SDK's integer math and overall semantics.
+try {
+  const proto = (Position as unknown as { prototype?: { mintAmountsWithSlippage?: unknown } })
+    .prototype;
+  if (proto && typeof proto.mintAmountsWithSlippage === 'function') {
+    const original = proto.mintAmountsWithSlippage.bind(proto);
+    proto.mintAmountsWithSlippage = function patchedMintAmountsWithSlippage(
+      this: unknown,
+      slippage: Percent
+    ) {
+      const result = original.call(this, slippage) as { amount0: JSBI; amount1: JSBI };
+      const zero = JSBI.BigInt(0);
+      const safeAmount0 = JSBI.greaterThanOrEqual(result.amount0, zero) ? result.amount0 : zero;
+      const safeAmount1 = JSBI.greaterThanOrEqual(result.amount1, zero) ? result.amount1 : zero;
+      return { amount0: safeAmount0, amount1: safeAmount1 };
+    };
+  }
+} catch (patchError) {
+  console.error('Failed to patch Position.mintAmountsWithSlippage', patchError);
+}
+
 const monadChain = defineChain({
   id: monadChainId,
   name: 'Monad',
