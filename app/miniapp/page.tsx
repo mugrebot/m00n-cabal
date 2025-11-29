@@ -1007,6 +1007,12 @@ export default function MiniAppPage() {
         ? 'CLAIMING…'
         : 'CLAIM LP'
       : 'CONNECT WALLET';
+    const approvalDecimals = Number.isFinite(tokenDecimals.moon) ? tokenDecimals.moon : 18;
+    const approvalFallbackWei = parseUnits('10', approvalDecimals);
+    const approvalAmountWei =
+      desiredAmountWei && desiredAmountWei > BigInt(0) ? desiredAmountWei : approvalFallbackWei;
+    const approvalAmountDisplay = formatTokenAmount(approvalAmountWei, approvalDecimals, 6);
+
     const primaryHandler = walletReady ? handleSubmitLpClaim : handleSignIn;
     const primaryDisabled =
       (!walletReady && isSubmittingLpClaim) ||
@@ -1114,11 +1120,17 @@ export default function MiniAppPage() {
                 }
                 className="w-full rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
               >
-                {isApprovingMoon ? 'APPROVING…' : 'APPROVE m00n'}
+                {isApprovingMoon ? 'APPROVING…' : `APPROVE ${approvalAmountDisplay} m00n`}
               </button>
               {!hasSufficientAllowance && walletReady && (
                 <p className="text-xs text-red-300">
                   Approval lets the position manager pull your m00n just once.
+                </p>
+              )}
+              {walletReady && (
+                <p className="text-xs text-white/60">
+                  Wallet prompt will approve up to {approvalAmountDisplay} m00n (falls back to 10 if
+                  no amount is entered).
                 </p>
               )}
             </div>
