@@ -941,6 +941,22 @@ function MiniAppPageInner() {
         throw new Error('wallet_unavailable');
       }
 
+      // Ensure approvals run on Monad, not Base
+      try {
+        const chainIdResult = (await (
+          provider.request as (args: { method: string; params?: unknown }) => Promise<unknown>
+        )({ method: 'eth_chainId' })) as string | undefined;
+
+        if (chainIdResult && chainIdResult.toLowerCase() !== MONAD_CHAIN_ID_HEX) {
+          setLpClaimError(
+            `Warp wallet is on chain ${chainIdResult}, but approvals must be on Monad (chainId 143). Switch networks in your wallet and retry.`
+          );
+          return;
+        }
+      } catch (chainError) {
+        console.warn('Failed to read wallet chainId before approve; continuing anyway', chainError);
+      }
+
       const data = encodeFunctionData({
         abi: erc20Abi,
         functionName: 'approve',
