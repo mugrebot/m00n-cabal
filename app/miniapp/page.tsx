@@ -147,6 +147,23 @@ const wagmiConfig = createConfig({
 
 const queryClient = new QueryClient();
 
+const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3' as const;
+
+const permit2Abi = [
+  {
+    type: 'function',
+    name: 'approve',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint160' },
+      { name: 'expiration', type: 'uint48' }
+    ],
+    outputs: []
+  }
+] as const;
+
 function MiniAppPageInner() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSdkReady, setIsSdkReady] = useState(false);
@@ -891,6 +908,50 @@ function MiniAppPageInner() {
         data: `0x${string}`;
         value?: bigint;
       }> = [];
+
+      // Refresh Permit2 allowances for PositionManager to avoid AllowanceExpired
+      // reverts, even if ERC20 allowances look fine. We set per-band caps equal
+      // to the required amounts and choose a far-future expiration.
+      const nowSec = Math.floor(Date.now() / 1000);
+      const permitExpiration = BigInt(nowSec + 60 * 60 * 24 * 30); // ~30 days
+
+      if (requiredWmonWei > BigInt(0)) {
+        const permitWmonData = encodeFunctionData({
+          abi: permit2Abi,
+          functionName: 'approve',
+          args: [
+            asHexAddress(WMON_ADDRESS),
+            asHexAddress(POSITION_MANAGER_ADDRESS),
+            requiredWmonWei,
+            permitExpiration
+          ]
+        });
+
+        calls.push({
+          to: asHexAddress(PERMIT2_ADDRESS),
+          data: permitWmonData,
+          value: BigInt(0)
+        });
+      }
+
+      if (requiredMoonWei > BigInt(0)) {
+        const permitMoonData = encodeFunctionData({
+          abi: permit2Abi,
+          functionName: 'approve',
+          args: [
+            asHexAddress(TOKEN_ADDRESS),
+            asHexAddress(POSITION_MANAGER_ADDRESS),
+            requiredMoonWei,
+            permitExpiration
+          ]
+        });
+
+        calls.push({
+          to: asHexAddress(PERMIT2_ADDRESS),
+          data: permitMoonData,
+          value: BigInt(0)
+        });
+      }
 
       if (needsWmonApproval) {
         const approveWmonData = encodeFunctionData({
