@@ -32,8 +32,8 @@ const TICK_SIGN_SHIFT = BigInt(23);
 const UINT24_SHIFT = BigInt(24);
 const SQRT_PRICE_MASK = (ONE << Q96_SHIFT) - ONE;
 const UINT24_MASK = (ONE << UINT24_SHIFT) - ONE;
-const BACKSTOP_WIDTH = 2_000;
-const BACKSTOP_OFFSET = 2_000;
+const BACKSTOP_TICK_LOWER = -106_600;
+const BACKSTOP_TICK_UPPER = -104_600;
 const DEFAULT_SLIPPAGE_BPS = BigInt(50); // 0.5%
 const DEADLINE_SECONDS = 10 * 60; // 10 minutes
 
@@ -177,9 +177,8 @@ export async function POST(request: NextRequest) {
     }
 
     const slot0 = decodeSlot0(slot0Word);
-    const tickUpperTarget = slot0.tick - BACKSTOP_OFFSET;
-    const tickUpper = snapToSpacing(tickUpperTarget);
-    const tickLower = tickUpper - BACKSTOP_WIDTH;
+    const tickLower = snapToSpacing(BACKSTOP_TICK_LOWER);
+    const tickUpper = snapToSpacing(BACKSTOP_TICK_UPPER);
 
     if (tickUpper <= tickLower) {
       throw new Error('invalid_tick_configuration');
