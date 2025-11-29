@@ -2,7 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import JSBI from 'jsbi';
 import { Token, Percent } from '@uniswap/sdk-core';
 import { Pool, Position, V4PositionManager } from '@uniswap/v4-sdk';
-import { createPublicClient, http, parseUnits, isAddress, defineChain, type Hex } from 'viem';
+import {
+  createPublicClient,
+  http,
+  parseUnits,
+  isAddress,
+  defineChain,
+  keccak256,
+  concatHex,
+  padHex,
+  toHex,
+  type Hex
+} from 'viem';
 
 const POSITION_MANAGER_ADDRESS = '0x5b7eC4a94fF9beDb700fb82aB09d5846972F4016';
 const POOL_MANAGER_ADDRESS = '0x188d586Ddcf52439676Ca21A244753fA19F9Ea8e';
@@ -13,6 +24,14 @@ const FEE = 8_388_608;
 const TICK_SPACING = 200;
 const DEFAULT_MONAD_CHAIN_ID = 143;
 const DEFAULT_MONAD_RPC_URL = 'https://rpc.monad.xyz';
+const POOLS_SLOT = padHex(toHex(BigInt(6)), { size: 32 });
+const LIQUIDITY_OFFSET = BigInt(3);
+const ONE = BigInt(1);
+const Q96_SHIFT = BigInt(160);
+const TICK_SIGN_SHIFT = BigInt(23);
+const UINT24_SHIFT = BigInt(24);
+const SQRT_PRICE_MASK = (ONE << Q96_SHIFT) - ONE;
+const UINT24_MASK = (ONE << UINT24_SHIFT) - ONE;
 const BACKSTOP_PRESET = {
   tickLower: -106_600,
   tickUpper: -104_600
@@ -44,22 +63,10 @@ const publicClient = createPublicClient({
 const poolManagerAbi = [
   {
     type: 'function',
-    name: 'getSlot0',
+    name: 'extsload',
     stateMutability: 'view',
-    inputs: [{ name: 'poolId', type: 'bytes32' }],
-    outputs: [
-      { name: 'sqrtPriceX96', type: 'uint160' },
-      { name: 'tick', type: 'int24' },
-      { name: 'protocolFee', type: 'uint24' },
-      { name: 'lpFee', type: 'uint24' }
-    ]
-  },
-  {
-    type: 'function',
-    name: 'getLiquidity',
-    stateMutability: 'view',
-    inputs: [{ name: 'poolId', type: 'bytes32' }],
-    outputs: [{ name: 'liquidity', type: 'uint128' }]
+    inputs: [{ name: 'slot', type: 'bytes32' }],
+    outputs: [{ name: 'value', type: 'bytes32' }]
   }
 ] as const;
 
@@ -70,6 +77,27 @@ function normalizeAddress(value: string) {
 function buildError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
+
+const getPoolStateSlot = (poolId: Hex) => keccak256(concatHex([poolId, POOLS_SLOT]));
+
+const addSlotOffset = (slot: Hex, offset: bigint) =>
+  padHex(toHex(BigInt(slot) + offset), { size: 32 });
+
+const decodeSlot0 = (slotWord: bigint) => {
+  const sqrtPriceX96 = slotWord & SQRT_PRICE_MASK;
+  let tick = (slotWord >> Q96_SHIFT) & UINT24_MASK;
+  if (tick >= ONE << TICK_SIGN_SHIFT) {
+    tick -= ONE << UINT24_SHIFT;
+  }
+  const protocolFee = Number((slotWord >> (Q96_SHIFT + UINT24_SHIFT)) & UINT24_MASK);
+  const lpFee = Number((slotWord >> (Q96_SHIFT + UINT24_SHIFT + UINT24_SHIFT)) & UINT24_MASK);
+  return {
+    sqrtPriceX96,
+    tick: Number(tick),
+    protocolFee,
+    lpFee
+  };
+};
 
 export async function POST(request: NextRequest) {
   let body: { address?: string; amount?: string; preset?: string };
@@ -129,23 +157,27 @@ export async function POST(request: NextRequest) {
     );
     const poolIdHex = poolId as Hex;
 
-    const [slot0Result, liquidity] = await Promise.all([
-      publicClient.readContract({
-        address: POOL_MANAGER_ADDRESS,
-        abi: poolManagerAbi,
-        functionName: 'getSlot0',
-        args: [poolIdHex]
-      }),
-      publicClient.readContract({
-        address: POOL_MANAGER_ADDRESS,
-        abi: poolManagerAbi,
-        functionName: 'getLiquidity',
-        args: [poolIdHex]
-      })
-    ]);
+    const poolStateSlot = getPoolStateSlot(poolIdHex);
+    const slot0WordHex = await publicClient.readContract({
+      address: POOL_MANAGER_ADDRESS,
+      abi: poolManagerAbi,
+      functionName: 'extsload',
+      args: [poolStateSlot]
+    });
+    const slot0Word = BigInt(slot0WordHex);
+    if (slot0Word === BigInt(0)) {
+      throw new Error('pool_uninitialized');
+    }
 
-    const [sqrtPriceX96, tick] = slot0Result as [bigint, number, number, number];
-    const poolLiquidity = liquidity as bigint;
+    const slot0 = decodeSlot0(slot0Word);
+    const liquiditySlot = addSlotOffset(poolStateSlot, LIQUIDITY_OFFSET);
+    const liquidityWordHex = await publicClient.readContract({
+      address: POOL_MANAGER_ADDRESS,
+      abi: poolManagerAbi,
+      functionName: 'extsload',
+      args: [liquiditySlot]
+    });
+    const poolLiquidity = BigInt(liquidityWordHex);
 
     const pool = new Pool(
       moonToken,
@@ -153,9 +185,9 @@ export async function POST(request: NextRequest) {
       FEE,
       TICK_SPACING,
       normalizeAddress(HOOK_ADDRESS),
-      JSBI.BigInt(sqrtPriceX96.toString()),
+      JSBI.BigInt(slot0.sqrtPriceX96.toString()),
       JSBI.BigInt(poolLiquidity.toString()),
-      Number(tick)
+      slot0.tick
     );
 
     const position = Position.fromAmount1({
