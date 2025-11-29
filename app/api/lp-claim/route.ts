@@ -114,22 +114,25 @@ const parseCallValue = (raw?: string) => {
   return trimmed.startsWith('0x') ? BigInt(trimmed) : BigInt(trimmed);
 };
 
-function getMaxAmountsWithSlippage(position: Position, slippageBps: bigint) {
-  const base = position.mintAmounts;
+function getMaxAmountsWithSlippage(
+  amount0Desired: JSBI,
+  amount1Desired: JSBI,
+  slippageBps: bigint
+) {
   const zero = JSBI.BigInt(0);
   const bpsBase = JSBI.BigInt(10_000);
   const bpsPlus = JSBI.add(bpsBase, JSBI.BigInt(slippageBps.toString()));
 
-  const applySlippage = (amount: JSBI) => {
-    if (!JSBI.greaterThan(amount, zero)) return zero;
+  const applySlippage = (desired: JSBI) => {
+    if (!JSBI.greaterThan(desired, zero)) return zero;
     // floor(amount * (1 + slippageBps / 10_000))
-    const num = JSBI.multiply(amount, bpsPlus);
+    const num = JSBI.multiply(desired, bpsPlus);
     return JSBI.divide(num, bpsBase);
   };
 
   return {
-    amount0Max: applySlippage(base.amount0),
-    amount1Max: applySlippage(base.amount1)
+    amount0Max: applySlippage(amount0Desired),
+    amount1Max: applySlippage(amount1Desired)
   };
 }
 
@@ -141,7 +144,11 @@ function buildMintCallParameters(position: Position, recipient: string, deadline
 
   // Dual-sided mint: use the position's mintAmounts (derived from your WMON input)
   // and add a fixed 5% slippage cushion to both m00n and WMON.
-  const { amount0Max, amount1Max } = getMaxAmountsWithSlippage(position, DEFAULT_SLIPPAGE_BPS);
+  const { amount0Max, amount1Max } = getMaxAmountsWithSlippage(
+    position.amount0.quotient,
+    position.amount1.quotient,
+    DEFAULT_SLIPPAGE_BPS
+  );
 
   const amount0MaxHex = toHexSdk(amount0Max);
   const amount1MaxHex = toHexSdk(amount1Max);
@@ -295,8 +302,8 @@ export async function POST(request: NextRequest) {
       to: POSITION_MANAGER_ADDRESS,
       data: calldata,
       value,
-      requiredMoonWei: position.amount0.toString(),
-      requiredWmonWei: position.amount1.toString()
+      requiredMoonWei: position.amount0.quotient.toString(),
+      requiredWmonWei: position.amount1.quotient.toString()
     });
   } catch (error) {
     console.error('LP claim build failed', error);
