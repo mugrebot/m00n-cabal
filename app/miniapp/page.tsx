@@ -850,7 +850,7 @@ export default function MiniAppPage() {
         args: [asHexAddress(POSITION_MANAGER_ADDRESS), amountToApprove]
       });
 
-      const txHash = await provider.request({
+      const txHash = (await provider.request({
         method: 'eth_sendTransaction',
         params: [
           {
@@ -860,11 +860,33 @@ export default function MiniAppPage() {
             value: '0x0'
           }
         ]
-      });
+      })) as string;
 
-      // Wait longer for transaction to be mined on Monad
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      // Wait for transaction to potentially be mined
+      let attempts = 0;
+      const maxAttempts = 10;
+      while (attempts < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
 
+        try {
+          const receipt = await provider.request({
+            method: 'eth_getTransactionReceipt',
+            params: [txHash]
+          });
+
+          if (receipt) {
+            // Transaction mined, refresh immediately
+            setFundingRefreshNonce((prev) => prev + 1);
+            return;
+          }
+        } catch {
+          // Receipt not available yet
+        }
+
+        attempts++;
+      }
+
+      // Force refresh even if we didn't get receipt
       setFundingRefreshNonce((prev) => prev + 1);
     } catch (err) {
       setLpClaimError(err instanceof Error ? err.message : 'approve_failed');
