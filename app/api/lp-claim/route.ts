@@ -99,6 +99,13 @@ const decodeSlot0 = (slotWord: bigint) => {
 
 const snapToSpacing = (tick: number) => Math.floor(tick / TICK_SPACING) * TICK_SPACING;
 
+const parseCallValue = (raw?: string) => {
+  if (!raw) return BigInt(0);
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === '0x' || trimmed === '0x0') return BigInt(0);
+  return trimmed.startsWith('0x') ? BigInt(trimmed) : BigInt(trimmed);
+};
+
 export async function POST(request: NextRequest) {
   let body: { address?: string; amount?: string; preset?: string };
   try {
@@ -213,6 +220,18 @@ export async function POST(request: NextRequest) {
       slippageTolerance,
       hookData: '0x'
     });
+
+    try {
+      await publicClient.call({
+        account: address as `0x${string}`,
+        to: POSITION_MANAGER_ADDRESS,
+        data: calldata as Hex,
+        value: parseCallValue(value)
+      });
+    } catch (simulationError) {
+      console.error('LP simulation failed', simulationError);
+      return buildError('lp_simulation_failed', 400);
+    }
 
     return NextResponse.json({
       to: POSITION_MANAGER_ADDRESS,

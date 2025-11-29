@@ -528,6 +528,17 @@ export default function MiniAppPage() {
     }
   };
 
+  const formatLpClaimErrorMessage = (code?: string) => {
+    switch (code) {
+      case 'lp_simulation_failed':
+        return 'Simulation indicated this LP transaction would revert. Check your WMON balance/approval and try again.';
+      case 'lp_claim_failed':
+        return 'LP transaction failed to build. Please retry in a moment.';
+      default:
+        return code ?? 'lp_claim_failed';
+    }
+  };
+
   const handleMiniWalletAccountsChanged = useCallback((accounts?: readonly string[]) => {
     if (Array.isArray(accounts) && accounts.length > 0) {
       setMiniWalletAddress(accounts[0] ?? null);
@@ -803,7 +814,8 @@ export default function MiniAppPage() {
       setFundingRefreshNonce((prev) => prev + 1);
     } catch (err) {
       console.error('LP claim failed', err);
-      setLpClaimError(err instanceof Error ? err.message : 'lp_claim_failed');
+      const errorCode = err instanceof Error ? err.message : 'lp_claim_failed';
+      setLpClaimError(formatLpClaimErrorMessage(errorCode));
     } finally {
       setIsSubmittingLpClaim(false);
     }
