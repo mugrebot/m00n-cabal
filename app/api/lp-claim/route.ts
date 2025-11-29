@@ -20,8 +20,10 @@ const FEE = 8_388_608;
 const TICK_SPACING = 200;
 const DEFAULT_MONAD_CHAIN_ID = 143;
 const DEFAULT_MONAD_RPC_URL = 'https://rpc.monad.xyz';
-const BACKSTOP_TICK_LOWER = -106_600;
-const BACKSTOP_TICK_UPPER = -104_600;
+// Crash-band preset: place the band ~20% below the current price, fully below
+// the active tick, and fund it with token1 (WMON) only. As price nukes into
+// the band, WMON is converted into m00n.
+const CRASH_BAND_WIDTH_TICKS = 10 * TICK_SPACING;
 const DEADLINE_SECONDS = 10 * 60; // 10 minutes
 
 const envChainId = Number(process.env.MONAD_CHAIN_ID);
@@ -164,8 +166,14 @@ export async function POST(request: NextRequest) {
     const currentTick = Number(slot0[1]);
     const poolLiquidity = poolLiquidityRaw as bigint;
 
-    const tickLower = snapToSpacing(BACKSTOP_TICK_LOWER);
-    const tickUpper = snapToSpacing(BACKSTOP_TICK_UPPER);
+    // Compute a crash band whose upper bound is approximately 20% below the
+    // current price, and whose lower bound extends a fixed width further down.
+    // Price in Uniswap ticks is P = 1.0001^tick, so a 20% decrease corresponds
+    // to adding log(0.8) / log(1.0001) ticks (a negative number).
+    const twentyPercentDownTicks = Math.floor(Math.log(0.8) / Math.log(1.0001));
+    const rawUpperTick = currentTick + twentyPercentDownTicks;
+    const tickUpper = snapToSpacing(rawUpperTick);
+    const tickLower = tickUpper - CRASH_BAND_WIDTH_TICKS;
 
     if (tickUpper <= tickLower) {
       throw new Error('invalid_tick_configuration');
@@ -182,19 +190,16 @@ export async function POST(request: NextRequest) {
       currentTick
     );
 
-    // Follow the Uniswap v4 docs pattern: build a Position from explicit
-    // token0/token1 desired amounts instead of the token1-only helper.
-    // We treat the user's input as the WMON (token1) cap, and provision an
-    // equal notional amount of m00n (token0). The SDK will compute the exact
-    // mintAmounts and any leftover tokens simply stay in the wallet.
+    // Crash-band semantics: treat the user's input as pure token1 (WMON)
+    // liquidity. At current prices (above this band), the position is 100%
+    // WMON; if price nukes down into the band, it buys m00n with that WMON.
     const amount1Desired = amountWei.toString(); // WMON input
-    const amount0Desired = amountWei.toString(); // symmetric m00n budget
 
     const position = Position.fromAmounts({
       pool,
       tickLower,
       tickUpper,
-      amount0: amount0Desired,
+      amount0: '0',
       amount1: amount1Desired,
       useFullPrecision: true
     });
