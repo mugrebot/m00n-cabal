@@ -155,7 +155,6 @@ export default function MiniAppPage() {
   const [isApprovingMoon, setIsApprovingMoon] = useState(false);
   const [swapInFlight, setSwapInFlight] = useState<'wmon' | 'moon' | null>(null);
   const [tokenDecimals, setTokenDecimals] = useState({ wmon: 18, moon: 18 });
-  const [tokenSymbols, setTokenSymbols] = useState({ wmon: 'WMON', moon: 'm00n' });
 
   const formatAmount = (amount?: string | number) => {
     if (amount === undefined || amount === null) return '0';
@@ -517,18 +516,16 @@ export default function MiniAppPage() {
     (value.startsWith('0x') ? value : `0x${value}`) as `0x${string}`;
 
   const formatTokenAmount = (value?: bigint | null, decimals = 18, precision = 4) => {
-    if (value === undefined || value === null) return '0';
+    if (value === undefined || value === null) return '—';
     try {
-      const formatted = formatUnits(value, decimals);
-      const asNumber = Number(formatted);
+      const asNumber = Number(formatUnits(value, decimals));
       if (Number.isFinite(asNumber)) {
-        if (asNumber === 0) return '0';
         return asNumber.toLocaleString(undefined, { maximumFractionDigits: precision });
       }
-      return formatted;
+      const formatted = formatUnits(value, decimals);
+      return Number(formatted).toLocaleString(undefined, { maximumFractionDigits: precision });
     } catch {
-      // Fallback for error cases
-      return '10';
+      return formatUnits(value, decimals);
     }
   };
 
@@ -707,8 +704,6 @@ export default function MiniAppPage() {
         moonAllowanceWei?: string;
         wmonDecimals?: number;
         moonDecimals?: number;
-        wmonSymbol?: string;
-        moonSymbol?: string;
       };
       setWmonBalanceWei(BigInt(data.wmonBalanceWei ?? '0'));
       setWmonAllowanceWei(BigInt(data.wmonAllowanceWei ?? '0'));
@@ -723,10 +718,6 @@ export default function MiniAppPage() {
           typeof data.moonDecimals === 'number' && Number.isFinite(data.moonDecimals)
             ? data.moonDecimals
             : 18
-      });
-      setTokenSymbols({
-        wmon: data.wmonSymbol || 'WMON',
-        moon: data.moonSymbol || 'MOON'
       });
       setFundingStatus('idle');
     } catch (err) {
@@ -764,14 +755,12 @@ export default function MiniAppPage() {
     }
 
     if (moonBalanceWei < amountWei) {
-      setLpClaimError(
-        `Not enough ${tokenSymbols.moon} balance. Swap MON → ${tokenSymbols.moon} first.`
-      );
+      setLpClaimError('Not enough m00n balance. Swap MON → m00n first.');
       return;
     }
 
     if (moonAllowanceWei < amountWei) {
-      setLpClaimError(`Approve ${tokenSymbols.moon} for the position manager before minting.`);
+      setLpClaimError('Approve m00n for the position manager before minting.');
       return;
     }
 
@@ -858,12 +847,13 @@ export default function MiniAppPage() {
       try {
         const chainId = await provider.request({ method: 'eth_chainId' });
         if (chainId !== '0x8f') {
-          throw new Error(`Wrong network. Expected Monad (143), got ${chainId}`);
+          setLpClaimError(
+            `Wrong network! Switch to Monad chain (143). Currently on chain: ${parseInt(chainId, 16)} (${chainId})`
+          );
+          return;
         }
       } catch (chainError) {
-        setLpClaimError(
-          `Network error: ${chainError instanceof Error ? chainError.message : 'unknown'}`
-        );
+        setLpClaimError(`Cannot detect network. Make sure you're on Monad chain (143).`);
         return;
       }
 
@@ -872,12 +862,7 @@ export default function MiniAppPage() {
         functionName: 'approve',
         args: [asHexAddress(POSITION_MANAGER_ADDRESS), amountToApprove]
       });
-
-      // Show approval details for debugging
-      const amountFormatted = formatTokenAmount(amountToApprove, decimals);
-      setLpClaimError(`Approving ${amountFormatted} tokens on Monad network...`);
-
-      const txHash = (await provider.request({
+      await provider.request({
         method: 'eth_sendTransaction',
         params: [
           {
@@ -887,41 +872,11 @@ export default function MiniAppPage() {
             value: '0x0'
           }
         ]
-      })) as string;
-
-      setLpClaimError(`Transaction sent: ${txHash.slice(0, 10)}... Waiting for confirmation...`);
-
-      // Wait for transaction to potentially be mined
-      let attempts = 0;
-      const maxAttempts = 10;
-      while (attempts < maxAttempts) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-
-        try {
-          const receipt = await provider.request({
-            method: 'eth_getTransactionReceipt',
-            params: [txHash as `0x${string}`]
-          });
-
-          if (receipt) {
-            // Transaction mined, refresh immediately
-            setLpClaimError(`Transaction confirmed! Refreshing allowance...`);
-            setFundingRefreshNonce((prev) => prev + 1);
-            return;
-          }
-        } catch {
-          // Receipt not available yet
-        }
-
-        attempts++;
-      }
-
-      // Force refresh even if we didn't get receipt
-      setLpClaimError(`Transaction may still be pending. Refreshing allowance...`);
+      });
       setFundingRefreshNonce((prev) => prev + 1);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'approve_failed';
-      setLpClaimError(`Approval failed: ${errorMsg}. Check if you're on Monad network.`);
+      console.error('Approve m00n failed', err);
+      setLpClaimError(err instanceof Error ? err.message : 'approve_failed');
     } finally {
       setIsApprovingMoon(false);
     }
@@ -1020,12 +975,11 @@ export default function MiniAppPage() {
     const sanitized = lpClaimAmount.trim();
     if (!sanitized) return null;
     try {
-      const decimals = Number.isFinite(tokenDecimals.moon) ? tokenDecimals.moon : 18;
-      return parseUnits(sanitized, decimals);
+      return parseUnits(sanitized, 18);
     } catch {
       return null;
     }
-  }, [lpClaimAmount, tokenDecimals.moon]);
+  }, [lpClaimAmount]);
 
   const renderLpClaimModal = () => {
     const walletReady = Boolean(miniWalletAddress);
@@ -1050,7 +1004,7 @@ export default function MiniAppPage() {
     const fundingWarning = !walletReady
       ? 'Connect your Warpcast wallet to fund the LP ritual.'
       : !hasAmountInput
-        ? `Enter an amount denominated in ${tokenSymbols.moon}.`
+        ? 'Enter an amount denominated in m00n.'
         : tokenInfoPending
           ? 'Checking wallet balances…'
           : fundingStatus === 'error'
@@ -1058,9 +1012,9 @@ export default function MiniAppPage() {
             : desiredAmountWei === null
               ? 'Amount is invalid.'
               : !hasSufficientBalance
-                ? `Not enough ${tokenSymbols.moon}. Swap MON → ${tokenSymbols.moon} below.`
+                ? 'Not enough m00n. Swap MON → m00n below.'
                 : !hasSufficientAllowance
-                  ? `Approve ${tokenSymbols.moon} for the position manager before minting.`
+                  ? 'Approve m00n for the position manager before minting.'
                   : null;
 
     const primaryLabel = walletReady
@@ -1073,7 +1027,6 @@ export default function MiniAppPage() {
     const approvalAmountWei =
       desiredAmountWei && desiredAmountWei > BigInt(0) ? desiredAmountWei : approvalFallbackWei;
     const approvalAmountDisplay = formatTokenAmount(approvalAmountWei, approvalDecimals, 6);
-    const displaySymbol = tokenSymbols.moon || 'm00n';
 
     const primaryHandler = walletReady ? handleSubmitLpClaim : handleSignIn;
     const primaryDisabled =
@@ -1124,19 +1077,19 @@ export default function MiniAppPage() {
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="opacity-70">{tokenSymbols.moon} Balance</span>
+              <span className="opacity-70">m00n Balance</span>
               <span className="font-mono text-xs">
                 {tokenInfoPending
                   ? '—'
-                  : `${formatTokenAmount(moonBalanceWei, tokenDecimals.moon)} ${tokenSymbols.moon}`}
+                  : `${formatTokenAmount(moonBalanceWei, tokenDecimals.moon)} m00n`}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="opacity-70">{tokenSymbols.moon} Allowance → LP</span>
+              <span className="opacity-70">m00n Allowance → LP</span>
               <span className="font-mono text-xs">
                 {tokenInfoPending
                   ? '—'
-                  : `${formatTokenAmount(moonAllowanceWei, tokenDecimals.moon)} ${tokenSymbols.moon}`}
+                  : `${formatTokenAmount(moonAllowanceWei, tokenDecimals.moon)} m00n`}
               </span>
             </div>
             <div className="flex items-center gap-3">
@@ -1165,7 +1118,7 @@ export default function MiniAppPage() {
                 onClick={() => handleViewToken('moon')}
                 className="pixel-font text-[10px] px-3 py-1 border border-white/10 rounded hover:bg-white/10 transition-colors"
               >
-                VIEW {tokenSymbols.moon}
+                VIEW m00n
               </button>
             </div>
           </div>
@@ -1182,25 +1135,24 @@ export default function MiniAppPage() {
                 }
                 className="w-full rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
               >
-                {isApprovingMoon
-                  ? 'APPROVING...'
-                  : `APPROVE ${approvalAmountDisplay} ${displaySymbol}`}
+                {isApprovingMoon ? 'APPROVING…' : `APPROVE ${approvalAmountDisplay} m00n`}
               </button>
               {!hasSufficientAllowance && walletReady && (
                 <p className="text-xs text-red-300">
-                  Approval lets the position manager pull your {displaySymbol} just once.
+                  Approval lets the position manager pull your m00n just once.
                 </p>
               )}
               {walletReady && (
                 <p className="text-xs text-white/60">
-                  {`Wallet prompt will approve up to ${approvalAmountDisplay} ${displaySymbol} (falls back to 10 if no amount is entered).`}
+                  Wallet prompt will approve up to {approvalAmountDisplay} m00n (falls back to 10 if
+                  no amount is entered).
                 </p>
               )}
             </div>
           )}
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">
-              Amount ({displaySymbol})
+              Amount (m00n)
             </label>
             <input
               type="number"

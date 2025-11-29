@@ -35,7 +35,6 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Fetch balance, allowance, and decimals first
     const [
       wmonBalanceWei,
       wmonAllowanceWei,
@@ -80,45 +79,13 @@ export async function GET(request: NextRequest) {
       })
     ]);
 
-    // Try to fetch symbols with fallbacks
-    let wmonSymbol = 'WMON';
-    let moonSymbol = 'm00n';
-
-    try {
-      const symbolResult = await publicClient.readContract({
-        address: WMON_ADDRESS,
-        abi: erc20Abi,
-        functionName: 'symbol'
-      });
-      if (typeof symbolResult === 'string' && symbolResult.length > 0) {
-        wmonSymbol = symbolResult;
-      }
-    } catch {
-      // Keep fallback
-    }
-
-    try {
-      const symbolResult = await publicClient.readContract({
-        address: MOON_TOKEN_ADDRESS,
-        abi: erc20Abi,
-        functionName: 'symbol'
-      });
-      if (typeof symbolResult === 'string' && symbolResult.length > 0) {
-        moonSymbol = symbolResult;
-      }
-    } catch {
-      // Keep fallback
-    }
-
     return NextResponse.json({
       wmonBalanceWei: wmonBalanceWei.toString(),
       wmonAllowanceWei: wmonAllowanceWei.toString(),
       moonBalanceWei: moonBalanceWei.toString(),
       moonAllowanceWei: moonAllowanceWei.toString(),
       wmonDecimals: Number(wmonDecimals),
-      moonDecimals: Number(moonDecimals),
-      wmonSymbol,
-      moonSymbol
+      moonDecimals: Number(moonDecimals)
     });
   } catch (error) {
     console.error('Failed to fetch LP funding data', error);
