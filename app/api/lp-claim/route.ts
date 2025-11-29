@@ -32,7 +32,9 @@ const TICK_SIGN_SHIFT = BigInt(23);
 const UINT24_SHIFT = BigInt(24);
 const SQRT_PRICE_MASK = (ONE << Q96_SHIFT) - ONE;
 const UINT24_MASK = (ONE << UINT24_SHIFT) - ONE;
-const UINT256_MAX = (ONE << BigInt(256)) - ONE;
+// Use a conservative safety cap below the true uint256 max to avoid any
+// edge-case issues in downstream ABI encoding.
+const SAFE_UINT256_MAX = (ONE << BigInt(255)) - ONE;
 const BACKSTOP_TICK_LOWER = -106_600;
 const BACKSTOP_TICK_UPPER = -104_600;
 // Use zero slippage in the SDK helper to avoid any negative max-amount artifacts
@@ -112,7 +114,7 @@ const parseCallValue = (raw?: string) => {
 function clampJsbiToUint256(value: JSBI) {
   const asBig = BigInt(value.toString());
   const zeroBig = BigInt(0);
-  const clamped = asBig < zeroBig ? zeroBig : asBig > UINT256_MAX ? UINT256_MAX : asBig;
+  const clamped = asBig < zeroBig ? zeroBig : asBig > SAFE_UINT256_MAX ? SAFE_UINT256_MAX : asBig;
   return JSBI.BigInt(clamped.toString());
 }
 
