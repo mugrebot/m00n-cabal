@@ -11,6 +11,7 @@ import {
 import Image from 'next/image';
 import sdk from '@farcaster/miniapp-sdk';
 import { encodeFunctionData, erc20Abi, formatUnits, parseUnits } from 'viem';
+import { WagmiConfig, createConfig, http } from 'wagmi';
 import { getTierByReplyCount } from '@/app/lib/tiers';
 import { getPersonaCopy, type PersonaActionId, type LpStatus } from '@/app/copy/persona';
 
@@ -118,7 +119,31 @@ const getReplyGlowConfig = (count: number): ReplyGlow => {
 
 const SHARE_URL = 'https://m00nad.vercel.app/miniapp';
 
-export default function MiniAppPage() {
+const monadChain = {
+  id: 143,
+  name: 'Monad',
+  nativeCurrency: { name: 'Monad', symbol: 'MON', decimals: 18 },
+  rpcUrls: {
+    default: {
+      http: [process.env.NEXT_PUBLIC_MONAD_RPC_URL ?? 'https://rpc.monad.xyz']
+    }
+  },
+  blockExplorers: {
+    default: {
+      name: 'Monadscan',
+      url: 'https://monadscan.com'
+    }
+  }
+};
+
+const wagmiConfig = createConfig({
+  chains: [monadChain],
+  transports: {
+    [monadChain.id]: http(monadChain.rpcUrls.default.http[0]!)
+  }
+});
+
+function MiniAppPageInner() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSdkReady, setIsSdkReady] = useState(false);
   const [isMiniApp, setIsMiniApp] = useState<boolean | null>(null);
@@ -842,7 +867,7 @@ export default function MiniAppPage() {
         value: normalizeHexValue(payload.value)
       });
 
-      // Prefer batched approve + mint via wallet_sendCalls (EIP-5792)
+      // Prefer batched approve + mint via wallet_sendCalls (EIP-5792) on the Warp wallet
       try {
         await (
           provider.request as (args: { method: string; params?: unknown }) => Promise<unknown>
@@ -2033,4 +2058,12 @@ export default function MiniAppPage() {
     default:
       return renderLockedOutPanel();
   }
+}
+
+export default function MiniAppPage() {
+  return (
+    <WagmiConfig config={wagmiConfig}>
+      <MiniAppPageInner />
+    </WagmiConfig>
+  );
 }
