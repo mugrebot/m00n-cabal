@@ -931,113 +931,47 @@ function MiniAppPageInner() {
       const needsWmonApproval = wmonAllowanceWei === null || wmonAllowanceWei < requiredWmonWei;
       const needsMoonApproval = moonAllowanceWei === null || moonAllowanceWei < requiredMoonWei;
 
-      const calls: Array<{
-        to: `0x${string}`;
-        data: `0x${string}`;
-        value?: bigint;
-      }> = [];
-
-      // Refresh Permit2 allowances for PositionManager to avoid AllowanceExpired
-      // reverts, even if ERC20 allowances look fine. We set per-band caps equal
-      // to the required amounts and choose a far-future expiration.
-      const nowSec = Math.floor(Date.now() / 1000);
-      const permitExpiration = nowSec + 60 * 60 * 24 * 30; // ~30 days (uint48-compatible number)
-      const permitMultiplier = BigInt(2);
-
-      if (requiredWmonWei > BigInt(0)) {
-        const permitWmonAmount = requiredWmonWei * permitMultiplier;
-        const permitWmonData = encodeFunctionData({
-          abi: permit2Abi,
-          functionName: 'approve',
-          args: [
-            asHexAddress(WMON_ADDRESS),
-            asHexAddress(POSITION_MANAGER_ADDRESS),
-            permitWmonAmount,
-            permitExpiration
+      if (needsWmonApproval || needsMoonApproval) {
+        const message =
+          'Token approvals are missing for this LP band. Approve WMON and m00n in the modal, then retry the claim.';
+        setLpClaimError(message);
+        setLpDebugLog((prev) =>
+          [
+            prev,
+            '',
+            '❌ Cannot mint: insufficient token approvals.',
+            needsWmonApproval ? '  - WMON approval missing or too low.' : '',
+            needsMoonApproval ? '  - m00n approval missing or too low.' : ''
           ]
-        });
-
-        calls.push({
-          to: asHexAddress(PERMIT2_ADDRESS),
-          data: permitWmonData,
-          value: BigInt(0)
-        });
+            .filter(Boolean)
+            .join('\n')
+        );
+        return;
       }
-
-      if (requiredMoonWei > BigInt(0)) {
-        const permitMoonAmount = requiredMoonWei * permitMultiplier;
-        const permitMoonData = encodeFunctionData({
-          abi: permit2Abi,
-          functionName: 'approve',
-          args: [
-            asHexAddress(TOKEN_ADDRESS),
-            asHexAddress(POSITION_MANAGER_ADDRESS),
-            permitMoonAmount,
-            permitExpiration
-          ]
-        });
-
-        calls.push({
-          to: asHexAddress(PERMIT2_ADDRESS),
-          data: permitMoonData,
-          value: BigInt(0)
-        });
-      }
-
-      if (needsWmonApproval) {
-        const approveWmonData = encodeFunctionData({
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [asHexAddress(POSITION_MANAGER_ADDRESS), requiredWmonWei]
-        });
-
-        calls.push({
-          to: asHexAddress(WMON_ADDRESS),
-          data: approveWmonData,
-          value: BigInt(0)
-        });
-      }
-
-      if (needsMoonApproval) {
-        const approveMoonData = encodeFunctionData({
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [asHexAddress(POSITION_MANAGER_ADDRESS), requiredMoonWei]
-        });
-
-        calls.push({
-          to: asHexAddress(TOKEN_ADDRESS),
-          data: approveMoonData,
-          value: BigInt(0)
-        });
-      }
-
-      setLpDebugLog((prev) =>
-        [
-          prev,
-          needsWmonApproval
-            ? `🧾 Will approve WMON: ${requiredWmonWei.toString()} wei`
-            : 'ℹ️ WMON allowance already sufficient.',
-          needsMoonApproval
-            ? `🧾 Will approve m00n: ${requiredMoonWei.toString()} wei`
-            : 'ℹ️ m00n allowance already sufficient.',
-          '🧪 Sending batched wallet_sendCalls for approve(s) + LP mint…'
-        ]
-          .filter(Boolean)
-          .join('\n')
-      );
 
       const rawValue = (payload.value ?? '').trim();
       const callValue =
         rawValue && rawValue !== '0' && rawValue !== '0x0' ? BigInt(rawValue) : BigInt(0);
 
-      calls.push({
-        to: asHexAddress(payload.to),
-        data: payload.data as `0x${string}`,
-        value: callValue > BigInt(0) ? callValue : undefined
-      });
+      setLpDebugLog((prev) =>
+        [
+          prev,
+          '🧪 Sending LP mint transaction from mini wallet…',
+          callValue > BigInt(0) ? `  with attached value = ${callValue.toString()} wei` : ''
+        ]
+          .filter(Boolean)
+          .join('\n')
+      );
 
-      await sendCallsViaProvider({ calls });
+      await sendCallsViaProvider({
+        calls: [
+          {
+            to: asHexAddress(payload.to),
+            data: payload.data as `0x${string}`,
+            value: callValue > BigInt(0) ? callValue : undefined
+          }
+        ]
+      });
 
       setIsLpClaimModalOpen(false);
       setLpClaimAmount('');
@@ -1075,21 +1009,50 @@ function MiniAppPageInner() {
     setIsApprovingMoon(true);
     setLpClaimError(null);
     try {
-      const data = encodeFunctionData({
+      const nowSec = Math.floor(Date.now() / 1000);
+      const permitExpiration = nowSec + 60 * 60 * 24 * 30; // ~30 days
+
+      const approveUnderlyingData = encodeFunctionData({
         abi: erc20Abi,
         functionName: 'approve',
-        args: [asHexAddress(POSITION_MANAGER_ADDRESS), amountToApprove]
+        args: [asHexAddress(PERMIT2_ADDRESS), amountToApprove]
       });
+
+      const permitData = encodeFunctionData({
+        abi: permit2Abi,
+        functionName: 'approve',
+        args: [
+          asHexAddress(TOKEN_ADDRESS),
+          asHexAddress(POSITION_MANAGER_ADDRESS),
+          amountToApprove,
+          permitExpiration
+        ]
+      });
+
       await sendCallsViaProvider({
         calls: [
           {
             to: asHexAddress(TOKEN_ADDRESS),
-            data,
+            data: approveUnderlyingData,
+            value: BigInt(0)
+          },
+          {
+            to: asHexAddress(PERMIT2_ADDRESS),
+            data: permitData,
             value: BigInt(0)
           }
         ]
       });
+
       setFundingRefreshNonce((prev) => prev + 1);
+      setLpDebugLog((prev) =>
+        [
+          prev,
+          `✅ Approved m00n via Permit2 for ${amountToApprove.toString()} wei (PositionManager).`
+        ]
+          .filter(Boolean)
+          .join('\n')
+      );
     } catch (err) {
       console.error('Approve m00n failed', err);
       setLpClaimError(err instanceof Error ? err.message : 'approve_failed');
@@ -1356,21 +1319,50 @@ function MiniAppPageInner() {
                   setLpClaimError(null);
                   try {
                     const amountToApprove = wmonBalanceWei;
-                    const data = encodeFunctionData({
+                    const nowSec = Math.floor(Date.now() / 1000);
+                    const permitExpiration = nowSec + 60 * 60 * 24 * 30; // ~30 days
+
+                    const approveUnderlyingData = encodeFunctionData({
                       abi: erc20Abi,
                       functionName: 'approve',
-                      args: [asHexAddress(POSITION_MANAGER_ADDRESS), amountToApprove]
+                      args: [asHexAddress(PERMIT2_ADDRESS), amountToApprove]
                     });
+
+                    const permitData = encodeFunctionData({
+                      abi: permit2Abi,
+                      functionName: 'approve',
+                      args: [
+                        asHexAddress(WMON_ADDRESS),
+                        asHexAddress(POSITION_MANAGER_ADDRESS),
+                        amountToApprove,
+                        permitExpiration
+                      ]
+                    });
+
                     await sendCallsViaProvider({
                       calls: [
                         {
                           to: asHexAddress(WMON_ADDRESS),
-                          data,
+                          data: approveUnderlyingData,
+                          value: BigInt(0)
+                        },
+                        {
+                          to: asHexAddress(PERMIT2_ADDRESS),
+                          data: permitData,
                           value: BigInt(0)
                         }
                       ]
                     });
+
                     setFundingRefreshNonce((prev) => prev + 1);
+                    setLpDebugLog((prev) =>
+                      [
+                        prev,
+                        `✅ Approved WMON via Permit2 for ${amountToApprove.toString()} wei (PositionManager).`
+                      ]
+                        .filter(Boolean)
+                        .join('\n')
+                    );
                   } catch (err) {
                     console.error('Approve WMON failed', err);
                     setLpClaimError(err instanceof Error ? err.message : 'approve_wmon_failed');

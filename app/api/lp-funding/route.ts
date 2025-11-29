@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, defineChain, erc20Abi, http, isAddress } from 'viem';
 
 const WMON_ADDRESS = '0x3bd359c1119da7da1d913d1c4d2b7c461115433a';
-const POSITION_MANAGER_ADDRESS = '0x5b7ec4a94ff9bedb700fb82ab09d5846972f4016';
 const MOON_TOKEN_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
+// For Uniswap v4 on Monad, the PositionManager uses Permit2 for token
+// pull logic. We therefore track ERC20 allowances to Permit2 here, rather
+// than to the PositionManager itself.
+const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3';
 const DEFAULT_MONAD_CHAIN_ID = 143;
 const DEFAULT_MONAD_RPC_URL = 'https://rpc.monad.xyz';
 
@@ -53,7 +56,7 @@ export async function GET(request: NextRequest) {
         address: WMON_ADDRESS,
         abi: erc20Abi,
         functionName: 'allowance',
-        args: [address as `0x${string}`, POSITION_MANAGER_ADDRESS as `0x${string}`]
+        args: [address as `0x${string}`, PERMIT2_ADDRESS as `0x${string}`]
       }),
       publicClient.readContract({
         address: MOON_TOKEN_ADDRESS,
@@ -65,7 +68,7 @@ export async function GET(request: NextRequest) {
         address: MOON_TOKEN_ADDRESS,
         abi: erc20Abi,
         functionName: 'allowance',
-        args: [address as `0x${string}`, POSITION_MANAGER_ADDRESS as `0x${string}`]
+        args: [address as `0x${string}`, PERMIT2_ADDRESS as `0x${string}`]
       }),
       publicClient.readContract({
         address: WMON_ADDRESS,
