@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import JSBI from 'jsbi';
-import { Token } from '@uniswap/sdk-core';
-import { Pool, Position, V4PositionManager, V4PositionPlanner } from '@uniswap/v4-sdk';
-import { createPublicClient, http, parseUnits, isAddress, defineChain, type Hex } from 'viem';
+import { Percent, Token } from '@uniswap/sdk-core';
+import { Pool, Position, V4PositionManager } from '@uniswap/v4-sdk';
+import {
+  createPublicClient,
+  http,
+  parseUnits,
+  isAddress,
+  defineChain,
+  encodeFunctionData,
+  type Hex
+} from 'viem';
 
 const POSITION_MANAGER_ADDRESS = '0x5b7eC4a94fF9beDb700fb82aB09d5846972F4016';
 const STATE_VIEW_ADDRESS = '0x77395f3b2e73ae90843717371294fa97cc419d64';
@@ -37,6 +44,16 @@ const publicClient = createPublicClient({
   chain: monadChain,
   transport: http(monadRpcUrl)
 });
+
+const positionManagerAbi = [
+  {
+    type: 'function',
+    name: 'multicall',
+    stateMutability: 'payable',
+    inputs: [{ name: 'data', type: 'bytes[]' }],
+    outputs: [{ name: 'results', type: 'bytes[]' }]
+  }
+] as const;
 
 const stateViewAbi = [
   {
@@ -174,40 +191,30 @@ export async function POST(request: NextRequest) {
     });
 
     // Let the SDK compute the precise mint amounts implied by this band + WMON input.
-    const mintAmounts = position.mintAmounts;
-    const zero = JSBI.BigInt(0);
-    if (
-      !JSBI.greaterThan(mintAmounts.amount0, zero) &&
-      !JSBI.greaterThan(mintAmounts.amount1, zero)
-    ) {
-      throw new Error('zero_mint_amounts');
-    }
-
     const currentBlock = await publicClient.getBlock();
     const currentTimestamp = Number(currentBlock.timestamp);
     const deadlineSeconds = currentTimestamp + DEADLINE_SECONDS;
 
-    // Build a single mint + settle pair using the low-level planner to avoid any
-    // internal slippage math in V4PositionManager.addCallParameters.
-    const planner = new V4PositionPlanner();
-    planner.addMint(
-      position.pool,
-      position.tickLower,
-      position.tickUpper,
-      position.liquidity,
-      mintAmounts.amount0.toString(),
-      mintAmounts.amount1.toString(),
-      address,
-      '0x'
-    );
-    planner.addSettlePair(position.pool.currency0, position.pool.currency1);
+    // Build MintOptions exactly as in the Uniswap v4 docs, but with 0% on-chain
+    // slippage to avoid the SDK's internal underflow bug in edge bands. The user
+    // input is already treated as the hard WMON cap.
+    const slippagePct = new Percent(0, 10_000);
+    const deadline = deadlineSeconds.toString();
 
-    const unlockData = planner.finalize();
-    const calldata = V4PositionManager.encodeModifyLiquidities(
-      unlockData,
-      deadlineSeconds.toString()
-    );
-    const value = '0x0';
+    const { calldata: innerCalldata, value } = V4PositionManager.addCallParameters(position, {
+      recipient: address,
+      slippageTolerance: slippagePct,
+      deadline,
+      hookData: '0x'
+    });
+
+    // Wrap the v4 SDK calldata in a PositionManager.multicall, exactly like the
+    // guide's viem example.
+    const calldata = encodeFunctionData({
+      abi: positionManagerAbi,
+      functionName: 'multicall',
+      args: [[innerCalldata as Hex]]
+    });
 
     return NextResponse.json({
       to: POSITION_MANAGER_ADDRESS,
