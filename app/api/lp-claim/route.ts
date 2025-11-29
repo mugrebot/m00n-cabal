@@ -114,35 +114,29 @@ const parseCallValue = (raw?: string) => {
   return trimmed.startsWith('0x') ? BigInt(trimmed) : BigInt(trimmed);
 };
 
-function getMaxAmountsWithSlippage(position: Position, slippageBps: bigint) {
-  const base = position.mintAmounts;
-  const zero = JSBI.BigInt(0);
-  const bpsBase = JSBI.BigInt(10_000);
-  const bpsPlus = JSBI.add(bpsBase, JSBI.BigInt(slippageBps.toString()));
-
-  const applySlippage = (amount: JSBI) => {
-    if (!JSBI.greaterThan(amount, zero)) return zero;
-    // floor(amount * (1 + slippageBps / 10_000))
-    const num = JSBI.multiply(amount, bpsPlus);
-    return JSBI.divide(num, bpsBase);
-  };
-
-  return {
-    amount0Max: applySlippage(base.amount0),
-    amount1Max: applySlippage(base.amount1)
-  };
-}
-
-function buildMintCallParameters(position: Position, recipient: string, deadline: bigint) {
+function buildMintCallParameters(
+  position: Position,
+  amount1DesiredWei: bigint,
+  recipient: string,
+  deadline: bigint
+) {
   const zero = JSBI.BigInt(0);
   if (!JSBI.greaterThan(position.liquidity, zero)) {
     throw new Error('zero_liquidity');
   }
 
-  const { amount0Max, amount1Max } = getMaxAmountsWithSlippage(position, DEFAULT_SLIPPAGE_BPS);
+  // Crash-backstop design: user funds WMON (token1) only.
+  // We set:
+  // - max token1 to amount1Desired * (1 + slippageBps)
+  // - max token0 to 0
+  // Simulation will reject if token0 is actually required.
+  const bpsBase = BigInt(10_000);
+  const slippageNumerator = bpsBase + DEFAULT_SLIPPAGE_BPS;
+  const amount1MaxWei = (amount1DesiredWei * slippageNumerator) / bpsBase;
+  const amount0MaxWei = BigInt(0);
 
-  const amount0MaxHex = toHexSdk(amount0Max);
-  const amount1MaxHex = toHexSdk(amount1Max);
+  const amount0MaxHex = toHexSdk(amount0MaxWei.toString());
+  const amount1MaxHex = toHexSdk(amount1MaxWei.toString());
 
   const planner = new V4PositionPlanner();
   // Single mint in our fixed band, payer is the user (MSG_SENDER)
@@ -275,7 +269,7 @@ export async function POST(request: NextRequest) {
 
     const deadline = BigInt(Math.floor(Date.now() / 1000) + DEADLINE_SECONDS);
 
-    const { calldata, value } = buildMintCallParameters(position, address, deadline);
+    const { calldata, value } = buildMintCallParameters(position, amountWei, address, deadline);
 
     try {
       await publicClient.call({
