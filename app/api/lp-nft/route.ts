@@ -93,11 +93,21 @@ const stateViewAbi = [
 
 const normalizeAddress = (value: string) => value.toLowerCase();
 
-const isTargetPool = (poolKey: LpPoolKey) =>
-  normalizeAddress(poolKey.currency0) === normalizeAddress(TARGET_POOL_KEY.currency0) &&
-  normalizeAddress(poolKey.currency1) === normalizeAddress(TARGET_POOL_KEY.currency1) &&
-  poolKey.fee === TARGET_POOL_KEY.fee &&
-  normalizeAddress(poolKey.hooks) === normalizeAddress(TARGET_POOL_KEY.hooks);
+const isTargetPool = (poolKey: LpPoolKey) => {
+  if (!poolKey) return false;
+
+  const feeNum =
+    typeof poolKey.fee === 'string'
+      ? Number(poolKey.fee)
+      : (poolKey.fee as number | undefined | null);
+
+  return (
+    normalizeAddress(poolKey.currency0) === normalizeAddress(TARGET_POOL_KEY.currency0) &&
+    normalizeAddress(poolKey.currency1) === normalizeAddress(TARGET_POOL_KEY.currency1) &&
+    feeNum === TARGET_POOL_KEY.fee &&
+    normalizeAddress(poolKey.hooks || '') === normalizeAddress(TARGET_POOL_KEY.hooks)
+  );
+};
 
 async function fetchLpPositions(address: string) {
   if (LP_API_URL && LP_API_KEY) {
@@ -218,11 +228,17 @@ export async function GET(request: NextRequest) {
   try {
     const lpResponse = await fetchLpPositions(address);
 
-    const filteredPositions = (lpResponse.lpPositions || []).filter((position) =>
+    const allPositions = lpResponse.lpPositions || [];
+    const filteredPositions = allPositions.filter((position) =>
       position.poolKey ? isTargetPool(position.poolKey) : false
     );
 
-    const { currentTick, sqrtPriceX96, lpPositions } = await enrichPositions(filteredPositions);
+    // If the strict pool filter finds nothing but Neynar says the user has LP,
+    // fall back to returning all positions so the cabal gate still unlocks.
+    const positionsForUser =
+      filteredPositions.length > 0 || !lpResponse.hasLpNft ? filteredPositions : allPositions;
+
+    const { currentTick, sqrtPriceX96, lpPositions } = await enrichPositions(positionsForUser);
 
     return NextResponse.json({
       hasLpNft: lpPositions.length > 0,
