@@ -178,7 +178,9 @@ export async function POST(request: NextRequest) {
 
     const mintOptions: MintOptions = {
       recipient: address,
-      slippageTolerance: new Percent(500, 10_000), // 5% slippage
+      // Use 0% slippage at the contract level to avoid SDK integer underflow/overflow bugs.
+      // We can always widen user approvals a bit client-side if needed.
+      slippageTolerance: new Percent(0, 10_000),
       deadline: deadlineSeconds.toString(),
       hookData: '0x'
     };
