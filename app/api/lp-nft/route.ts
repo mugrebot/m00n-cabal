@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Token } from '@uniswap/sdk-core';
 import { Pool } from '@uniswap/v4-sdk';
-import { createPublicClient, defineChain, http } from 'viem';
+import { createPublicClient, defineChain, erc721Abi, http } from 'viem';
 
 const LP_API_URL = process.env.NEYNAR_LP_API_URL;
 const LP_API_KEY = process.env.NEYNAR_LP_API_KEY || process.env.NEYNAR_API_KEY || '';
@@ -229,6 +229,23 @@ export async function GET(request: NextRequest) {
     const lpResponse = await fetchLpPositions(address);
 
     const allPositions = lpResponse.lpPositions || [];
+
+    // Fallback: check on-chain PositionManager balance so we still unlock the cabal
+    // even if the Neynar LP API doesn't yet index this network/pool.
+    let onchainBalance: bigint | null = null;
+    try {
+      const balance = (await publicClient.readContract({
+        address: POSITION_MANAGER_ADDRESS,
+        abi: erc721Abi,
+        functionName: 'balanceOf',
+        args: [address as `0x${string}`]
+      })) as bigint;
+      onchainBalance = balance;
+    } catch (err) {
+      console.error('LP NFT on-chain balanceOf check failed', err);
+    }
+
+    const hasOnchainLp = onchainBalance !== null && onchainBalance > BigInt(0);
     const filteredPositions = allPositions.filter((position) =>
       position.poolKey ? isTargetPool(position.poolKey) : false
     );
@@ -241,7 +258,7 @@ export async function GET(request: NextRequest) {
     const { currentTick, sqrtPriceX96, lpPositions } = await enrichPositions(positionsForUser);
 
     return NextResponse.json({
-      hasLpNft: lpPositions.length > 0,
+      hasLpNft: lpResponse.hasLpNft || hasOnchainLp || lpPositions.length > 0,
       currentTick,
       sqrtPriceX96: sqrtPriceX96.toString(),
       lpPositions
