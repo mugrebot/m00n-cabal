@@ -1639,6 +1639,17 @@ function MiniAppPageInner() {
               </div>
             </div>
           )}
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={() => setLpRefreshNonce((n) => n + 1)}
+              disabled={lpStatus === 'CHECKING'}
+              className="mt-2 inline-flex items-center gap-1 rounded-full border border-white/20 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 disabled:opacity-40"
+            >
+              <span className="inline-block h-1 w-1 rounded-full bg-[var(--moss-green)]" />
+              Rescan LP sigils
+            </button>
+          </div>
           {renderPersonaCtas(copy, { disablePrimary: lpStatus === 'CHECKING' })}
           {positionsPreview}
           <div className="text-xs opacity-60">

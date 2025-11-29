@@ -33,7 +33,7 @@ interface LpApiResponse {
 
 const TARGET_POOL_KEY: LpPoolKey = {
   currency0: '0x22cd99ec337a2811f594340a4a6e41e4a3022b07', // m00nad
-  currency1: '0xd20c124d9b9df986df7aae61a2b1e678a765d25f', // WMON (wrapped)
+  currency1: '0x3bd359c1119da7da1d913d1c4d2b7c461115433a', // WMON (wrapped) on Monad
   fee: 8_388_608,
   hooks: '0x94f802a9efe4dd542fdbd77a25d9e69a6dc828cc'
 };
