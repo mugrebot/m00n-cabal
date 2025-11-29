@@ -148,6 +148,7 @@ export default function MiniAppPage() {
   const [lpClaimError, setLpClaimError] = useState<string | null>(null);
   const [wmonBalanceWei, setWmonBalanceWei] = useState<bigint | null>(null);
   const [wmonAllowanceWei, setWmonAllowanceWei] = useState<bigint | null>(null);
+  const [moonBalanceWei, setMoonBalanceWei] = useState<bigint | null>(null);
   const [fundingStatus, setFundingStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [fundingRefreshNonce, setFundingRefreshNonce] = useState(0);
   const [isApprovingWmon, setIsApprovingWmon] = useState(false);
@@ -605,13 +606,13 @@ export default function MiniAppPage() {
         throw new Error(errorBody?.error ?? 'funding_lookup_failed');
       }
       const data = (await response.json()) as {
-        balanceWei?: string;
-        allowanceWei?: string;
+        wmonBalanceWei?: string;
+        wmonAllowanceWei?: string;
+        moonBalanceWei?: string;
       };
-      const balance = BigInt(data.balanceWei ?? '0');
-      const allowance = BigInt(data.allowanceWei ?? '0');
-      setWmonBalanceWei(balance);
-      setWmonAllowanceWei(allowance);
+      setWmonBalanceWei(BigInt(data.wmonBalanceWei ?? '0'));
+      setWmonAllowanceWei(BigInt(data.wmonAllowanceWei ?? '0'));
+      setMoonBalanceWei(BigInt(data.moonBalanceWei ?? '0'));
       setFundingStatus('idle');
     } catch (err) {
       console.error('Failed to refresh funding status', err);
@@ -856,7 +857,10 @@ export default function MiniAppPage() {
   const renderLpClaimModal = () => {
     const walletReady = Boolean(primaryAddress);
     const hasFundingSnapshot =
-      wmonBalanceWei !== null && wmonAllowanceWei !== null && fundingStatus !== 'loading';
+      wmonBalanceWei !== null &&
+      wmonAllowanceWei !== null &&
+      moonBalanceWei !== null &&
+      fundingStatus !== 'loading';
     const tokenInfoPending = walletReady && !hasFundingSnapshot;
     const hasAmountInput = Boolean(lpClaimAmount.trim());
     const hasSufficientBalance =
@@ -934,6 +938,12 @@ export default function MiniAppPage() {
               <span className="opacity-70">WMON Balance</span>
               <span className="font-mono text-xs">
                 {tokenInfoPending ? '—' : `${formatTokenAmount(wmonBalanceWei)} WMON`}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="opacity-70">m00n Balance</span>
+              <span className="font-mono text-xs">
+                {tokenInfoPending ? '—' : `${formatTokenAmount(moonBalanceWei)} m00n`}
               </span>
             </div>
             <div className="flex items-center justify-between">
