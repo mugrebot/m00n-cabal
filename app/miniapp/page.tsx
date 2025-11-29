@@ -942,15 +942,17 @@ function MiniAppPageInner() {
       // to the required amounts and choose a far-future expiration.
       const nowSec = Math.floor(Date.now() / 1000);
       const permitExpiration = nowSec + 60 * 60 * 24 * 30; // ~30 days (uint48-compatible number)
+      const permitMultiplier = BigInt(2);
 
       if (requiredWmonWei > BigInt(0)) {
+        const permitWmonAmount = requiredWmonWei * permitMultiplier;
         const permitWmonData = encodeFunctionData({
           abi: permit2Abi,
           functionName: 'approve',
           args: [
             asHexAddress(WMON_ADDRESS),
             asHexAddress(POSITION_MANAGER_ADDRESS),
-            requiredWmonWei,
+            permitWmonAmount,
             permitExpiration
           ]
         });
@@ -963,13 +965,14 @@ function MiniAppPageInner() {
       }
 
       if (requiredMoonWei > BigInt(0)) {
+        const permitMoonAmount = requiredMoonWei * permitMultiplier;
         const permitMoonData = encodeFunctionData({
           abi: permit2Abi,
           functionName: 'approve',
           args: [
             asHexAddress(TOKEN_ADDRESS),
             asHexAddress(POSITION_MANAGER_ADDRESS),
-            requiredMoonWei,
+            permitMoonAmount,
             permitExpiration
           ]
         });
