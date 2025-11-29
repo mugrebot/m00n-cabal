@@ -10,6 +10,14 @@ import {
 } from 'react';
 import Image from 'next/image';
 import sdk from '@farcaster/miniapp-sdk';
+import {
+  decodeFunctionResult,
+  encodeFunctionData,
+  erc20Abi,
+  formatUnits,
+  parseUnits,
+  type Hex
+} from 'viem';
 import { getTierByReplyCount } from '@/app/lib/tiers';
 import { getPersonaCopy, type PersonaActionId, type LpStatus } from '@/app/copy/persona';
 
@@ -40,6 +48,8 @@ interface ViewerContext {
 type ScanPhase = 'idle' | 'authenticating' | 'addresses' | 'fetching' | 'ready' | 'error';
 
 const TOKEN_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
+const WMON_ADDRESS = '0x3bd359c1119da7da1d913d1c4d2b7c461115433a';
+const POSITION_MANAGER_ADDRESS = '0x5b7ec4a94ff9bedb700fb82ab09d5846972f4016';
 const CLAIM_URL =
   'https://clanker.onchain.cooking/?token=0x22cd99ec337a2811f594340a4a6e41e4a3022b07&risk=warn&riskTag=Warning';
 const CLAIM_UNLOCK_TIMESTAMP_MS = 1764272894 * 1000;
@@ -56,10 +66,11 @@ const STICKER_COLORS = ['#6ce5b1', '#8c54ff', '#ff9b54', '#5ea3ff', '#f7e6ff'];
 const HOLDER_CHAT_URL =
   process.env.NEXT_PUBLIC_HOLDER_CHAT_URL ?? 'https://warpcast.com/~/channel/m00n';
 const HEAVEN_MODE_URL = process.env.NEXT_PUBLIC_HEAVEN_URL ?? 'https://warpcast.com/~/channel/m00n';
-const BACKSTOP_PRESET = {
-  tickLower: -106600,
-  tickUpper: -104600
-};
+const CHAIN_CAIP = 'eip155:143';
+const MON_NATIVE_CAIP = `${CHAIN_CAIP}/native`;
+const WMON_CAIP = `${CHAIN_CAIP}/erc20:${WMON_ADDRESS.toLowerCase()}`;
+const MOON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_ADDRESS.toLowerCase()}`;
+const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
 const truncateAddress = (value?: string | null) =>
   value ? `${value.slice(0, 6)}…${value.slice(-4)}` : null;
 
@@ -142,6 +153,12 @@ export default function MiniAppPage() {
   const [lpClaimAmount, setLpClaimAmount] = useState('');
   const [isSubmittingLpClaim, setIsSubmittingLpClaim] = useState(false);
   const [lpClaimError, setLpClaimError] = useState<string | null>(null);
+  const [wmonBalanceWei, setWmonBalanceWei] = useState<bigint | null>(null);
+  const [wmonAllowanceWei, setWmonAllowanceWei] = useState<bigint | null>(null);
+  const [fundingStatus, setFundingStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [fundingRefreshNonce, setFundingRefreshNonce] = useState(0);
+  const [isApprovingWmon, setIsApprovingWmon] = useState(false);
+  const [swapInFlight, setSwapInFlight] = useState<'wmon' | 'moon' | null>(null);
 
   const formatAmount = (amount?: string | number) => {
     if (amount === undefined || amount === null) return '0';
@@ -501,6 +518,25 @@ export default function MiniAppPage() {
   const asHexAddress = (value: string): `0x${string}` =>
     (value.startsWith('0x') ? value : `0x${value}`) as `0x${string}`;
 
+  const formatTokenAmount = (value?: bigint | null, precision = 4) => {
+    if (value === undefined || value === null) return '—';
+    try {
+      const asNumber = Number(formatUnits(value, 18));
+      if (Number.isFinite(asNumber)) {
+        return asNumber.toLocaleString(undefined, { maximumFractionDigits: precision });
+      }
+      return formatUnits(value, 18);
+    } catch {
+      return formatUnits(value, 18);
+    }
+  };
+
+  const getMiniWalletProvider = useCallback(async () => {
+    return (
+      (await sdk.wallet.getEthereumProvider().catch(() => undefined)) ?? sdk.wallet.ethProvider
+    );
+  }, []);
+
   const openExternalUrl = async (url: string) => {
     try {
       await sdk.actions.openUrl({ url });
@@ -566,6 +602,71 @@ export default function MiniAppPage() {
     setLpClaimError(null);
   };
 
+  const refreshFundingStatus = useCallback(async () => {
+    if (!primaryAddress) return;
+    setFundingStatus('loading');
+    try {
+      const provider = await getMiniWalletProvider();
+      if (!provider || typeof provider.request !== 'function') {
+        throw new Error('wallet_unavailable');
+      }
+      const owner = asHexAddress(primaryAddress);
+
+      const balanceCallData = encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [owner]
+      });
+      const balanceRaw = (await provider.request({
+        method: 'eth_call',
+        params: [
+          {
+            to: asHexAddress(WMON_ADDRESS),
+            data: balanceCallData
+          },
+          'latest'
+        ]
+      })) as Hex;
+      const balance = decodeFunctionResult({
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        data: balanceRaw
+      }) as bigint;
+      setWmonBalanceWei(balance);
+
+      const allowanceCallData = encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'allowance',
+        args: [owner, asHexAddress(POSITION_MANAGER_ADDRESS)]
+      });
+      const allowanceRaw = (await provider.request({
+        method: 'eth_call',
+        params: [
+          {
+            to: asHexAddress(WMON_ADDRESS),
+            data: allowanceCallData
+          },
+          'latest'
+        ]
+      })) as Hex;
+      const allowance = decodeFunctionResult({
+        abi: erc20Abi,
+        functionName: 'allowance',
+        data: allowanceRaw
+      }) as bigint;
+      setWmonAllowanceWei(allowance);
+      setFundingStatus('idle');
+    } catch (err) {
+      console.error('Failed to refresh funding status', err);
+      setFundingStatus('error');
+    }
+  }, [getMiniWalletProvider, primaryAddress]);
+
+  useEffect(() => {
+    if (!isLpClaimModalOpen || !primaryAddress) return;
+    refreshFundingStatus();
+  }, [isLpClaimModalOpen, primaryAddress, fundingRefreshNonce, refreshFundingStatus]);
+
   const handleSubmitLpClaim = async () => {
     if (!primaryAddress) {
       setLpClaimError('Connect your wallet to continue.');
@@ -575,6 +676,27 @@ export default function MiniAppPage() {
     const sanitizedAmount = lpClaimAmount.trim();
     if (!sanitizedAmount) {
       setLpClaimError('Enter an amount to deposit.');
+      return;
+    }
+
+    const amountWei = desiredAmountWei;
+    if (!amountWei) {
+      setLpClaimError('Invalid amount.');
+      return;
+    }
+
+    if (wmonBalanceWei === null || wmonAllowanceWei === null) {
+      setLpClaimError('Still checking wallet balances. Please retry.');
+      return;
+    }
+
+    if (wmonBalanceWei < amountWei) {
+      setLpClaimError('Not enough WMON balance. Swap MON → WMON first.');
+      return;
+    }
+
+    if (wmonAllowanceWei < amountWei) {
+      setLpClaimError('Approve WMON for the position manager before minting.');
       return;
     }
 
@@ -605,9 +727,7 @@ export default function MiniAppPage() {
         value?: string;
       };
 
-      const provider =
-        (await sdk.wallet.getEthereumProvider().catch(() => undefined)) ?? sdk.wallet.ethProvider;
-
+      const provider = await getMiniWalletProvider();
       if (!provider || typeof provider.request !== 'function') {
         throw new Error('wallet_unavailable');
       }
@@ -631,11 +751,66 @@ export default function MiniAppPage() {
         setLpRefreshNonce((prev) => prev + 1);
         setIsLpLoungeOpen(true);
       }, 2000);
+      setFundingRefreshNonce((prev) => prev + 1);
     } catch (err) {
       console.error('LP claim failed', err);
       setLpClaimError(err instanceof Error ? err.message : 'lp_claim_failed');
     } finally {
       setIsSubmittingLpClaim(false);
+    }
+  };
+
+  const handleApproveWmon = async () => {
+    if (!primaryAddress) {
+      setLpClaimError('Connect your wallet to continue.');
+      return;
+    }
+    setIsApprovingWmon(true);
+    setLpClaimError(null);
+    try {
+      const provider = await getMiniWalletProvider();
+      if (!provider || typeof provider.request !== 'function') {
+        throw new Error('wallet_unavailable');
+      }
+      const data = encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [asHexAddress(POSITION_MANAGER_ADDRESS), MAX_UINT256]
+      });
+      await provider.request({
+        method: 'eth_sendTransaction',
+        params: [
+          {
+            from: asHexAddress(primaryAddress),
+            to: asHexAddress(WMON_ADDRESS),
+            data,
+            value: '0x0'
+          }
+        ]
+      });
+      setFundingRefreshNonce((prev) => prev + 1);
+    } catch (err) {
+      console.error('Approve WMON failed', err);
+      setLpClaimError(err instanceof Error ? err.message : 'approve_failed');
+    } finally {
+      setIsApprovingWmon(false);
+    }
+  };
+
+  const handleSwapMonToToken = async (target: 'wmon' | 'moon') => {
+    setSwapInFlight(target);
+    try {
+      await sdk.actions.swapToken({
+        sellToken: MON_NATIVE_CAIP,
+        buyToken: target === 'wmon' ? WMON_CAIP : MOON_CAIP
+      });
+      if (target === 'wmon') {
+        setFundingRefreshNonce((prev) => prev + 1);
+      }
+    } catch (err) {
+      console.error('swapToken failed', err);
+    } finally {
+      setSwapInFlight((current) => (current === target ? null : current));
     }
   };
 
@@ -701,8 +876,46 @@ export default function MiniAppPage() {
     );
   };
 
+  const desiredAmountWei = useMemo(() => {
+    const sanitized = lpClaimAmount.trim();
+    if (!sanitized) return null;
+    try {
+      return parseUnits(sanitized, 18);
+    } catch {
+      return null;
+    }
+  }, [lpClaimAmount]);
+
   const renderLpClaimModal = () => {
     const walletReady = Boolean(primaryAddress);
+    const hasFundingSnapshot =
+      wmonBalanceWei !== null && wmonAllowanceWei !== null && fundingStatus !== 'loading';
+    const tokenInfoPending = walletReady && !hasFundingSnapshot;
+    const hasAmountInput = Boolean(lpClaimAmount.trim());
+    const hasSufficientBalance =
+      walletReady &&
+      desiredAmountWei !== null &&
+      wmonBalanceWei !== null &&
+      wmonBalanceWei >= desiredAmountWei;
+    const hasSufficientAllowance =
+      walletReady &&
+      desiredAmountWei !== null &&
+      wmonAllowanceWei !== null &&
+      wmonAllowanceWei >= desiredAmountWei;
+    const fundingWarning = !walletReady
+      ? 'Connect your Warpcast wallet to fund the LP ritual.'
+      : !hasAmountInput
+        ? 'Enter an amount denominated in MON.'
+        : tokenInfoPending
+          ? 'Checking wallet balances…'
+          : desiredAmountWei === null
+            ? 'Amount is invalid.'
+            : !hasSufficientBalance
+              ? 'Not enough WMON. Swap MON → WMON below.'
+              : !hasSufficientAllowance
+                ? 'Approve WMON for the position manager before minting.'
+                : null;
+
     const primaryLabel = walletReady
       ? isSubmittingLpClaim
         ? 'CLAIMING…'
@@ -711,7 +924,10 @@ export default function MiniAppPage() {
     const primaryHandler = walletReady ? handleSubmitLpClaim : handleSignIn;
     const primaryDisabled =
       (!walletReady && isSubmittingLpClaim) ||
-      (walletReady && (isSubmittingLpClaim || !lpClaimAmount.trim()));
+      isSubmittingLpClaim ||
+      !hasAmountInput ||
+      Boolean(fundingWarning && walletReady) ||
+      tokenInfoPending;
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
@@ -736,13 +952,61 @@ export default function MiniAppPage() {
             </button>
           </div>
           <p className="text-sm opacity-80">
-            Deploy liquidity into the crash-backstop band ({BACKSTOP_PRESET.tickLower} →{' '}
-            {BACKSTOP_PRESET.tickUpper}) on the m00n / W-MON pool. Amount is denominated in MON /
-            W-MON.
+            Deploy liquidity into the crash-backstop band (auto-targeted ~2k ticks below spot) on
+            the m00n / W-MON pool. Amount is denominated in MON / W-MON.
           </p>
           {!walletReady && (
             <div className="rounded-lg border border-yellow-400/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-100">
               Connect your Warpcast wallet to enter the LP ritual.
+            </div>
+          )}
+          <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="opacity-70">WMON Balance</span>
+              <span className="font-mono text-xs">
+                {tokenInfoPending ? '—' : `${formatTokenAmount(wmonBalanceWei)} WMON`}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="opacity-70">Allowance to LP Manager</span>
+              <span className="font-mono text-xs">
+                {tokenInfoPending ? '—' : `${formatTokenAmount(wmonAllowanceWei)} WMON`}
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setFundingRefreshNonce((prev) => prev + 1)}
+                disabled={!walletReady || fundingStatus === 'loading'}
+                className="pixel-font text-[10px] px-3 py-1 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors disabled:opacity-40"
+              >
+                {fundingStatus === 'loading' ? 'REFRESHING…' : 'REFRESH'}
+              </button>
+              {fundingStatus === 'error' && (
+                <span className="text-xs text-red-300">Failed to load wallet data.</span>
+              )}
+            </div>
+          </div>
+          {walletReady && (
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={handleApproveWmon}
+                disabled={
+                  isApprovingWmon ||
+                  !primaryAddress ||
+                  tokenInfoPending ||
+                  (hasSufficientAllowance && fundingStatus !== 'error')
+                }
+                className="w-full rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
+              >
+                {isApprovingWmon ? 'APPROVING…' : 'APPROVE WMON'}
+              </button>
+              {!hasSufficientAllowance && walletReady && (
+                <p className="text-xs text-red-300">
+                  Approval lets the position manager pull your WMON just once.
+                </p>
+              )}
             </div>
           )}
           <div className="space-y-2">
@@ -760,6 +1024,11 @@ export default function MiniAppPage() {
               disabled={!walletReady || isSubmittingLpClaim}
             />
           </div>
+          {fundingWarning && (
+            <div className="rounded-lg border border-red-400/50 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+              {fundingWarning}
+            </div>
+          )}
           {lpClaimError && (
             <div className="rounded-lg border border-red-400/50 bg-red-500/10 px-3 py-2 text-sm text-red-200">
               {lpClaimError}
@@ -782,6 +1051,33 @@ export default function MiniAppPage() {
             >
               Cancel
             </button>
+          </div>
+          <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">
+              NEED MATERIALS?
+            </p>
+            <p className="text-xs opacity-70">
+              Use the Warpcast swapper to convert native MON into WMON or m00n before joining the
+              cabal. Swaps open in-place and you can adjust the details there.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => handleSwapMonToToken('wmon')}
+                disabled={swapInFlight === 'wmon'}
+                className="flex-1 rounded-xl border border-[var(--monad-purple)] px-4 py-3 text-sm font-semibold text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-white transition-colors disabled:opacity-40"
+              >
+                {swapInFlight === 'wmon' ? 'OPENING…' : 'Swap MON → WMON'}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwapMonToToken('moon')}
+                disabled={swapInFlight === 'moon'}
+                className="flex-1 rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
+              >
+                {swapInFlight === 'moon' ? 'OPENING…' : 'Swap MON → m00n'}
+              </button>
+            </div>
           </div>
           <p className="text-xs opacity-60">
             Transaction executes via the Farcaster mini wallet. Unlocks the LP lounge once
