@@ -759,10 +759,7 @@ export default function MiniAppPage() {
       return;
     }
 
-    if (moonAllowanceWei < amountWei) {
-      setLpClaimError('Approve m00n for the position manager before minting.');
-      return;
-    }
+    const needsApproval = moonAllowanceWei < amountWei;
 
     setIsSubmittingLpClaim(true);
     setLpClaimError(null);
@@ -796,17 +793,75 @@ export default function MiniAppPage() {
         throw new Error('wallet_unavailable');
       }
 
-      await provider.request({
-        method: 'eth_sendTransaction',
-        params: [
-          {
-            from: asHexAddress(miniWalletAddress),
-            to: asHexAddress(payload.to),
-            data: payload.data as `0x${string}`,
-            value: normalizeHexValue(payload.value)
-          }
-        ]
+      const calls: Array<{
+        to: `0x${string}`;
+        data: `0x${string}`;
+        value?: `0x${string}`;
+      }> = [];
+
+      if (needsApproval) {
+        const decimals = Number.isFinite(tokenDecimals.moon) ? tokenDecimals.moon : 18;
+        const fallbackAmount = parseUnits('10', decimals);
+        const amountToApprove =
+          desiredAmountWei && desiredAmountWei > BigInt(0) ? desiredAmountWei : fallbackAmount;
+
+        const approveData = encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [asHexAddress(POSITION_MANAGER_ADDRESS), amountToApprove]
+        });
+
+        calls.push({
+          to: asHexAddress(TOKEN_ADDRESS),
+          data: approveData,
+          value: '0x0'
+        });
+      }
+
+      calls.push({
+        to: asHexAddress(payload.to),
+        data: payload.data as `0x${string}`,
+        value: normalizeHexValue(payload.value)
       });
+
+      // Prefer batched approve + mint via wallet_sendCalls (EIP-5792)
+      try {
+        await (
+          provider.request as (args: { method: string; params?: unknown }) => Promise<unknown>
+        )({
+          method: 'wallet_sendCalls',
+          params: [{ calls }]
+        });
+      } catch (batchError) {
+        console.warn('wallet_sendCalls failed, falling back to sequential txs', batchError);
+
+        // Fallback: sequential approve then mint
+        if (needsApproval) {
+          await provider.request({
+            method: 'eth_sendTransaction',
+            params: [
+              {
+                from: asHexAddress(miniWalletAddress),
+                to: asHexAddress(TOKEN_ADDRESS),
+                data: calls[0].data,
+                value: '0x0'
+              }
+            ]
+          });
+        }
+
+        await provider.request({
+          method: 'eth_sendTransaction',
+          params: [
+            {
+              from: asHexAddress(miniWalletAddress),
+              to: asHexAddress(payload.to),
+              data: payload.data as `0x${string}`,
+              value: normalizeHexValue(payload.value)
+            }
+          ]
+        });
+      }
 
       setIsLpClaimModalOpen(false);
       setLpClaimAmount('');
@@ -841,20 +896,6 @@ export default function MiniAppPage() {
       const provider = await getMiniWalletProvider();
       if (!provider || typeof provider.request !== 'function') {
         throw new Error('wallet_unavailable');
-      }
-
-      // Check if wallet is on Monad network (chain ID 143)
-      try {
-        const chainId = await provider.request({ method: 'eth_chainId' });
-        if (chainId !== '0x8f') {
-          setLpClaimError(
-            `Wrong network! Switch to Monad chain (143). Currently on chain: ${parseInt(chainId, 16)} (${chainId})`
-          );
-          return;
-        }
-      } catch (chainError) {
-        setLpClaimError(`Cannot detect network. Make sure you're on Monad chain (143).`);
-        return;
       }
 
       const data = encodeFunctionData({
