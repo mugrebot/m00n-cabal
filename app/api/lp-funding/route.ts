@@ -71,8 +71,8 @@ export async function GET(request: NextRequest) {
       wmonBalanceWei: wmonBalanceWei.toString(),
       wmonAllowanceWei: wmonAllowanceWei.toString(),
       moonBalanceWei: moonBalanceWei.toString(),
-      wmonDecimals,
-      moonDecimals
+      wmonDecimals: Number(wmonDecimals),
+      moonDecimals: Number(moonDecimals)
     });
   } catch (error) {
     console.error('Failed to fetch LP funding data', error);

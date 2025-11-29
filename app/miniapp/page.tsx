@@ -63,7 +63,6 @@ const CHAIN_CAIP = 'eip155:143';
 const MON_NATIVE_CAIP = `${CHAIN_CAIP}/native`;
 const WMON_CAIP = `${CHAIN_CAIP}/erc20:${WMON_ADDRESS.toLowerCase()}`;
 const MOON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_ADDRESS.toLowerCase()}`;
-const MAX_UINT256 = BigInt('0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
 const truncateAddress = (value?: string | null) =>
   value ? `${value.slice(0, 6)}…${value.slice(-4)}` : null;
 
@@ -737,6 +736,11 @@ export default function MiniAppPage() {
       setLpClaimError('Connect your wallet to continue.');
       return;
     }
+    const decimals = Number.isFinite(tokenDecimals.wmon) ? tokenDecimals.wmon : 18;
+    const fallbackAmount = parseUnits('10', decimals);
+    const amountToApprove =
+      desiredAmountWei && desiredAmountWei > BigInt(0) ? desiredAmountWei : fallbackAmount;
+
     setIsApprovingWmon(true);
     setLpClaimError(null);
     try {
@@ -747,7 +751,7 @@ export default function MiniAppPage() {
       const data = encodeFunctionData({
         abi: erc20Abi,
         functionName: 'approve',
-        args: [asHexAddress(POSITION_MANAGER_ADDRESS), MAX_UINT256]
+        args: [asHexAddress(POSITION_MANAGER_ADDRESS), amountToApprove]
       });
       await provider.request({
         method: 'eth_sendTransaction',
