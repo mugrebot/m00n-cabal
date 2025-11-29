@@ -524,8 +524,9 @@ export default function MiniAppPage() {
       }
       const formatted = formatUnits(value, decimals);
       return Number(formatted).toLocaleString(undefined, { maximumFractionDigits: precision });
-    } catch {
-      return formatUnits(value, decimals);
+    } catch (error) {
+      console.error('formatTokenAmount error:', error, { value, decimals });
+      return '???';
     }
   };
 
@@ -835,6 +836,16 @@ export default function MiniAppPage() {
     const amountToApprove =
       desiredAmountWei && desiredAmountWei > BigInt(0) ? desiredAmountWei : fallbackAmount;
 
+    console.log('handleApproveMoon:', {
+      lpClaimAmount,
+      desiredAmountWei: desiredAmountWei?.toString(),
+      fallbackAmount: fallbackAmount.toString(),
+      amountToApprove: amountToApprove.toString(),
+      decimals,
+      TOKEN_ADDRESS,
+      POSITION_MANAGER_ADDRESS
+    });
+
     setIsApprovingMoon(true);
     setLpClaimError(null);
     try {
@@ -1012,6 +1023,12 @@ export default function MiniAppPage() {
     const approvalFallbackWei = parseUnits('10', approvalDecimals);
     const approvalAmountWei =
       desiredAmountWei && desiredAmountWei > BigInt(0) ? desiredAmountWei : approvalFallbackWei;
+    console.log('Approval calculation:', {
+      desiredAmountWei: desiredAmountWei?.toString(),
+      approvalFallbackWei: approvalFallbackWei.toString(),
+      approvalAmountWei: approvalAmountWei.toString(),
+      approvalDecimals
+    });
     const approvalAmountDisplay = formatTokenAmount(approvalAmountWei, approvalDecimals, 6);
 
     const primaryHandler = walletReady ? handleSubmitLpClaim : handleSignIn;
