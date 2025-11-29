@@ -242,6 +242,10 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('LP claim build failed', error);
-    return buildError('lp_claim_failed', 500);
+    const code =
+      error instanceof Error && error.message
+        ? `lp_claim_failed:${error.message}`
+        : 'lp_claim_failed';
+    return buildError(code, 500);
   }
 }
