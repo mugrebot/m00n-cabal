@@ -1342,17 +1342,32 @@ function MiniAppPageInner() {
           )}
           {lpDebugLog && (
             <div className="space-y-1 rounded-xl border border-white/10 bg-black/60 p-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <span className="text-[10px] uppercase tracking-[0.3em] text-white/50">
                   LP DEBUG TRACE
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setLpDebugLog('')}
-                  className="text-[10px] text-white/40 hover:text-white/80 transition-colors"
-                >
-                  CLEAR
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(lpDebugLog);
+                      } catch {
+                        // ignore clipboard failures; this is purely a debug helper
+                      }
+                    }}
+                    className="text-[10px] text-white/40 hover:text-white/80 transition-colors"
+                  >
+                    COPY
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLpDebugLog('')}
+                    className="text-[10px] text-white/40 hover:text-white/80 transition-colors"
+                  >
+                    CLEAR
+                  </button>
+                </div>
               </div>
               <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-snug text-white/70">
                 {lpDebugLog}

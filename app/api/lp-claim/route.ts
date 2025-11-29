@@ -48,15 +48,22 @@ const monadRpcUrl = (process.env.MONAD_RPC_URL ?? '').trim() || DEFAULT_MONAD_RP
 // This keeps the helper safe in edge bands (e.g. position entirely in token1) while
 // preserving the SDK's integer math and overall semantics.
 try {
-  const proto = (Position as unknown as { prototype?: { mintAmountsWithSlippage?: unknown } })
-    .prototype;
+  const proto = (
+    Position as unknown as {
+      prototype?: {
+        mintAmountsWithSlippage?: (slippage: Percent) => { amount0: JSBI; amount1: JSBI };
+      };
+    }
+  ).prototype;
   if (proto && typeof proto.mintAmountsWithSlippage === 'function') {
-    const original = proto.mintAmountsWithSlippage.bind(proto);
+    const original = proto.mintAmountsWithSlippage;
     proto.mintAmountsWithSlippage = function patchedMintAmountsWithSlippage(
       this: unknown,
       slippage: Percent
     ) {
-      const result = original.call(this, slippage) as { amount0: JSBI; amount1: JSBI };
+      const result = (
+        original as (this: unknown, slippage: Percent) => { amount0: JSBI; amount1: JSBI }
+      ).call(this, slippage);
       const zero = JSBI.BigInt(0);
       const safeAmount0 = JSBI.greaterThanOrEqual(result.amount0, zero) ? result.amount0 : zero;
       const safeAmount1 = JSBI.greaterThanOrEqual(result.amount1, zero) ? result.amount1 : zero;
