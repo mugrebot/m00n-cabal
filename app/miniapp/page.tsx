@@ -60,6 +60,7 @@ const HOLDER_CHAT_URL =
   process.env.NEXT_PUBLIC_HOLDER_CHAT_URL ?? 'https://warpcast.com/~/channel/m00n';
 const HEAVEN_MODE_URL = process.env.NEXT_PUBLIC_HEAVEN_URL ?? 'https://warpcast.com/~/channel/m00n';
 const CHAIN_CAIP = 'eip155:143';
+const MONAD_CHAIN_ID_HEX = '0x8f'; // 143
 const MON_NATIVE_CAIP = `${CHAIN_CAIP}/native`;
 const WMON_CAIP = `${CHAIN_CAIP}/erc20:${WMON_ADDRESS.toLowerCase()}`;
 const MOON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_ADDRESS.toLowerCase()}`;
@@ -765,6 +766,28 @@ export default function MiniAppPage() {
     setLpClaimError(null);
 
     try {
+      const provider = await getMiniWalletProvider();
+      if (!provider || typeof provider.request !== 'function') {
+        throw new Error('wallet_unavailable');
+      }
+
+      // Detect wallet chain to avoid accidentally sending LP txs on Base
+      try {
+        const chainIdResult = (await (
+          provider.request as (args: { method: string; params?: unknown }) => Promise<unknown>
+        )({ method: 'eth_chainId' })) as string | undefined;
+
+        if (chainIdResult && chainIdResult.toLowerCase() !== MONAD_CHAIN_ID_HEX) {
+          setLpClaimError(
+            `Warp wallet is on chain ${chainIdResult}, but LP ritual must run on Monad (chainId 143). Switch networks in your wallet and retry.`
+          );
+          setIsSubmittingLpClaim(false);
+          return;
+        }
+      } catch (chainError) {
+        console.warn('Failed to read wallet chainId; continuing anyway', chainError);
+      }
+
       const response = await fetch('/api/lp-claim', {
         method: 'POST',
         headers: {
@@ -787,11 +810,6 @@ export default function MiniAppPage() {
         data: string;
         value?: string;
       };
-
-      const provider = await getMiniWalletProvider();
-      if (!provider || typeof provider.request !== 'function') {
-        throw new Error('wallet_unavailable');
-      }
 
       const calls: Array<{
         to: `0x${string}`;
