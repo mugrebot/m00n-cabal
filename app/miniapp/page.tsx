@@ -1014,11 +1014,14 @@ function MiniAppPageInner() {
       desiredAmountWei !== null &&
       moonBalanceWei !== null &&
       moonBalanceWei >= desiredAmountWei;
-    const hasSufficientAllowance =
+    const hasSufficientMoonAllowance =
       walletReady &&
       desiredAmountWei !== null &&
       moonAllowanceWei !== null &&
       moonAllowanceWei >= desiredAmountWei;
+    const hasSomeWmon = walletReady && wmonBalanceWei !== null && wmonBalanceWei > BigInt(0);
+    const hasWmonAllowance =
+      walletReady && wmonAllowanceWei !== null && wmonAllowanceWei > BigInt(0);
     const fundingWarning = !walletReady
       ? 'Connect your Warpcast wallet to fund the LP ritual.'
       : !hasAmountInput
@@ -1031,9 +1034,13 @@ function MiniAppPageInner() {
               ? 'Amount is invalid.'
               : !hasSufficientBalance
                 ? 'Not enough m00n. Swap MON → m00n below.'
-                : !hasSufficientAllowance
-                  ? 'Approve m00n for the position manager before minting.'
-                  : null;
+                : !hasSomeWmon
+                  ? 'You also need some WMON in your Warp wallet for this LP band.'
+                  : !hasWmonAllowance
+                    ? 'Approve WMON for the position manager before minting.'
+                    : !hasSufficientMoonAllowance
+                      ? 'Approve m00n for the position manager before minting.'
+                      : null;
 
     const primaryLabel = walletReady
       ? isSubmittingLpClaim
@@ -1141,7 +1148,43 @@ function MiniAppPageInner() {
             </div>
           </div>
           {walletReady && (
-            <div className="space-y-2">
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!miniWalletAddress) return;
+                  if (!wmonBalanceWei || wmonBalanceWei <= BigInt(0)) {
+                    setLpClaimError('You need some WMON in your Warp wallet before approving it.');
+                    return;
+                  }
+                  setLpClaimError(null);
+                  try {
+                    const amountToApprove = wmonBalanceWei;
+                    const data = encodeFunctionData({
+                      abi: erc20Abi,
+                      functionName: 'approve',
+                      args: [asHexAddress(POSITION_MANAGER_ADDRESS), amountToApprove]
+                    });
+                    await sendCalls({
+                      calls: [
+                        {
+                          to: asHexAddress(WMON_ADDRESS),
+                          data,
+                          value: BigInt(0)
+                        }
+                      ]
+                    });
+                    setFundingRefreshNonce((prev) => prev + 1);
+                  } catch (err) {
+                    console.error('Approve WMON failed', err);
+                    setLpClaimError(err instanceof Error ? err.message : 'approve_wmon_failed');
+                  }
+                }}
+                disabled={!walletReady || tokenInfoPending}
+                className="w-full rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
+              >
+                APPROVE WMON BALANCE
+              </button>
               <button
                 type="button"
                 onClick={handleApproveMoon}
@@ -1149,13 +1192,13 @@ function MiniAppPageInner() {
                   isApprovingMoon ||
                   !miniWalletAddress ||
                   tokenInfoPending ||
-                  (hasSufficientAllowance && fundingStatus !== 'error')
+                  (hasSufficientMoonAllowance && fundingStatus !== 'error')
                 }
                 className="w-full rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
               >
                 {isApprovingMoon ? 'APPROVING…' : `APPROVE ${approvalAmountDisplay} m00n`}
               </button>
-              {!hasSufficientAllowance && walletReady && (
+              {!hasSufficientMoonAllowance && walletReady && (
                 <p className="text-xs text-red-300">
                   Approval lets the position manager pull your m00n just once.
                 </p>

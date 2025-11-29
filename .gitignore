@@ -5,7 +5,7 @@ dist/
 
 # Dependencies
 node_modules/
-bun.lockb
+bun.lock
 
 # Env files
 .env
