@@ -89,6 +89,8 @@ interface LpPosition {
     fee: number;
     hooks: string;
   };
+  // Optional fields returned by the enriched /api/lp-nft endpoint.
+  bandType?: 'crash_band' | 'upside_band' | 'in_range' | 'unknown';
 }
 
 interface LpGateState {
@@ -1652,6 +1654,21 @@ function MiniAppPageInner() {
 
   const renderLpLoungePanel = () => {
     const positionCount = lpGateState.lpPositions?.length ?? 0;
+    const positions = lpGateState.lpPositions ?? [];
+
+    const describeBandType = (bandType?: LpPosition['bandType']) => {
+      switch (bandType) {
+        case 'crash_band':
+          return 'Crash band (buys m00n with MON if price nukes into it)';
+        case 'upside_band':
+          return 'Upside band (sells m00n for MON as price rips up)';
+        case 'in_range':
+          return 'Active band (earning fees right now)';
+        default:
+          return 'Band type unknown';
+      }
+    };
+
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-4xl w-full space-y-8 scanline bg-black/50 border border-[var(--monad-purple)] rounded-3xl px-10 py-10">
@@ -1667,37 +1684,37 @@ function MiniAppPageInner() {
             </div>
           </div>
 
-          <div className={`${PANEL_CLASS} space-y-3 text-left`}>
-            <p className="text-lg font-semibold">Recommended band</p>
-            <p className="text-sm opacity-80">
-              We park your LP around spot so you earn fees without thinking about ticks.
-            </p>
-            <button
-              onClick={handleOpenLpSite}
-              className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-colors"
-            >
-              Use recommended band
-            </button>
-            <p className="text-xs opacity-60">
-              Starts mixed m00nad / MON, automatically rebalances as price moves.
-            </p>
-          </div>
-
-          <div className={`${PANEL_CLASS} space-y-3 text-left`}>
-            <p className="text-lg font-semibold">Custom band</p>
-            <p className="text-sm opacity-80">
-              Choose your own range if you want a buy wall, sell wall, or wide basin.
-            </p>
-            <button
-              onClick={handleOpenLpSite}
-              className="pixel-font px-6 py-3 border border-[var(--monad-purple)] text-[var(--monad-purple)] rounded-lg hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
-            >
-              Tune my own LP band
-            </button>
-            <p className="text-xs opacity-60">
-              Closer to spot = more fee action; deeper bands wait for dramatic moves.
-            </p>
-          </div>
+          {positionCount > 0 && (
+            <div className={`${PANEL_CLASS} space-y-4 text-left`}>
+              <p className="text-lg font-semibold">Your cabal sigils</p>
+              <p className="text-sm opacity-80">
+                These are the Uniswap v4 LP NFTs we&apos;ve found for the m00n / WMON pool. Band
+                type is based on where spot sits relative to your ticks.
+              </p>
+              <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                {positions.map((pos) => (
+                  <div
+                    key={pos.tokenId}
+                    className="rounded-xl border border-white/15 bg-black/40 px-4 py-3 space-y-1"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-mono text-white/80">Sigil #{pos.tokenId}</span>
+                      <span className="text-[10px] uppercase tracking-[0.25em] text-[var(--moss-green)]">
+                        {describeBandType(pos.bandType)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-white/70">
+                      Range ticks: {pos.tickLower} → {pos.tickUpper}
+                    </p>
+                    <p className="text-xs text-white/70">
+                      Liquidity units:&nbsp;
+                      <span className="font-mono">{pos.liquidity}</span>
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end">
             <button
