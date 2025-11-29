@@ -32,10 +32,8 @@ const TICK_SIGN_SHIFT = BigInt(23);
 const UINT24_SHIFT = BigInt(24);
 const SQRT_PRICE_MASK = (ONE << Q96_SHIFT) - ONE;
 const UINT24_MASK = (ONE << UINT24_SHIFT) - ONE;
-const BACKSTOP_PRESET = {
-  tickLower: -106_600,
-  tickUpper: -104_600
-};
+const BACKSTOP_WIDTH = 2_000;
+const BACKSTOP_OFFSET = 2_000;
 const DEFAULT_SLIPPAGE_BPS = BigInt(50); // 0.5%
 const DEADLINE_SECONDS = 10 * 60; // 10 minutes
 
@@ -98,6 +96,8 @@ const decodeSlot0 = (slotWord: bigint) => {
     lpFee
   };
 };
+
+const snapToSpacing = (tick: number) => Math.floor(tick / TICK_SPACING) * TICK_SPACING;
 
 export async function POST(request: NextRequest) {
   let body: { address?: string; amount?: string; preset?: string };
@@ -170,6 +170,13 @@ export async function POST(request: NextRequest) {
     }
 
     const slot0 = decodeSlot0(slot0Word);
+    const tickUpperTarget = slot0.tick - BACKSTOP_OFFSET;
+    const tickUpper = snapToSpacing(tickUpperTarget);
+    const tickLower = tickUpper - BACKSTOP_WIDTH;
+
+    if (tickUpper <= tickLower) {
+      throw new Error('invalid_tick_configuration');
+    }
     const liquiditySlot = addSlotOffset(poolStateSlot, LIQUIDITY_OFFSET);
     const liquidityWordHex = await publicClient.readContract({
       address: POOL_MANAGER_ADDRESS,
@@ -192,8 +199,8 @@ export async function POST(request: NextRequest) {
 
     const position = Position.fromAmount1({
       pool,
-      tickLower: BACKSTOP_PRESET.tickLower,
-      tickUpper: BACKSTOP_PRESET.tickUpper,
+      tickLower,
+      tickUpper,
       amount1: amountWei.toString()
     });
 
