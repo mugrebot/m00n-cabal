@@ -207,7 +207,8 @@ export async function POST(request: NextRequest) {
       pool,
       tickLower,
       tickUpper,
-      amount0: amountWei.toString()
+      amount0: amountWei.toString(),
+      useFullPrecision: false
     });
 
     const deadline = BigInt(Math.floor(Date.now() / 1000) + DEADLINE_SECONDS);
