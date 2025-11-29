@@ -913,7 +913,7 @@ function MiniAppPageInner() {
       // reverts, even if ERC20 allowances look fine. We set per-band caps equal
       // to the required amounts and choose a far-future expiration.
       const nowSec = Math.floor(Date.now() / 1000);
-      const permitExpiration = BigInt(nowSec + 60 * 60 * 24 * 30); // ~30 days
+      const permitExpiration = nowSec + 60 * 60 * 24 * 30; // ~30 days (uint48-compatible number)
 
       if (requiredWmonWei > BigInt(0)) {
         const permitWmonData = encodeFunctionData({
