@@ -41,7 +41,9 @@ export async function GET(request: NextRequest) {
       moonBalanceWei,
       moonAllowanceWei,
       wmonDecimals,
-      moonDecimals
+      moonDecimals,
+      wmonSymbol,
+      moonSymbol
     ] = await Promise.all([
       publicClient.readContract({
         address: WMON_ADDRESS,
@@ -76,6 +78,16 @@ export async function GET(request: NextRequest) {
         address: MOON_TOKEN_ADDRESS,
         abi: erc20Abi,
         functionName: 'decimals'
+      }),
+      publicClient.readContract({
+        address: WMON_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'symbol'
+      }),
+      publicClient.readContract({
+        address: MOON_TOKEN_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'symbol'
       })
     ]);
 
@@ -85,7 +97,9 @@ export async function GET(request: NextRequest) {
       moonBalanceWei: moonBalanceWei.toString(),
       moonAllowanceWei: moonAllowanceWei.toString(),
       wmonDecimals: Number(wmonDecimals),
-      moonDecimals: Number(moonDecimals)
+      moonDecimals: Number(moonDecimals),
+      wmonSymbol: String(wmonSymbol),
+      moonSymbol: String(moonSymbol)
     });
   } catch (error) {
     console.error('Failed to fetch LP funding data', error);

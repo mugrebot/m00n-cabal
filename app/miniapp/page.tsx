@@ -155,6 +155,7 @@ export default function MiniAppPage() {
   const [isApprovingMoon, setIsApprovingMoon] = useState(false);
   const [swapInFlight, setSwapInFlight] = useState<'wmon' | 'moon' | null>(null);
   const [tokenDecimals, setTokenDecimals] = useState({ wmon: 18, moon: 18 });
+  const [tokenSymbols, setTokenSymbols] = useState({ wmon: 'WMON', moon: 'MOON' });
 
   const formatAmount = (amount?: string | number) => {
     if (amount === undefined || amount === null) return '0';
@@ -706,6 +707,8 @@ export default function MiniAppPage() {
         moonAllowanceWei?: string;
         wmonDecimals?: number;
         moonDecimals?: number;
+        wmonSymbol?: string;
+        moonSymbol?: string;
       };
       setWmonBalanceWei(BigInt(data.wmonBalanceWei ?? '0'));
       setWmonAllowanceWei(BigInt(data.wmonAllowanceWei ?? '0'));
@@ -720,6 +723,10 @@ export default function MiniAppPage() {
           typeof data.moonDecimals === 'number' && Number.isFinite(data.moonDecimals)
             ? data.moonDecimals
             : 18
+      });
+      setTokenSymbols({
+        wmon: data.wmonSymbol || 'WMON',
+        moon: data.moonSymbol || 'MOON'
       });
       setFundingStatus('idle');
     } catch (err) {
@@ -757,12 +764,14 @@ export default function MiniAppPage() {
     }
 
     if (moonBalanceWei < amountWei) {
-      setLpClaimError('Not enough m00n balance. Swap MON → m00n first.');
+      setLpClaimError(
+        `Not enough ${tokenSymbols.moon} balance. Swap MON → ${tokenSymbols.moon} first.`
+      );
       return;
     }
 
     if (moonAllowanceWei < amountWei) {
-      setLpClaimError('Approve m00n for the position manager before minting.');
+      setLpClaimError(`Approve ${tokenSymbols.moon} for the position manager before minting.`);
       return;
     }
 
@@ -1018,7 +1027,7 @@ export default function MiniAppPage() {
     const fundingWarning = !walletReady
       ? 'Connect your Warpcast wallet to fund the LP ritual.'
       : !hasAmountInput
-        ? 'Enter an amount denominated in m00n.'
+        ? `Enter an amount denominated in ${tokenSymbols.moon}.`
         : tokenInfoPending
           ? 'Checking wallet balances…'
           : fundingStatus === 'error'
@@ -1026,9 +1035,9 @@ export default function MiniAppPage() {
             : desiredAmountWei === null
               ? 'Amount is invalid.'
               : !hasSufficientBalance
-                ? 'Not enough m00n. Swap MON → m00n below.'
+                ? `Not enough ${tokenSymbols.moon}. Swap MON → ${tokenSymbols.moon} below.`
                 : !hasSufficientAllowance
-                  ? 'Approve m00n for the position manager before minting.'
+                  ? `Approve ${tokenSymbols.moon} for the position manager before minting.`
                   : null;
 
     const primaryLabel = walletReady
@@ -1091,19 +1100,19 @@ export default function MiniAppPage() {
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="opacity-70">m00n Balance</span>
+              <span className="opacity-70">{tokenSymbols.moon} Balance</span>
               <span className="font-mono text-xs">
                 {tokenInfoPending
                   ? '—'
-                  : `${formatTokenAmount(moonBalanceWei, tokenDecimals.moon)} m00n`}
+                  : `${formatTokenAmount(moonBalanceWei, tokenDecimals.moon)} ${tokenSymbols.moon}`}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="opacity-70">m00n Allowance → LP</span>
+              <span className="opacity-70">{tokenSymbols.moon} Allowance → LP</span>
               <span className="font-mono text-xs">
                 {tokenInfoPending
                   ? '—'
-                  : `${formatTokenAmount(moonAllowanceWei, tokenDecimals.moon)} m00n`}
+                  : `${formatTokenAmount(moonAllowanceWei, tokenDecimals.moon)} ${tokenSymbols.moon}`}
               </span>
             </div>
             <div className="flex items-center gap-3">
@@ -1132,7 +1141,7 @@ export default function MiniAppPage() {
                 onClick={() => handleViewToken('moon')}
                 className="pixel-font text-[10px] px-3 py-1 border border-white/10 rounded hover:bg-white/10 transition-colors"
               >
-                VIEW m00n
+                VIEW {tokenSymbols.moon}
               </button>
             </div>
           </div>
@@ -1149,25 +1158,25 @@ export default function MiniAppPage() {
                 }
                 className="w-full rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
               >
-                {isApprovingMoon ? 'APPROVING...' : 'APPROVE ' + approvalAmountDisplay + ' m00n'}
+                {isApprovingMoon
+                  ? 'APPROVING...'
+                  : `APPROVE ${approvalAmountDisplay} ${tokenSymbols.moon}`}
               </button>
               {!hasSufficientAllowance && walletReady && (
                 <p className="text-xs text-red-300">
-                  Approval lets the position manager pull your m00n just once.
+                  Approval lets the position manager pull your {tokenSymbols.moon} just once.
                 </p>
               )}
               {walletReady && (
                 <p className="text-xs text-white/60">
-                  {'Wallet prompt will approve up to ' +
-                    approvalAmountDisplay +
-                    ' m00n (falls back to 10 if no amount is entered).'}
+                  {`Wallet prompt will approve up to ${approvalAmountDisplay} ${tokenSymbols.moon} (falls back to 10 if no amount is entered).`}
                 </p>
               )}
             </div>
           )}
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">
-              Amount (m00n)
+              Amount ({tokenSymbols.moon})
             </label>
             <input
               type="number"
