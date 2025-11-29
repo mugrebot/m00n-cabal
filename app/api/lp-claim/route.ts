@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import JSBI from 'jsbi';
 import { Token } from '@uniswap/sdk-core';
-import {
-  Pool,
-  Position,
-  V4PositionManager,
-  V4PositionPlanner,
-  toHex as toHexSdk
-} from '@uniswap/v4-sdk';
+import { Pool, Position, V4PositionManager, V4PositionPlanner } from '@uniswap/v4-sdk';
 import {
   createPublicClient,
   http,
@@ -150,9 +144,6 @@ function buildMintCallParameters(position: Position, recipient: string, deadline
     DEFAULT_SLIPPAGE_BPS
   );
 
-  const amount0MaxHex = toHexSdk(amount0Max);
-  const amount1MaxHex = toHexSdk(amount1Max);
-
   const planner = new V4PositionPlanner();
   // Single mint in our fixed band, payer is the user (MSG_SENDER)
   planner.addMint(
@@ -160,8 +151,8 @@ function buildMintCallParameters(position: Position, recipient: string, deadline
     position.tickLower,
     position.tickUpper,
     position.liquidity,
-    amount0MaxHex,
-    amount1MaxHex,
+    amount0Max.toString(),
+    amount1Max.toString(),
     recipient,
     '0x'
   );
