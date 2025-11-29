@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import JSBI from 'jsbi';
-import { Token, Percent } from '@uniswap/sdk-core';
-import { Pool, Position, V4PositionManager } from '@uniswap/v4-sdk';
+import { Token } from '@uniswap/sdk-core';
+import {
+  Pool,
+  Position,
+  V4PositionManager,
+  V4PositionPlanner,
+  toHex as toHexSdk
+} from '@uniswap/v4-sdk';
 import {
   createPublicClient,
   http,
@@ -43,36 +49,6 @@ const envChainId = Number(process.env.MONAD_CHAIN_ID);
 const monadChainId =
   Number.isFinite(envChainId) && envChainId > 0 ? envChainId : DEFAULT_MONAD_CHAIN_ID;
 const monadRpcUrl = (process.env.MONAD_RPC_URL ?? '').trim() || DEFAULT_MONAD_RPC_URL;
-
-// Monkey-patch Position.mintAmountsWithSlippage to clamp any negative max amounts to zero.
-// This keeps the helper safe in edge bands (e.g. position entirely in token1) while
-// preserving the SDK's integer math and overall semantics.
-try {
-  const proto = (
-    Position as unknown as {
-      prototype?: {
-        mintAmountsWithSlippage?: (slippage: Percent) => { amount0: JSBI; amount1: JSBI };
-      };
-    }
-  ).prototype;
-  if (proto && typeof proto.mintAmountsWithSlippage === 'function') {
-    const original = proto.mintAmountsWithSlippage;
-    proto.mintAmountsWithSlippage = function patchedMintAmountsWithSlippage(
-      this: unknown,
-      slippage: Percent
-    ) {
-      const result = (
-        original as (this: unknown, slippage: Percent) => { amount0: JSBI; amount1: JSBI }
-      ).call(this, slippage);
-      const zero = JSBI.BigInt(0);
-      const safeAmount0 = JSBI.greaterThanOrEqual(result.amount0, zero) ? result.amount0 : zero;
-      const safeAmount1 = JSBI.greaterThanOrEqual(result.amount1, zero) ? result.amount1 : zero;
-      return { amount0: safeAmount0, amount1: safeAmount1 };
-    };
-  }
-} catch (patchError) {
-  console.error('Failed to patch Position.mintAmountsWithSlippage', patchError);
-}
 
 const monadChain = defineChain({
   id: monadChainId,
@@ -137,6 +113,60 @@ const parseCallValue = (raw?: string) => {
   if (!trimmed || trimmed === '0x' || trimmed === '0x0') return BigInt(0);
   return trimmed.startsWith('0x') ? BigInt(trimmed) : BigInt(trimmed);
 };
+
+function getMaxAmountsWithSlippage(position: Position, slippageBps: bigint) {
+  const base = position.mintAmounts;
+  const zero = JSBI.BigInt(0);
+  const bpsBase = JSBI.BigInt(10_000);
+  const bpsPlus = JSBI.add(bpsBase, JSBI.BigInt(slippageBps.toString()));
+
+  const applySlippage = (amount: JSBI) => {
+    if (!JSBI.greaterThan(amount, zero)) return zero;
+    // floor(amount * (1 + slippageBps / 10_000))
+    const num = JSBI.multiply(amount, bpsPlus);
+    return JSBI.divide(num, bpsBase);
+  };
+
+  return {
+    amount0Max: applySlippage(base.amount0),
+    amount1Max: applySlippage(base.amount1)
+  };
+}
+
+function buildMintCallParameters(position: Position, recipient: string, deadline: bigint) {
+  const zero = JSBI.BigInt(0);
+  if (!JSBI.greaterThan(position.liquidity, zero)) {
+    throw new Error('zero_liquidity');
+  }
+
+  const { amount0Max, amount1Max } = getMaxAmountsWithSlippage(position, DEFAULT_SLIPPAGE_BPS);
+
+  const amount0MaxHex = toHexSdk(amount0Max);
+  const amount1MaxHex = toHexSdk(amount1Max);
+
+  const planner = new V4PositionPlanner();
+  // Single mint in our fixed band, payer is the user (MSG_SENDER)
+  planner.addMint(
+    position.pool,
+    position.tickLower,
+    position.tickUpper,
+    position.liquidity,
+    amount0MaxHex,
+    amount1MaxHex,
+    recipient,
+    '0x'
+  );
+  // User settles both currencies; no migrate / native path
+  planner.addSettlePair(position.pool.currency0, position.pool.currency1);
+
+  const unlockData = planner.finalize();
+  const calldata = V4PositionManager.encodeModifyLiquidities(unlockData, deadline.toString());
+
+  return {
+    calldata,
+    value: '0x0'
+  };
+}
 
 export async function POST(request: NextRequest) {
   let body: { address?: string; amount?: string; preset?: string };
@@ -244,14 +274,8 @@ export async function POST(request: NextRequest) {
     });
 
     const deadline = BigInt(Math.floor(Date.now() / 1000) + DEADLINE_SECONDS);
-    const slippageTolerance = new Percent(DEFAULT_SLIPPAGE_BPS.toString(), '10000');
 
-    const { calldata, value } = V4PositionManager.addCallParameters(position, {
-      recipient: address,
-      deadline: deadline.toString(),
-      slippageTolerance,
-      hookData: '0x'
-    });
+    const { calldata, value } = buildMintCallParameters(position, address, deadline);
 
     try {
       await publicClient.call({
