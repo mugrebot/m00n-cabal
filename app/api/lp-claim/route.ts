@@ -34,7 +34,8 @@ const SQRT_PRICE_MASK = (ONE << Q96_SHIFT) - ONE;
 const UINT24_MASK = (ONE << UINT24_SHIFT) - ONE;
 const BACKSTOP_TICK_LOWER = -106_600;
 const BACKSTOP_TICK_UPPER = -104_600;
-const DEFAULT_SLIPPAGE_BPS = BigInt(50); // 0.5%
+// Use zero slippage in the SDK helper to avoid any negative max-amount artifacts
+const DEFAULT_SLIPPAGE_BPS = BigInt(0);
 const DEADLINE_SECONDS = 10 * 60; // 10 minutes
 
 const envChainId = Number(process.env.MONAD_CHAIN_ID);
