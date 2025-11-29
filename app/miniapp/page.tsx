@@ -555,10 +555,6 @@ export default function MiniAppPage() {
   };
 
   const handleOpenLpClaimModal = () => {
-    if (!primaryAddress) {
-      void handleSignIn();
-      return;
-    }
     setLpClaimError(null);
     setIsLpClaimModalOpen(true);
   };
@@ -572,7 +568,7 @@ export default function MiniAppPage() {
 
   const handleSubmitLpClaim = async () => {
     if (!primaryAddress) {
-      await handleSignIn();
+      setLpClaimError('Connect your wallet to continue.');
       return;
     }
 
@@ -685,6 +681,7 @@ export default function MiniAppPage() {
           <button
             onClick={primaryHandler}
             disabled={!primaryHandler || options?.disablePrimary}
+            type="button"
             className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-colors disabled:opacity-40"
           >
             {copy.primaryCta.label}
@@ -694,6 +691,7 @@ export default function MiniAppPage() {
           <button
             onClick={secondaryHandler}
             disabled={!secondaryHandler || options?.disableSecondary}
+            type="button"
             className="pixel-font px-6 py-3 border border-[var(--monad-purple)] text-[var(--monad-purple)] rounded-lg hover:bg-[var(--monad-purple)] hover:text-white transition-colors disabled:opacity-40"
           >
             {copy.secondaryCta.label}
@@ -703,74 +701,96 @@ export default function MiniAppPage() {
     );
   };
 
-  const renderLpClaimModal = () => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-      <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-        onClick={() => {
-          if (!isSubmittingLpClaim) {
-            handleCloseLpClaimModal();
-          }
-        }}
-      />
-      <div className="relative w-full max-w-md space-y-5 rounded-3xl border border-[var(--monad-purple)] bg-black/80 p-6 text-left shadow-2xl">
-        <div className="flex items-center justify-between">
-          <h2 className="pixel-font text-xl text-white">Claim LP Backstop</h2>
-          <button
-            onClick={handleCloseLpClaimModal}
-            className="text-sm text-white/60 hover:text-white transition-colors"
-            disabled={isSubmittingLpClaim}
-          >
-            CLOSE
-          </button>
-        </div>
-        <p className="text-sm opacity-80">
-          Deploy liquidity into the crash-backstop band ({BACKSTOP_PRESET.tickLower} →{' '}
-          {BACKSTOP_PRESET.tickUpper}) on the m00n / W-MON pool. Amount is denominated in MON /
-          W-MON.
-        </p>
-        <div className="space-y-2">
-          <label className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">
-            Amount (MON)
-          </label>
-          <input
-            type="number"
-            min="0"
-            step="0.0001"
-            value={lpClaimAmount}
-            onChange={(event) => setLpClaimAmount(event.target.value)}
-            placeholder="1.0"
-            className="w-full rounded-xl border border-white/15 bg-black/40 px-4 py-3 font-mono text-sm text-white focus:border-[var(--monad-purple)] focus:outline-none"
-            disabled={isSubmittingLpClaim}
-          />
-        </div>
-        {lpClaimError && (
-          <div className="rounded-lg border border-red-400/50 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-            {lpClaimError}
+  const renderLpClaimModal = () => {
+    const walletReady = Boolean(primaryAddress);
+    const primaryLabel = walletReady
+      ? isSubmittingLpClaim
+        ? 'CLAIMING…'
+        : 'CLAIM LP'
+      : 'CONNECT WALLET';
+    const primaryHandler = walletReady ? handleSubmitLpClaim : handleSignIn;
+    const primaryDisabled =
+      (!walletReady && isSubmittingLpClaim) ||
+      (walletReady && (isSubmittingLpClaim || !lpClaimAmount.trim()));
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+        <div
+          className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+          onClick={() => {
+            if (!isSubmittingLpClaim) {
+              handleCloseLpClaimModal();
+            }
+          }}
+        />
+        <div className="relative w-full max-w-md space-y-5 rounded-3xl border border-[var(--monad-purple)] bg-black/80 p-6 text-left shadow-2xl">
+          <div className="flex items-center justify-between">
+            <h2 className="pixel-font text-xl text-white">Claim LP Backstop</h2>
+            <button
+              onClick={handleCloseLpClaimModal}
+              className="text-sm text-white/60 hover:text-white transition-colors"
+              disabled={isSubmittingLpClaim}
+              type="button"
+            >
+              CLOSE
+            </button>
           </div>
-        )}
-        <div className="flex gap-3">
-          <button
-            onClick={handleSubmitLpClaim}
-            disabled={isSubmittingLpClaim || !lpClaimAmount.trim()}
-            className="flex-1 rounded-xl bg-[var(--monad-purple)] px-4 py-3 text-sm font-semibold text-white transition-all disabled:opacity-40"
-          >
-            {isSubmittingLpClaim ? 'CLAIMING…' : 'CLAIM LP'}
-          </button>
-          <button
-            onClick={handleCloseLpClaimModal}
-            disabled={isSubmittingLpClaim}
-            className="flex-1 rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
-          >
-            Cancel
-          </button>
+          <p className="text-sm opacity-80">
+            Deploy liquidity into the crash-backstop band ({BACKSTOP_PRESET.tickLower} →{' '}
+            {BACKSTOP_PRESET.tickUpper}) on the m00n / W-MON pool. Amount is denominated in MON /
+            W-MON.
+          </p>
+          {!walletReady && (
+            <div className="rounded-lg border border-yellow-400/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-100">
+              Connect your Warpcast wallet to enter the LP ritual.
+            </div>
+          )}
+          <div className="space-y-2">
+            <label className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">
+              Amount (MON)
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.0001"
+              value={lpClaimAmount}
+              onChange={(event) => setLpClaimAmount(event.target.value)}
+              placeholder="1.0"
+              className="w-full rounded-xl border border-white/15 bg-black/40 px-4 py-3 font-mono text-sm text-white focus:border-[var(--monad-purple)] focus:outline-none disabled:opacity-40"
+              disabled={!walletReady || isSubmittingLpClaim}
+            />
+          </div>
+          {lpClaimError && (
+            <div className="rounded-lg border border-red-400/50 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+              {lpClaimError}
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button
+              onClick={primaryHandler}
+              disabled={primaryDisabled}
+              type="button"
+              className="flex-1 rounded-xl bg-[var(--monad-purple)] px-4 py-3 text-sm font-semibold text-white transition-all disabled:opacity-40"
+            >
+              {primaryLabel}
+            </button>
+            <button
+              onClick={handleCloseLpClaimModal}
+              disabled={isSubmittingLpClaim}
+              type="button"
+              className="flex-1 rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
+            >
+              Cancel
+            </button>
+          </div>
+          <p className="text-xs opacity-60">
+            Transaction executes via the Farcaster mini wallet. Unlocks the LP lounge once
+            confirmed.
+          </p>
         </div>
-        <p className="text-xs opacity-60">
-          Transaction executes via the Farcaster mini wallet. Unlocks the LP lounge once confirmed.
-        </p>
       </div>
-    </div>
-  );
+    );
+  };
 
   const repliesCount = airdropData?.replyCount ?? engagementData?.replyCount ?? 0;
   const tier = repliesCount ? getTierByReplyCount(repliesCount) : null;
