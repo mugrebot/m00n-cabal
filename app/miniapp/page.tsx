@@ -204,36 +204,6 @@ function MiniAppPageInner() {
   const [swapInFlight, setSwapInFlight] = useState<'wmon' | 'moon' | null>(null);
   const [tokenDecimals, setTokenDecimals] = useState({ wmon: 18, moon: 18 });
 
-  const sendCallsViaProvider = useCallback(
-    async ({ calls }: { calls: { to: `0x${string}`; data: `0x${string}`; value?: bigint }[] }) => {
-      const provider = await getMiniWalletProvider();
-      if (!provider || typeof provider.request !== 'function' || !miniWalletAddress) {
-        throw new Error('wallet_provider_unavailable');
-      }
-
-      const request = provider.request.bind(provider) as <T>(args: {
-        method: string;
-        params?: unknown[];
-      }) => Promise<T>;
-
-      for (const call of calls) {
-        const tx = {
-          from: miniWalletAddress,
-          to: call.to,
-          data: call.data,
-          value:
-            call.value && call.value > BigInt(0) ? `0x${call.value.toString(16)}` : ('0x0' as const)
-        };
-        // Sequentially send each transaction; Monad does not yet support wallet_sendCalls.
-        await request({
-          method: 'eth_sendTransaction',
-          params: [tx]
-        });
-      }
-    },
-    [getMiniWalletProvider, miniWalletAddress]
-  );
-
   const formatAmount = (amount?: string | number) => {
     if (amount === undefined || amount === null) return '0';
     const numeric = typeof amount === 'string' ? parseInt(amount, 10) : amount;
@@ -621,6 +591,36 @@ function MiniAppPageInner() {
       (await sdk.wallet.getEthereumProvider().catch(() => undefined)) ?? sdk.wallet.ethProvider
     );
   }, []);
+
+  const sendCallsViaProvider = useCallback(
+    async ({ calls }: { calls: { to: `0x${string}`; data: `0x${string}`; value?: bigint }[] }) => {
+      const provider = await getMiniWalletProvider();
+      if (!provider || typeof provider.request !== 'function' || !miniWalletAddress) {
+        throw new Error('wallet_provider_unavailable');
+      }
+
+      const request = provider.request.bind(provider) as <T>(args: {
+        method: string;
+        params?: unknown[];
+      }) => Promise<T>;
+
+      for (const call of calls) {
+        const tx = {
+          from: miniWalletAddress,
+          to: call.to,
+          data: call.data,
+          value:
+            call.value && call.value > BigInt(0) ? `0x${call.value.toString(16)}` : ('0x0' as const)
+        };
+        // Sequentially send each transaction; Monad does not yet support wallet_sendCalls.
+        await request({
+          method: 'eth_sendTransaction',
+          params: [tx]
+        });
+      }
+    },
+    [getMiniWalletProvider, miniWalletAddress]
+  );
 
   const syncMiniWalletAddress = useCallback(async () => {
     try {
