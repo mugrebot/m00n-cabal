@@ -853,11 +853,29 @@ export default function MiniAppPage() {
       if (!provider || typeof provider.request !== 'function') {
         throw new Error('wallet_unavailable');
       }
+
+      // Check if wallet is on Monad network (chain ID 143)
+      try {
+        const chainId = await provider.request({ method: 'eth_chainId' });
+        if (chainId !== '0x8f') {
+          throw new Error(`Wrong network. Expected Monad (143), got ${chainId}`);
+        }
+      } catch (chainError) {
+        setLpClaimError(
+          `Network error: ${chainError instanceof Error ? chainError.message : 'unknown'}`
+        );
+        return;
+      }
+
       const data = encodeFunctionData({
         abi: erc20Abi,
         functionName: 'approve',
         args: [asHexAddress(POSITION_MANAGER_ADDRESS), amountToApprove]
       });
+
+      // Show approval details for debugging
+      const amountFormatted = formatTokenAmount(amountToApprove, decimals);
+      setLpClaimError(`Approving ${amountFormatted} tokens on Monad network...`);
 
       const txHash = (await provider.request({
         method: 'eth_sendTransaction',
@@ -870,6 +888,8 @@ export default function MiniAppPage() {
           }
         ]
       })) as string;
+
+      setLpClaimError(`Transaction sent: ${txHash.slice(0, 10)}... Waiting for confirmation...`);
 
       // Wait for transaction to potentially be mined
       let attempts = 0;
@@ -885,6 +905,7 @@ export default function MiniAppPage() {
 
           if (receipt) {
             // Transaction mined, refresh immediately
+            setLpClaimError(`Transaction confirmed! Refreshing allowance...`);
             setFundingRefreshNonce((prev) => prev + 1);
             return;
           }
@@ -896,9 +917,11 @@ export default function MiniAppPage() {
       }
 
       // Force refresh even if we didn't get receipt
+      setLpClaimError(`Transaction may still be pending. Refreshing allowance...`);
       setFundingRefreshNonce((prev) => prev + 1);
     } catch (err) {
-      setLpClaimError(err instanceof Error ? err.message : 'approve_failed');
+      const errorMsg = err instanceof Error ? err.message : 'approve_failed';
+      setLpClaimError(`Approval failed: ${errorMsg}. Check if you're on Monad network.`);
     } finally {
       setIsApprovingMoon(false);
     }
@@ -1050,6 +1073,7 @@ export default function MiniAppPage() {
     const approvalAmountWei =
       desiredAmountWei && desiredAmountWei > BigInt(0) ? desiredAmountWei : approvalFallbackWei;
     const approvalAmountDisplay = formatTokenAmount(approvalAmountWei, approvalDecimals, 6);
+    const displaySymbol = tokenSymbols.moon || 'm00n';
 
     const primaryHandler = walletReady ? handleSubmitLpClaim : handleSignIn;
     const primaryDisabled =
@@ -1160,23 +1184,23 @@ export default function MiniAppPage() {
               >
                 {isApprovingMoon
                   ? 'APPROVING...'
-                  : `APPROVE ${approvalAmountDisplay} ${tokenSymbols.moon}`}
+                  : `APPROVE ${approvalAmountDisplay} ${displaySymbol}`}
               </button>
               {!hasSufficientAllowance && walletReady && (
                 <p className="text-xs text-red-300">
-                  Approval lets the position manager pull your {tokenSymbols.moon} just once.
+                  Approval lets the position manager pull your {displaySymbol} just once.
                 </p>
               )}
               {walletReady && (
                 <p className="text-xs text-white/60">
-                  {`Wallet prompt will approve up to ${approvalAmountDisplay} ${tokenSymbols.moon} (falls back to 10 if no amount is entered).`}
+                  {`Wallet prompt will approve up to ${approvalAmountDisplay} ${displaySymbol} (falls back to 10 if no amount is entered).`}
                 </p>
               )}
             </div>
           )}
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">
-              Amount ({tokenSymbols.moon})
+              Amount ({displaySymbol})
             </label>
             <input
               type="number"
