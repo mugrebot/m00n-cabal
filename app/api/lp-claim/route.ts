@@ -1,22 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import JSBI from 'jsbi';
-import { Token } from '@uniswap/sdk-core';
-import { Pool, Position, V4PositionManager, V4PositionPlanner } from '@uniswap/v4-sdk';
-import {
-  createPublicClient,
-  http,
-  parseUnits,
-  isAddress,
-  defineChain,
-  keccak256,
-  concatHex,
-  padHex,
-  toHex,
-  type Hex
-} from 'viem';
+import { Percent, Token } from '@uniswap/sdk-core';
+import { Pool, Position, V4PositionManager, type MintOptions } from '@uniswap/v4-sdk';
+import { createPublicClient, http, parseUnits, isAddress, defineChain, type Hex } from 'viem';
 
 const POSITION_MANAGER_ADDRESS = '0x5b7eC4a94fF9beDb700fb82aB09d5846972F4016';
-const POOL_MANAGER_ADDRESS = '0x188d586Ddcf52439676Ca21A244753fA19F9Ea8e';
+const STATE_VIEW_ADDRESS = '0x77395f3b2e73ae90843717371294fa97cc419d64';
 const TOKEN_MOON_ADDRESS = '0x22Cd99EC337a2811F594340a4A6E41e4A3022b07';
 const TOKEN_WMON_ADDRESS = '0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A';
 const HOOK_ADDRESS = '0x94f802a9efe4dd542fdbd77a25d9e69a6dc828cc';
@@ -24,22 +12,8 @@ const FEE = 8_388_608;
 const TICK_SPACING = 200;
 const DEFAULT_MONAD_CHAIN_ID = 143;
 const DEFAULT_MONAD_RPC_URL = 'https://rpc.monad.xyz';
-const POOLS_SLOT = padHex(toHex(BigInt(6)), { size: 32 });
-const LIQUIDITY_OFFSET = BigInt(3);
-const ONE = BigInt(1);
-const Q96_SHIFT = BigInt(160);
-const TICK_SIGN_SHIFT = BigInt(23);
-const UINT24_SHIFT = BigInt(24);
-const SQRT_PRICE_MASK = (ONE << Q96_SHIFT) - ONE;
-const UINT24_MASK = (ONE << UINT24_SHIFT) - ONE;
-// Use a conservative safety cap below the true uint256 max to avoid any
-// edge-case issues in downstream ABI encoding.
-const SAFE_UINT256_MAX = (ONE << BigInt(255)) - ONE;
 const BACKSTOP_TICK_LOWER = -106_600;
 const BACKSTOP_TICK_UPPER = -104_600;
-// Use zero slippage in the SDK helper to avoid any negative max-amount artifacts
-// 5% slippage, expressed in basis points (out of 10_000)
-const DEFAULT_SLIPPAGE_BPS = BigInt(500);
 const DEADLINE_SECONDS = 10 * 60; // 10 minutes
 
 const envChainId = Number(process.env.MONAD_CHAIN_ID);
@@ -63,13 +37,25 @@ const publicClient = createPublicClient({
   transport: http(monadRpcUrl)
 });
 
-const poolManagerAbi = [
+const stateViewAbi = [
   {
     type: 'function',
-    name: 'extsload',
+    name: 'getSlot0',
     stateMutability: 'view',
-    inputs: [{ name: 'slot', type: 'bytes32' }],
-    outputs: [{ name: 'value', type: 'bytes32' }]
+    inputs: [{ name: 'poolId', type: 'bytes32' }],
+    outputs: [
+      { name: 'sqrtPriceX96', type: 'uint160' },
+      { name: 'tick', type: 'int24' },
+      { name: 'protocolFee', type: 'uint24' },
+      { name: 'lpFee', type: 'uint24' }
+    ]
+  },
+  {
+    type: 'function',
+    name: 'getLiquidity',
+    stateMutability: 'view',
+    inputs: [{ name: 'poolId', type: 'bytes32' }],
+    outputs: [{ name: 'liquidity', type: 'uint128' }]
   }
 ] as const;
 
@@ -81,27 +67,6 @@ function buildError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
-const getPoolStateSlot = (poolId: Hex) => keccak256(concatHex([poolId, POOLS_SLOT]));
-
-const addSlotOffset = (slot: Hex, offset: bigint) =>
-  padHex(toHex(BigInt(slot) + offset), { size: 32 });
-
-const decodeSlot0 = (slotWord: bigint) => {
-  const sqrtPriceX96 = slotWord & SQRT_PRICE_MASK;
-  let tick = (slotWord >> Q96_SHIFT) & UINT24_MASK;
-  if (tick >= ONE << TICK_SIGN_SHIFT) {
-    tick -= ONE << UINT24_SHIFT;
-  }
-  const protocolFee = Number((slotWord >> (Q96_SHIFT + UINT24_SHIFT)) & UINT24_MASK);
-  const lpFee = Number((slotWord >> (Q96_SHIFT + UINT24_SHIFT + UINT24_SHIFT)) & UINT24_MASK);
-  return {
-    sqrtPriceX96,
-    tick: Number(tick),
-    protocolFee,
-    lpFee
-  };
-};
-
 const snapToSpacing = (tick: number) => Math.floor(tick / TICK_SPACING) * TICK_SPACING;
 
 const parseCallValue = (raw?: string) => {
@@ -110,78 +75,6 @@ const parseCallValue = (raw?: string) => {
   if (!trimmed || trimmed === '0x' || trimmed === '0x0') return BigInt(0);
   return trimmed.startsWith('0x') ? BigInt(trimmed) : BigInt(trimmed);
 };
-
-function clampJsbiToUint256(value: JSBI) {
-  const asBig = BigInt(value.toString());
-  const zeroBig = BigInt(0);
-  const clamped = asBig < zeroBig ? zeroBig : asBig > SAFE_UINT256_MAX ? SAFE_UINT256_MAX : asBig;
-  return JSBI.BigInt(clamped.toString());
-}
-
-function getMaxAmountsWithSlippage(
-  amount0Desired: JSBI,
-  amount1Desired: JSBI,
-  slippageBps: bigint
-) {
-  const zero = JSBI.BigInt(0);
-  const bpsBase = JSBI.BigInt(10_000);
-  const bpsPlus = JSBI.add(bpsBase, JSBI.BigInt(slippageBps.toString()));
-
-  const applySlippage = (desired: JSBI) => {
-    if (!JSBI.greaterThan(desired, zero)) return zero;
-    // floor(amount * (1 + slippageBps / 10_000)), then clamp to uint256
-    const num = JSBI.multiply(desired, bpsPlus);
-    const withSlippage = JSBI.divide(num, bpsBase);
-    return clampJsbiToUint256(withSlippage);
-  };
-
-  return {
-    amount0Max: applySlippage(amount0Desired),
-    amount1Max: applySlippage(amount1Desired)
-  };
-}
-
-function buildMintCallParameters(position: Position, recipient: string, deadline: bigint) {
-  const zero = JSBI.BigInt(0);
-  if (!JSBI.greaterThan(position.liquidity, zero)) {
-    throw new Error('zero_liquidity');
-  }
-
-  // Clamp liquidity to uint256 to avoid any overflow in the ABI encoder,
-  // even if pool state decoding were ever to produce an out-of-range value.
-  const safeLiquidity = clampJsbiToUint256(position.liquidity);
-
-  // Dual-sided mint: use the position's mintAmounts (derived from your WMON input)
-  // and add a fixed 5% slippage cushion to both m00n and WMON.
-  const { amount0Max, amount1Max } = getMaxAmountsWithSlippage(
-    position.amount0.quotient,
-    position.amount1.quotient,
-    DEFAULT_SLIPPAGE_BPS
-  );
-
-  const planner = new V4PositionPlanner();
-  // Single mint in our fixed band, payer is the user (MSG_SENDER)
-  planner.addMint(
-    position.pool,
-    position.tickLower,
-    position.tickUpper,
-    safeLiquidity,
-    amount0Max.toString(),
-    amount1Max.toString(),
-    recipient,
-    '0x'
-  );
-  // User settles both currencies; no migrate / native path
-  planner.addSettlePair(position.pool.currency0, position.pool.currency1);
-
-  const unlockData = planner.finalize();
-  const calldata = V4PositionManager.encodeModifyLiquidities(unlockData, deadline.toString());
-
-  return {
-    calldata,
-    value: '0x0'
-  };
-}
 
 export async function POST(request: NextRequest) {
   let body: { address?: string; amount?: string; preset?: string };
@@ -241,33 +134,31 @@ export async function POST(request: NextRequest) {
     );
     const poolIdHex = poolId as Hex;
 
-    const poolStateSlot = getPoolStateSlot(poolIdHex);
-    const slot0WordHex = await publicClient.readContract({
-      address: POOL_MANAGER_ADDRESS,
-      abi: poolManagerAbi,
-      functionName: 'extsload',
-      args: [poolStateSlot]
-    });
-    const slot0Word = BigInt(slot0WordHex);
-    if (slot0Word === BigInt(0)) {
-      throw new Error('pool_uninitialized');
-    }
+    const [slot0, poolLiquidityRaw] = await Promise.all([
+      publicClient.readContract({
+        address: STATE_VIEW_ADDRESS,
+        abi: stateViewAbi,
+        functionName: 'getSlot0',
+        args: [poolIdHex]
+      }),
+      publicClient.readContract({
+        address: STATE_VIEW_ADDRESS,
+        abi: stateViewAbi,
+        functionName: 'getLiquidity',
+        args: [poolIdHex]
+      })
+    ]);
 
-    const slot0 = decodeSlot0(slot0Word);
+    const sqrtPriceX96 = slot0[0] as bigint;
+    const currentTick = Number(slot0[1]);
+    const poolLiquidity = poolLiquidityRaw as bigint;
+
     const tickLower = snapToSpacing(BACKSTOP_TICK_LOWER);
     const tickUpper = snapToSpacing(BACKSTOP_TICK_UPPER);
 
     if (tickUpper <= tickLower) {
       throw new Error('invalid_tick_configuration');
     }
-    const liquiditySlot = addSlotOffset(poolStateSlot, LIQUIDITY_OFFSET);
-    const liquidityWordHex = await publicClient.readContract({
-      address: POOL_MANAGER_ADDRESS,
-      abi: poolManagerAbi,
-      functionName: 'extsload',
-      args: [liquiditySlot]
-    });
-    const poolLiquidity = BigInt(liquidityWordHex);
 
     const pool = new Pool(
       moonToken,
@@ -275,9 +166,9 @@ export async function POST(request: NextRequest) {
       FEE,
       TICK_SPACING,
       normalizeAddress(HOOK_ADDRESS),
-      JSBI.BigInt(slot0.sqrtPriceX96.toString()),
-      JSBI.BigInt(poolLiquidity.toString()),
-      slot0.tick
+      sqrtPriceX96.toString(),
+      poolLiquidity.toString(),
+      currentTick
     );
 
     // Treat the user input as WMON (token1) and derive the required m00n (token0)
@@ -288,9 +179,18 @@ export async function POST(request: NextRequest) {
       amount1: amountWei.toString()
     });
 
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + DEADLINE_SECONDS);
+    const currentBlock = await publicClient.getBlock();
+    const currentTimestamp = Number(currentBlock.timestamp);
+    const deadlineSeconds = currentTimestamp + DEADLINE_SECONDS;
 
-    const { calldata, value } = buildMintCallParameters(position, address, deadline);
+    const mintOptions: MintOptions = {
+      recipient: address,
+      slippageTolerance: new Percent(500, 10_000), // 5% slippage
+      deadline: deadlineSeconds.toString(),
+      hookData: '0x'
+    };
+
+    const { calldata, value } = V4PositionManager.addCallParameters(position, mintOptions);
 
     try {
       await publicClient.call({
