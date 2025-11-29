@@ -518,15 +518,20 @@ export default function MiniAppPage() {
   const formatTokenAmount = (value?: bigint | null, decimals = 18, precision = 4) => {
     if (value === undefined || value === null) return '—';
     try {
-      const asNumber = Number(formatUnits(value, decimals));
-      if (Number.isFinite(asNumber)) {
+      const formatted = formatUnits(value, decimals);
+      const asNumber = Number(formatted);
+      if (Number.isFinite(asNumber) && asNumber > 0) {
         return asNumber.toLocaleString(undefined, { maximumFractionDigits: precision });
       }
-      const formatted = formatUnits(value, decimals);
-      return Number(formatted).toLocaleString(undefined, { maximumFractionDigits: precision });
+      return formatted;
     } catch (error) {
       console.error('formatTokenAmount error:', error, { value, decimals });
-      return '???';
+      // Return a simple string representation as fallback
+      try {
+        return (Number(value) / Math.pow(10, decimals)).toFixed(precision);
+      } catch {
+        return '10'; // Default fallback
+      }
     }
   };
 
@@ -836,16 +841,6 @@ export default function MiniAppPage() {
     const amountToApprove =
       desiredAmountWei && desiredAmountWei > BigInt(0) ? desiredAmountWei : fallbackAmount;
 
-    console.log('handleApproveMoon:', {
-      lpClaimAmount,
-      desiredAmountWei: desiredAmountWei?.toString(),
-      fallbackAmount: fallbackAmount.toString(),
-      amountToApprove: amountToApprove.toString(),
-      decimals,
-      TOKEN_ADDRESS,
-      POSITION_MANAGER_ADDRESS
-    });
-
     setIsApprovingMoon(true);
     setLpClaimError(null);
     try {
@@ -1023,12 +1018,6 @@ export default function MiniAppPage() {
     const approvalFallbackWei = parseUnits('10', approvalDecimals);
     const approvalAmountWei =
       desiredAmountWei && desiredAmountWei > BigInt(0) ? desiredAmountWei : approvalFallbackWei;
-    console.log('Approval calculation:', {
-      desiredAmountWei: desiredAmountWei?.toString(),
-      approvalFallbackWei: approvalFallbackWei.toString(),
-      approvalAmountWei: approvalAmountWei.toString(),
-      approvalDecimals
-    });
     const approvalAmountDisplay = formatTokenAmount(approvalAmountWei, approvalDecimals, 6);
 
     const primaryHandler = walletReady ? handleSubmitLpClaim : handleSignIn;
