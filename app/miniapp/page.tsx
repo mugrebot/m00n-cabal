@@ -10,14 +10,7 @@ import {
 } from 'react';
 import Image from 'next/image';
 import sdk from '@farcaster/miniapp-sdk';
-import {
-  decodeFunctionResult,
-  encodeFunctionData,
-  erc20Abi,
-  formatUnits,
-  parseUnits,
-  type Hex
-} from 'viem';
+import { encodeFunctionData, erc20Abi, formatUnits, parseUnits } from 'viem';
 import { getTierByReplyCount } from '@/app/lib/tiers';
 import { getPersonaCopy, type PersonaActionId, type LpStatus } from '@/app/copy/persona';
 
@@ -606,61 +599,25 @@ export default function MiniAppPage() {
     if (!primaryAddress) return;
     setFundingStatus('loading');
     try {
-      const provider = await getMiniWalletProvider();
-      if (!provider || typeof provider.request !== 'function') {
-        throw new Error('wallet_unavailable');
+      const response = await fetch(`/api/lp-funding?address=${primaryAddress}`);
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null);
+        throw new Error(errorBody?.error ?? 'funding_lookup_failed');
       }
-      const owner = asHexAddress(primaryAddress);
-
-      const balanceCallData = encodeFunctionData({
-        abi: erc20Abi,
-        functionName: 'balanceOf',
-        args: [owner]
-      });
-      const balanceRaw = (await provider.request({
-        method: 'eth_call',
-        params: [
-          {
-            to: asHexAddress(WMON_ADDRESS),
-            data: balanceCallData
-          },
-          'latest'
-        ]
-      })) as Hex;
-      const balance = decodeFunctionResult({
-        abi: erc20Abi,
-        functionName: 'balanceOf',
-        data: balanceRaw
-      }) as bigint;
+      const data = (await response.json()) as {
+        balanceWei?: string;
+        allowanceWei?: string;
+      };
+      const balance = BigInt(data.balanceWei ?? '0');
+      const allowance = BigInt(data.allowanceWei ?? '0');
       setWmonBalanceWei(balance);
-
-      const allowanceCallData = encodeFunctionData({
-        abi: erc20Abi,
-        functionName: 'allowance',
-        args: [owner, asHexAddress(POSITION_MANAGER_ADDRESS)]
-      });
-      const allowanceRaw = (await provider.request({
-        method: 'eth_call',
-        params: [
-          {
-            to: asHexAddress(WMON_ADDRESS),
-            data: allowanceCallData
-          },
-          'latest'
-        ]
-      })) as Hex;
-      const allowance = decodeFunctionResult({
-        abi: erc20Abi,
-        functionName: 'allowance',
-        data: allowanceRaw
-      }) as bigint;
       setWmonAllowanceWei(allowance);
       setFundingStatus('idle');
     } catch (err) {
       console.error('Failed to refresh funding status', err);
       setFundingStatus('error');
     }
-  }, [getMiniWalletProvider, primaryAddress]);
+  }, [primaryAddress]);
 
   useEffect(() => {
     if (!isLpClaimModalOpen || !primaryAddress) return;
@@ -814,6 +771,16 @@ export default function MiniAppPage() {
     }
   };
 
+  const handleViewToken = async (token: 'wmon' | 'moon') => {
+    try {
+      await sdk.actions.viewToken({
+        token: token === 'wmon' ? WMON_CAIP : MOON_CAIP
+      });
+    } catch (err) {
+      console.error('viewToken failed', err);
+    }
+  };
+
   const personaActionHandlers: Record<PersonaActionId, (() => void) | undefined> = {
     lp_connect_wallet: handleSignIn,
     lp_become_lp: handleOpenLpClaimModal,
@@ -908,13 +875,15 @@ export default function MiniAppPage() {
         ? 'Enter an amount denominated in MON.'
         : tokenInfoPending
           ? 'Checking wallet balances…'
-          : desiredAmountWei === null
-            ? 'Amount is invalid.'
-            : !hasSufficientBalance
-              ? 'Not enough WMON. Swap MON → WMON below.'
-              : !hasSufficientAllowance
-                ? 'Approve WMON for the position manager before minting.'
-                : null;
+          : fundingStatus === 'error'
+            ? 'Failed to load wallet balances. Tap refresh or VIEW token.'
+            : desiredAmountWei === null
+              ? 'Amount is invalid.'
+              : !hasSufficientBalance
+                ? 'Not enough WMON. Swap MON → WMON below.'
+                : !hasSufficientAllowance
+                  ? 'Approve WMON for the position manager before minting.'
+                  : null;
 
     const primaryLabel = walletReady
       ? isSubmittingLpClaim
@@ -985,6 +954,22 @@ export default function MiniAppPage() {
               {fundingStatus === 'error' && (
                 <span className="text-xs text-red-300">Failed to load wallet data.</span>
               )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => handleViewToken('wmon')}
+                className="pixel-font text-[10px] px-3 py-1 border border-white/20 rounded hover:bg-white/10 transition-colors"
+              >
+                VIEW WMON
+              </button>
+              <button
+                type="button"
+                onClick={() => handleViewToken('moon')}
+                className="pixel-font text-[10px] px-3 py-1 border border-white/10 rounded hover:bg-white/10 transition-colors"
+              >
+                VIEW m00n
+              </button>
             </div>
           </div>
           {walletReady && (
