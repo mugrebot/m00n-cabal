@@ -155,7 +155,7 @@ export default function MiniAppPage() {
   const [isApprovingMoon, setIsApprovingMoon] = useState(false);
   const [swapInFlight, setSwapInFlight] = useState<'wmon' | 'moon' | null>(null);
   const [tokenDecimals, setTokenDecimals] = useState({ wmon: 18, moon: 18 });
-  const [tokenSymbols, setTokenSymbols] = useState({ wmon: 'WMON', moon: 'MOON' });
+  const [tokenSymbols, setTokenSymbols] = useState({ wmon: 'WMON', moon: 'm00n' });
 
   const formatAmount = (amount?: string | number) => {
     if (amount === undefined || amount === null) return '0';

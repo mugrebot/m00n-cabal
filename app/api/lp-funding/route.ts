@@ -35,15 +35,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Fetch balance, allowance, and decimals first
     const [
       wmonBalanceWei,
       wmonAllowanceWei,
       moonBalanceWei,
       moonAllowanceWei,
       wmonDecimals,
-      moonDecimals,
-      wmonSymbol,
-      moonSymbol
+      moonDecimals
     ] = await Promise.all([
       publicClient.readContract({
         address: WMON_ADDRESS,
@@ -78,18 +77,38 @@ export async function GET(request: NextRequest) {
         address: MOON_TOKEN_ADDRESS,
         abi: erc20Abi,
         functionName: 'decimals'
-      }),
-      publicClient.readContract({
+      })
+    ]);
+
+    // Try to fetch symbols with fallbacks
+    let wmonSymbol = 'WMON';
+    let moonSymbol = 'm00n';
+
+    try {
+      const symbolResult = await publicClient.readContract({
         address: WMON_ADDRESS,
         abi: erc20Abi,
         functionName: 'symbol'
-      }),
-      publicClient.readContract({
+      });
+      if (typeof symbolResult === 'string' && symbolResult.length > 0) {
+        wmonSymbol = symbolResult;
+      }
+    } catch {
+      // Keep fallback
+    }
+
+    try {
+      const symbolResult = await publicClient.readContract({
         address: MOON_TOKEN_ADDRESS,
         abi: erc20Abi,
         functionName: 'symbol'
-      })
-    ]);
+      });
+      if (typeof symbolResult === 'string' && symbolResult.length > 0) {
+        moonSymbol = symbolResult;
+      }
+    } catch {
+      // Keep fallback
+    }
 
     return NextResponse.json({
       wmonBalanceWei: wmonBalanceWei.toString(),
@@ -98,8 +117,8 @@ export async function GET(request: NextRequest) {
       moonAllowanceWei: moonAllowanceWei.toString(),
       wmonDecimals: Number(wmonDecimals),
       moonDecimals: Number(moonDecimals),
-      wmonSymbol: String(wmonSymbol),
-      moonSymbol: String(moonSymbol)
+      wmonSymbol,
+      moonSymbol
     });
   } catch (error) {
     console.error('Failed to fetch LP funding data', error);
