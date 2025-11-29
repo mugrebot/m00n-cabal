@@ -32,6 +32,7 @@ const TICK_SIGN_SHIFT = BigInt(23);
 const UINT24_SHIFT = BigInt(24);
 const SQRT_PRICE_MASK = (ONE << Q96_SHIFT) - ONE;
 const UINT24_MASK = (ONE << UINT24_SHIFT) - ONE;
+const UINT256_MAX = (ONE << BigInt(256)) - ONE;
 const BACKSTOP_TICK_LOWER = -106_600;
 const BACKSTOP_TICK_UPPER = -104_600;
 // Use zero slippage in the SDK helper to avoid any negative max-amount artifacts
@@ -108,6 +109,13 @@ const parseCallValue = (raw?: string) => {
   return trimmed.startsWith('0x') ? BigInt(trimmed) : BigInt(trimmed);
 };
 
+function clampJsbiToUint256(value: JSBI) {
+  const asBig = BigInt(value.toString());
+  const zeroBig = BigInt(0);
+  const clamped = asBig < zeroBig ? zeroBig : asBig > UINT256_MAX ? UINT256_MAX : asBig;
+  return JSBI.BigInt(clamped.toString());
+}
+
 function getMaxAmountsWithSlippage(
   amount0Desired: JSBI,
   amount1Desired: JSBI,
@@ -119,9 +127,10 @@ function getMaxAmountsWithSlippage(
 
   const applySlippage = (desired: JSBI) => {
     if (!JSBI.greaterThan(desired, zero)) return zero;
-    // floor(amount * (1 + slippageBps / 10_000))
+    // floor(amount * (1 + slippageBps / 10_000)), then clamp to uint256
     const num = JSBI.multiply(desired, bpsPlus);
-    return JSBI.divide(num, bpsBase);
+    const withSlippage = JSBI.divide(num, bpsBase);
+    return clampJsbiToUint256(withSlippage);
   };
 
   return {
