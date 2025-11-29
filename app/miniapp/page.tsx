@@ -960,11 +960,12 @@ export default function MiniAppPage() {
     const sanitized = lpClaimAmount.trim();
     if (!sanitized) return null;
     try {
-      return parseUnits(sanitized, 18);
+      const decimals = Number.isFinite(tokenDecimals.moon) ? tokenDecimals.moon : 18;
+      return parseUnits(sanitized, decimals);
     } catch {
       return null;
     }
-  }, [lpClaimAmount]);
+  }, [lpClaimAmount, tokenDecimals.moon]);
 
   const renderLpClaimModal = () => {
     const walletReady = Boolean(miniWalletAddress);
