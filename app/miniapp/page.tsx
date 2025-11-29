@@ -176,6 +176,7 @@ function MiniAppPageInner() {
   const [lpClaimAmount, setLpClaimAmount] = useState('');
   const [isSubmittingLpClaim, setIsSubmittingLpClaim] = useState(false);
   const [lpClaimError, setLpClaimError] = useState<string | null>(null);
+  const [lpDebugLog, setLpDebugLog] = useState<string>('');
   const [wmonBalanceWei, setWmonBalanceWei] = useState<bigint | null>(null);
   const [wmonAllowanceWei, setWmonAllowanceWei] = useState<bigint | null>(null);
   const [moonBalanceWei, setMoonBalanceWei] = useState<bigint | null>(null);
@@ -756,34 +757,51 @@ function MiniAppPageInner() {
   const handleSubmitLpClaim = async () => {
     if (!miniWalletAddress) {
       setLpClaimError('Connect your wallet to continue.');
+      setLpDebugLog('❌ No wallet address; aborting LP claim.');
       return;
     }
 
     const sanitizedAmount = lpClaimAmount.trim();
     if (!sanitizedAmount) {
       setLpClaimError('Enter an amount to deposit.');
+      setLpDebugLog('❌ Empty amount input.');
       return;
     }
 
     const amountWei = desiredAmountWei;
     if (!amountWei) {
       setLpClaimError('Invalid amount.');
+      setLpDebugLog(`❌ Invalid amount after parsing: "${lpClaimAmount}".`);
       return;
     }
 
     if (wmonBalanceWei === null || moonBalanceWei === null) {
       setLpClaimError('Still checking wallet balances. Please retry.');
+      setLpDebugLog('⏳ Balances not ready yet (WMON or m00n is null).');
       return;
     }
 
     // Up-front check: user must at least have enough WMON for their desired input
     if (wmonBalanceWei < amountWei) {
       setLpClaimError('Not enough WMON balance for this deposit.');
+      setLpDebugLog(
+        `❌ WMON balance too low for input.\n` +
+          `  desiredInputWmonWei=${amountWei.toString()}\n` +
+          `  walletWmonWei=${wmonBalanceWei.toString()}`
+      );
       return;
     }
 
     setIsSubmittingLpClaim(true);
     setLpClaimError(null);
+    setLpDebugLog(
+      [
+        '🚀 Starting LP claim ritual…',
+        `  input (WMON): ${sanitizedAmount} (${amountWei.toString()} wei)`,
+        `  wallet WMON: ${wmonBalanceWei.toString()} wei`,
+        `  wallet m00n: ${moonBalanceWei.toString()} wei`
+      ].join('\n')
+    );
 
     try {
       const response = await fetch('/api/lp-claim', {
@@ -800,7 +818,19 @@ function MiniAppPageInner() {
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null);
-        throw new Error(errorBody?.error ?? 'lp_claim_failed');
+        const code = errorBody?.error ?? 'lp_claim_failed';
+        setLpDebugLog((prev) =>
+          [
+            prev,
+            '',
+            '❌ /api/lp-claim returned non-OK status.',
+            `  status=${response.status}`,
+            `  errorCode=${code}`
+          ]
+            .filter(Boolean)
+            .join('\n')
+        );
+        throw new Error(code);
       }
 
       const payload = (await response.json()) as {
@@ -814,12 +844,42 @@ function MiniAppPageInner() {
       const requiredMoonWei = BigInt(payload.requiredMoonWei ?? '0');
       const requiredWmonWei = BigInt(payload.requiredWmonWei ?? '0');
 
+      setLpDebugLog((prev) =>
+        [
+          prev,
+          '',
+          '✅ Built LP position payload from backend.',
+          `  requiredWmonWei=${requiredWmonWei.toString()}`,
+          `  requiredMoonWei=${requiredMoonWei.toString()}`,
+          `  walletWmonWei=${wmonBalanceWei.toString()}`,
+          `  walletMoonWei=${moonBalanceWei.toString()}`
+        ]
+          .filter(Boolean)
+          .join('\n')
+      );
+
       if (moonBalanceWei < requiredMoonWei) {
         setLpClaimError('Not enough m00n for this LP band. Swap MON → m00n first.');
+        setLpDebugLog((prev) =>
+          [
+            prev,
+            '❌ Not enough m00n for required amount.',
+            `  requiredMoonWei=${requiredMoonWei.toString()}`,
+            `  walletMoonWei=${moonBalanceWei.toString()}`
+          ].join('\n')
+        );
         return;
       }
       if (wmonBalanceWei < requiredWmonWei) {
         setLpClaimError('Not enough WMON for this LP band.');
+        setLpDebugLog((prev) =>
+          [
+            prev,
+            '❌ Not enough WMON for required amount.',
+            `  requiredWmonWei=${requiredWmonWei.toString()}`,
+            `  walletWmonWei=${wmonBalanceWei.toString()}`
+          ].join('\n')
+        );
         return;
       }
 
@@ -860,6 +920,21 @@ function MiniAppPageInner() {
         });
       }
 
+      setLpDebugLog((prev) =>
+        [
+          prev,
+          needsWmonApproval
+            ? `🧾 Will approve WMON: ${requiredWmonWei.toString()} wei`
+            : 'ℹ️ WMON allowance already sufficient.',
+          needsMoonApproval
+            ? `🧾 Will approve m00n: ${requiredMoonWei.toString()} wei`
+            : 'ℹ️ m00n allowance already sufficient.',
+          '🧪 Sending batched wallet_sendCalls for approve(s) + LP mint…'
+        ]
+          .filter(Boolean)
+          .join('\n')
+      );
+
       const rawValue = (payload.value ?? '').trim();
       const callValue =
         rawValue && rawValue !== '0' && rawValue !== '0x0' ? BigInt(rawValue) : BigInt(0);
@@ -875,6 +950,7 @@ function MiniAppPageInner() {
       setIsLpClaimModalOpen(false);
       setLpClaimAmount('');
       setLpClaimError(null);
+      setLpDebugLog((prev) => `${prev}\n✅ LP claim batch sent to wallet successfully.`);
       setTimeout(() => {
         setLpRefreshNonce((prev) => prev + 1);
         setIsLpLoungeOpen(true);
@@ -884,6 +960,11 @@ function MiniAppPageInner() {
       console.error('LP claim failed', err);
       const errorCode = err instanceof Error ? err.message : 'lp_claim_failed';
       setLpClaimError(formatLpClaimErrorMessage(errorCode));
+      setLpDebugLog((prev) =>
+        [prev, '', '💥 LP claim threw in frontend handler.', `  errorCode=${errorCode}`]
+          .filter(Boolean)
+          .join('\n')
+      );
     } finally {
       setIsSubmittingLpClaim(false);
     }
@@ -1257,6 +1338,25 @@ function MiniAppPageInner() {
           {lpClaimError && (
             <div className="rounded-lg border border-red-400/50 bg-red-500/10 px-3 py-2 text-sm text-red-200">
               {lpClaimError}
+            </div>
+          )}
+          {lpDebugLog && (
+            <div className="space-y-1 rounded-xl border border-white/10 bg-black/60 p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-[0.3em] text-white/50">
+                  LP DEBUG TRACE
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLpDebugLog('')}
+                  className="text-[10px] text-white/40 hover:text-white/80 transition-colors"
+                >
+                  CLEAR
+                </button>
+              </div>
+              <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-snug text-white/70">
+                {lpDebugLog}
+              </pre>
             </div>
           )}
           <div className="flex gap-3">
