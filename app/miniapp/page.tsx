@@ -516,22 +516,18 @@ export default function MiniAppPage() {
     (value.startsWith('0x') ? value : `0x${value}`) as `0x${string}`;
 
   const formatTokenAmount = (value?: bigint | null, decimals = 18, precision = 4) => {
-    if (value === undefined || value === null) return '—';
+    if (value === undefined || value === null) return '0';
     try {
       const formatted = formatUnits(value, decimals);
       const asNumber = Number(formatted);
-      if (Number.isFinite(asNumber) && asNumber > 0) {
+      if (Number.isFinite(asNumber)) {
+        if (asNumber === 0) return '0';
         return asNumber.toLocaleString(undefined, { maximumFractionDigits: precision });
       }
       return formatted;
-    } catch (error) {
-      console.error('formatTokenAmount error:', error, { value, decimals });
-      // Return a simple string representation as fallback
-      try {
-        return (Number(value) / Math.pow(10, decimals)).toFixed(precision);
-      } catch {
-        return '10'; // Default fallback
-      }
+    } catch {
+      // Fallback for error cases
+      return '10';
     }
   };
 
@@ -853,7 +849,8 @@ export default function MiniAppPage() {
         functionName: 'approve',
         args: [asHexAddress(POSITION_MANAGER_ADDRESS), amountToApprove]
       });
-      await provider.request({
+
+      const txHash = await provider.request({
         method: 'eth_sendTransaction',
         params: [
           {
@@ -864,9 +861,12 @@ export default function MiniAppPage() {
           }
         ]
       });
+
+      // Wait longer for transaction to be mined on Monad
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+
       setFundingRefreshNonce((prev) => prev + 1);
     } catch (err) {
-      console.error('Approve m00n failed', err);
       setLpClaimError(err instanceof Error ? err.message : 'approve_failed');
     } finally {
       setIsApprovingMoon(false);
@@ -1127,7 +1127,7 @@ export default function MiniAppPage() {
                 }
                 className="w-full rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
               >
-                {isApprovingMoon ? 'APPROVING…' : `APPROVE ${approvalAmountDisplay} m00n`}
+                {isApprovingMoon ? 'APPROVING...' : 'APPROVE ' + approvalAmountDisplay + ' m00n'}
               </button>
               {!hasSufficientAllowance && walletReady && (
                 <p className="text-xs text-red-300">
@@ -1136,8 +1136,9 @@ export default function MiniAppPage() {
               )}
               {walletReady && (
                 <p className="text-xs text-white/60">
-                  Wallet prompt will approve up to {approvalAmountDisplay} m00n (falls back to 10 if
-                  no amount is entered).
+                  {'Wallet prompt will approve up to ' +
+                    approvalAmountDisplay +
+                    ' m00n (falls back to 10 if no amount is entered).'}
                 </p>
               )}
             </div>
