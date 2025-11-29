@@ -203,12 +203,12 @@ export async function POST(request: NextRequest) {
       slot0.tick
     );
 
-    const position = Position.fromAmount0({
+    // Treat the user input as WMON (token1) and derive the required m00n (token0)
+    const position = Position.fromAmount1({
       pool,
       tickLower,
       tickUpper,
-      amount0: amountWei.toString(),
-      useFullPrecision: false
+      amount1: amountWei.toString()
     });
 
     const deadline = BigInt(Math.floor(Date.now() / 1000) + DEADLINE_SECONDS);
@@ -236,7 +236,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       to: POSITION_MANAGER_ADDRESS,
       data: calldata,
-      value
+      value,
+      requiredMoonWei: position.amount0.toString(),
+      requiredWmonWei: position.amount1.toString()
     });
   } catch (error) {
     console.error('LP claim build failed', error);

@@ -771,17 +771,16 @@ function MiniAppPageInner() {
       return;
     }
 
-    if (moonBalanceWei === null || moonAllowanceWei === null) {
+    if (wmonBalanceWei === null || moonBalanceWei === null) {
       setLpClaimError('Still checking wallet balances. Please retry.');
       return;
     }
 
-    if (moonBalanceWei < amountWei) {
-      setLpClaimError('Not enough m00n balance. Swap MON → m00n first.');
+    // Up-front check: user must at least have enough WMON for their desired input
+    if (wmonBalanceWei < amountWei) {
+      setLpClaimError('Not enough WMON balance for this deposit.');
       return;
     }
-
-    const needsApproval = moonAllowanceWei < amountWei;
 
     setIsSubmittingLpClaim(true);
     setLpClaimError(null);
@@ -808,7 +807,24 @@ function MiniAppPageInner() {
         to: string;
         data: string;
         value?: string;
+        requiredMoonWei?: string;
+        requiredWmonWei?: string;
       };
+
+      const requiredMoonWei = BigInt(payload.requiredMoonWei ?? '0');
+      const requiredWmonWei = BigInt(payload.requiredWmonWei ?? '0');
+
+      if (moonBalanceWei < requiredMoonWei) {
+        setLpClaimError('Not enough m00n for this LP band. Swap MON → m00n first.');
+        return;
+      }
+      if (wmonBalanceWei < requiredWmonWei) {
+        setLpClaimError('Not enough WMON for this LP band.');
+        return;
+      }
+
+      const needsWmonApproval = wmonAllowanceWei === null || wmonAllowanceWei < requiredWmonWei;
+      const needsMoonApproval = moonAllowanceWei === null || moonAllowanceWei < requiredMoonWei;
 
       const calls: Array<{
         to: `0x${string}`;
@@ -816,21 +832,30 @@ function MiniAppPageInner() {
         value?: bigint;
       }> = [];
 
-      if (needsApproval) {
-        const decimals = Number.isFinite(tokenDecimals.moon) ? tokenDecimals.moon : 18;
-        const fallbackAmount = parseUnits('10', decimals);
-        const amountToApprove =
-          desiredAmountWei && desiredAmountWei > BigInt(0) ? desiredAmountWei : fallbackAmount;
-
-        const approveData = encodeFunctionData({
+      if (needsWmonApproval) {
+        const approveWmonData = encodeFunctionData({
           abi: erc20Abi,
           functionName: 'approve',
-          args: [asHexAddress(POSITION_MANAGER_ADDRESS), amountToApprove]
+          args: [asHexAddress(POSITION_MANAGER_ADDRESS), requiredWmonWei]
+        });
+
+        calls.push({
+          to: asHexAddress(WMON_ADDRESS),
+          data: approveWmonData,
+          value: BigInt(0)
+        });
+      }
+
+      if (needsMoonApproval) {
+        const approveMoonData = encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [asHexAddress(POSITION_MANAGER_ADDRESS), requiredMoonWei]
         });
 
         calls.push({
           to: asHexAddress(TOKEN_ADDRESS),
-          data: approveData,
+          data: approveMoonData,
           value: BigInt(0)
         });
       }
@@ -993,11 +1018,12 @@ function MiniAppPageInner() {
     const sanitized = lpClaimAmount.trim();
     if (!sanitized) return null;
     try {
-      return parseUnits(sanitized, 18);
+      // Treat modal input as WMON (token1) amount
+      return parseUnits(sanitized, tokenDecimals.wmon ?? 18);
     } catch {
       return null;
     }
-  }, [lpClaimAmount]);
+  }, [lpClaimAmount, tokenDecimals.wmon]);
 
   const renderLpClaimModal = () => {
     const walletReady = Boolean(miniWalletAddress);
@@ -1009,33 +1035,30 @@ function MiniAppPageInner() {
       fundingStatus !== 'loading';
     const tokenInfoPending = walletReady && !hasFundingSnapshot;
     const hasAmountInput = Boolean(lpClaimAmount.trim());
-    const hasSufficientBalance =
+    const hasSufficientWmonInputBalance =
       walletReady &&
       desiredAmountWei !== null &&
-      moonBalanceWei !== null &&
-      moonBalanceWei >= desiredAmountWei;
+      wmonBalanceWei !== null &&
+      wmonBalanceWei >= desiredAmountWei;
     const hasSufficientMoonAllowance =
-      walletReady &&
-      desiredAmountWei !== null &&
-      moonAllowanceWei !== null &&
-      moonAllowanceWei >= desiredAmountWei;
+      walletReady && moonAllowanceWei !== null && moonAllowanceWei > BigInt(0);
     const hasSomeWmon = walletReady && wmonBalanceWei !== null && wmonBalanceWei > BigInt(0);
     const hasWmonAllowance =
       walletReady && wmonAllowanceWei !== null && wmonAllowanceWei > BigInt(0);
     const fundingWarning = !walletReady
       ? 'Connect your Warpcast wallet to fund the LP ritual.'
       : !hasAmountInput
-        ? 'Enter an amount denominated in m00n.'
+        ? 'Enter an amount denominated in WMON.'
         : tokenInfoPending
           ? 'Checking wallet balances…'
           : fundingStatus === 'error'
             ? 'Failed to load wallet balances. Tap refresh or VIEW token.'
             : desiredAmountWei === null
               ? 'Amount is invalid.'
-              : !hasSufficientBalance
-                ? 'Not enough m00n. Swap MON → m00n below.'
-                : !hasSomeWmon
-                  ? 'You also need some WMON in your Warp wallet for this LP band.'
+              : !hasSomeWmon
+                ? 'You also need some WMON in your Warp wallet for this LP band.'
+                : !hasSufficientWmonInputBalance
+                  ? 'Not enough WMON for this deposit.'
                   : !hasWmonAllowance
                     ? 'Approve WMON for the position manager before minting.'
                     : !hasSufficientMoonAllowance
@@ -1085,7 +1108,7 @@ function MiniAppPageInner() {
           </div>
           <p className="text-sm opacity-80">
             Deploy liquidity into the fixed crash-backstop band (-106600 → -104600) on the m00n /
-            W-MON pool. Amounts are denominated in m00n.
+            W-MON pool. Input is denominated in WMON; required m00n is computed from the pool price.
           </p>
           {!walletReady && (
             <div className="rounded-lg border border-yellow-400/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-100">
@@ -1213,7 +1236,7 @@ function MiniAppPageInner() {
           )}
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">
-              Amount (m00n)
+              Amount (WMON)
             </label>
             <input
               type="number"
