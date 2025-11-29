@@ -149,9 +149,10 @@ export default function MiniAppPage() {
   const [wmonBalanceWei, setWmonBalanceWei] = useState<bigint | null>(null);
   const [wmonAllowanceWei, setWmonAllowanceWei] = useState<bigint | null>(null);
   const [moonBalanceWei, setMoonBalanceWei] = useState<bigint | null>(null);
+  const [moonAllowanceWei, setMoonAllowanceWei] = useState<bigint | null>(null);
   const [fundingStatus, setFundingStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [fundingRefreshNonce, setFundingRefreshNonce] = useState(0);
-  const [isApprovingWmon, setIsApprovingWmon] = useState(false);
+  const [isApprovingMoon, setIsApprovingMoon] = useState(false);
   const [swapInFlight, setSwapInFlight] = useState<'wmon' | 'moon' | null>(null);
   const [tokenDecimals, setTokenDecimals] = useState({ wmon: 18, moon: 18 });
 
@@ -531,7 +532,7 @@ export default function MiniAppPage() {
   const formatLpClaimErrorMessage = (code?: string) => {
     switch (code) {
       case 'lp_simulation_failed':
-        return 'Simulation indicated this LP transaction would revert. Check your WMON balance/approval and try again.';
+        return 'Simulation indicated this LP transaction would revert. Check your m00n balance/approval and try again.';
       case 'lp_claim_failed':
         return 'LP transaction failed to build. Please retry in a moment.';
       default:
@@ -685,6 +686,7 @@ export default function MiniAppPage() {
       setWmonBalanceWei(null);
       setWmonAllowanceWei(null);
       setMoonBalanceWei(null);
+      setMoonAllowanceWei(null);
       setFundingStatus('idle');
       return;
     }
@@ -699,12 +701,14 @@ export default function MiniAppPage() {
         wmonBalanceWei?: string;
         wmonAllowanceWei?: string;
         moonBalanceWei?: string;
+        moonAllowanceWei?: string;
         wmonDecimals?: number;
         moonDecimals?: number;
       };
       setWmonBalanceWei(BigInt(data.wmonBalanceWei ?? '0'));
       setWmonAllowanceWei(BigInt(data.wmonAllowanceWei ?? '0'));
       setMoonBalanceWei(BigInt(data.moonBalanceWei ?? '0'));
+      setMoonAllowanceWei(BigInt(data.moonAllowanceWei ?? '0'));
       setTokenDecimals({
         wmon:
           typeof data.wmonDecimals === 'number' && Number.isFinite(data.wmonDecimals)
@@ -745,18 +749,18 @@ export default function MiniAppPage() {
       return;
     }
 
-    if (wmonBalanceWei === null || wmonAllowanceWei === null) {
+    if (moonBalanceWei === null || moonAllowanceWei === null) {
       setLpClaimError('Still checking wallet balances. Please retry.');
       return;
     }
 
-    if (wmonBalanceWei < amountWei) {
-      setLpClaimError('Not enough WMON balance. Swap MON → WMON first.');
+    if (moonBalanceWei < amountWei) {
+      setLpClaimError('Not enough m00n balance. Swap MON → m00n first.');
       return;
     }
 
-    if (wmonAllowanceWei < amountWei) {
-      setLpClaimError('Approve WMON for the position manager before minting.');
+    if (moonAllowanceWei < amountWei) {
+      setLpClaimError('Approve m00n for the position manager before minting.');
       return;
     }
 
@@ -821,17 +825,17 @@ export default function MiniAppPage() {
     }
   };
 
-  const handleApproveWmon = async () => {
+  const handleApproveMoon = async () => {
     if (!miniWalletAddress) {
       setLpClaimError('Connect your wallet to continue.');
       return;
     }
-    const decimals = Number.isFinite(tokenDecimals.wmon) ? tokenDecimals.wmon : 18;
+    const decimals = Number.isFinite(tokenDecimals.moon) ? tokenDecimals.moon : 18;
     const fallbackAmount = parseUnits('10', decimals);
     const amountToApprove =
       desiredAmountWei && desiredAmountWei > BigInt(0) ? desiredAmountWei : fallbackAmount;
 
-    setIsApprovingWmon(true);
+    setIsApprovingMoon(true);
     setLpClaimError(null);
     try {
       const provider = await getMiniWalletProvider();
@@ -848,7 +852,7 @@ export default function MiniAppPage() {
         params: [
           {
             from: asHexAddress(miniWalletAddress),
-            to: asHexAddress(WMON_ADDRESS),
+            to: asHexAddress(TOKEN_ADDRESS),
             data,
             value: '0x0'
           }
@@ -856,10 +860,10 @@ export default function MiniAppPage() {
       });
       setFundingRefreshNonce((prev) => prev + 1);
     } catch (err) {
-      console.error('Approve WMON failed', err);
+      console.error('Approve m00n failed', err);
       setLpClaimError(err instanceof Error ? err.message : 'approve_failed');
     } finally {
-      setIsApprovingWmon(false);
+      setIsApprovingMoon(false);
     }
   };
 
@@ -870,7 +874,7 @@ export default function MiniAppPage() {
         sellToken: MON_NATIVE_CAIP,
         buyToken: target === 'wmon' ? WMON_CAIP : MOON_CAIP
       });
-      if (target === 'wmon') {
+      if (target === 'wmon' || target === 'moon') {
         setFundingRefreshNonce((prev) => prev + 1);
       }
     } catch (err) {
@@ -968,23 +972,24 @@ export default function MiniAppPage() {
       wmonBalanceWei !== null &&
       wmonAllowanceWei !== null &&
       moonBalanceWei !== null &&
+      moonAllowanceWei !== null &&
       fundingStatus !== 'loading';
     const tokenInfoPending = walletReady && !hasFundingSnapshot;
     const hasAmountInput = Boolean(lpClaimAmount.trim());
     const hasSufficientBalance =
       walletReady &&
       desiredAmountWei !== null &&
-      wmonBalanceWei !== null &&
-      wmonBalanceWei >= desiredAmountWei;
+      moonBalanceWei !== null &&
+      moonBalanceWei >= desiredAmountWei;
     const hasSufficientAllowance =
       walletReady &&
       desiredAmountWei !== null &&
-      wmonAllowanceWei !== null &&
-      wmonAllowanceWei >= desiredAmountWei;
+      moonAllowanceWei !== null &&
+      moonAllowanceWei >= desiredAmountWei;
     const fundingWarning = !walletReady
       ? 'Connect your Warpcast wallet to fund the LP ritual.'
       : !hasAmountInput
-        ? 'Enter an amount denominated in MON.'
+        ? 'Enter an amount denominated in m00n.'
         : tokenInfoPending
           ? 'Checking wallet balances…'
           : fundingStatus === 'error'
@@ -992,9 +997,9 @@ export default function MiniAppPage() {
             : desiredAmountWei === null
               ? 'Amount is invalid.'
               : !hasSufficientBalance
-                ? 'Not enough WMON. Swap MON → WMON below.'
+                ? 'Not enough m00n. Swap MON → m00n below.'
                 : !hasSufficientAllowance
-                  ? 'Approve WMON for the position manager before minting.'
+                  ? 'Approve m00n for the position manager before minting.'
                   : null;
 
     const primaryLabel = walletReady
@@ -1033,8 +1038,8 @@ export default function MiniAppPage() {
             </button>
           </div>
           <p className="text-sm opacity-80">
-            Deploy liquidity into the crash-backstop band (auto-targeted ~2k ticks below spot) on
-            the m00n / W-MON pool. Amount is denominated in MON / W-MON.
+            Deploy liquidity into the fixed crash-backstop band (-106600 → -104600) on the m00n /
+            W-MON pool. Amounts are denominated in m00n.
           </p>
           {!walletReady && (
             <div className="rounded-lg border border-yellow-400/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-100">
@@ -1059,11 +1064,11 @@ export default function MiniAppPage() {
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="opacity-70">Allowance to LP Manager</span>
+              <span className="opacity-70">m00n Allowance → LP</span>
               <span className="font-mono text-xs">
                 {tokenInfoPending
                   ? '—'
-                  : `${formatTokenAmount(wmonAllowanceWei, tokenDecimals.wmon)} WMON`}
+                  : `${formatTokenAmount(moonAllowanceWei, tokenDecimals.moon)} m00n`}
               </span>
             </div>
             <div className="flex items-center gap-3">
@@ -1100,27 +1105,27 @@ export default function MiniAppPage() {
             <div className="space-y-2">
               <button
                 type="button"
-                onClick={handleApproveWmon}
+                onClick={handleApproveMoon}
                 disabled={
-                  isApprovingWmon ||
+                  isApprovingMoon ||
                   !miniWalletAddress ||
                   tokenInfoPending ||
                   (hasSufficientAllowance && fundingStatus !== 'error')
                 }
                 className="w-full rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
               >
-                {isApprovingWmon ? 'APPROVING…' : 'APPROVE WMON'}
+                {isApprovingMoon ? 'APPROVING…' : 'APPROVE m00n'}
               </button>
               {!hasSufficientAllowance && walletReady && (
                 <p className="text-xs text-red-300">
-                  Approval lets the position manager pull your WMON just once.
+                  Approval lets the position manager pull your m00n just once.
                 </p>
               )}
             </div>
           )}
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">
-              Amount (MON)
+              Amount (m00n)
             </label>
             <input
               type="number"
@@ -1166,8 +1171,9 @@ export default function MiniAppPage() {
               NEED MATERIALS?
             </p>
             <p className="text-xs opacity-70">
-              Use the Warpcast swapper to convert native MON into WMON or m00n before joining the
-              cabal. Swaps open in-place and you can adjust the details there.
+              Use the Warpcast swapper to convert native MON into m00n (or WMON if you&apos;re
+              balancing elsewhere) before joining the cabal. Swaps open in-place and you can adjust
+              the details there.
             </p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <button

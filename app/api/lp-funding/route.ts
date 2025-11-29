@@ -35,42 +35,55 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [wmonBalanceWei, wmonAllowanceWei, moonBalanceWei, wmonDecimals, moonDecimals] =
-      await Promise.all([
-        publicClient.readContract({
-          address: WMON_ADDRESS,
-          abi: erc20Abi,
-          functionName: 'balanceOf',
-          args: [address as `0x${string}`]
-        }),
-        publicClient.readContract({
-          address: WMON_ADDRESS,
-          abi: erc20Abi,
-          functionName: 'allowance',
-          args: [address as `0x${string}`, POSITION_MANAGER_ADDRESS as `0x${string}`]
-        }),
-        publicClient.readContract({
-          address: MOON_TOKEN_ADDRESS,
-          abi: erc20Abi,
-          functionName: 'balanceOf',
-          args: [address as `0x${string}`]
-        }),
-        publicClient.readContract({
-          address: WMON_ADDRESS,
-          abi: erc20Abi,
-          functionName: 'decimals'
-        }),
-        publicClient.readContract({
-          address: MOON_TOKEN_ADDRESS,
-          abi: erc20Abi,
-          functionName: 'decimals'
-        })
-      ]);
+    const [
+      wmonBalanceWei,
+      wmonAllowanceWei,
+      moonBalanceWei,
+      moonAllowanceWei,
+      wmonDecimals,
+      moonDecimals
+    ] = await Promise.all([
+      publicClient.readContract({
+        address: WMON_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [address as `0x${string}`]
+      }),
+      publicClient.readContract({
+        address: WMON_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'allowance',
+        args: [address as `0x${string}`, POSITION_MANAGER_ADDRESS as `0x${string}`]
+      }),
+      publicClient.readContract({
+        address: MOON_TOKEN_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [address as `0x${string}`]
+      }),
+      publicClient.readContract({
+        address: MOON_TOKEN_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'allowance',
+        args: [address as `0x${string}`, POSITION_MANAGER_ADDRESS as `0x${string}`]
+      }),
+      publicClient.readContract({
+        address: WMON_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'decimals'
+      }),
+      publicClient.readContract({
+        address: MOON_TOKEN_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'decimals'
+      })
+    ]);
 
     return NextResponse.json({
       wmonBalanceWei: wmonBalanceWei.toString(),
       wmonAllowanceWei: wmonAllowanceWei.toString(),
       moonBalanceWei: moonBalanceWei.toString(),
+      moonAllowanceWei: moonAllowanceWei.toString(),
       wmonDecimals: Number(wmonDecimals),
       moonDecimals: Number(moonDecimals)
     });

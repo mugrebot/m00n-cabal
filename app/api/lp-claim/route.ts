@@ -203,11 +203,11 @@ export async function POST(request: NextRequest) {
       slot0.tick
     );
 
-    const position = Position.fromAmount1({
+    const position = Position.fromAmount0({
       pool,
       tickLower,
       tickUpper,
-      amount1: amountWei.toString()
+      amount0: amountWei.toString()
     });
 
     const deadline = BigInt(Math.floor(Date.now() / 1000) + DEADLINE_SECONDS);
