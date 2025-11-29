@@ -126,6 +126,7 @@ export default function MiniAppPage() {
   const [engagementData, setEngagementData] = useState<EngagementData | null>(null);
   const [showLootReveal, setShowLootReveal] = useState(false);
   const [primaryAddress, setPrimaryAddress] = useState<string | null>(null);
+  const [miniWalletAddress, setMiniWalletAddress] = useState<string | null>(null);
   const [dropAddress, setDropAddress] = useState<string | null>(null);
   const [viewerContext, setViewerContext] = useState<ViewerContext | null>(null);
   const [addresses, setAddresses] = useState<string[]>([]);
@@ -270,24 +271,25 @@ export default function MiniAppPage() {
     if (effectivePersona !== 'lp_gate') {
       setLpGateState({
         lpStatus: 'DISCONNECTED',
-        walletAddress: primaryAddress ?? null,
+        walletAddress: miniWalletAddress ?? null,
         lpPositions: []
       });
       setIsLpLoungeOpen(false);
       return;
     }
 
-    if (!primaryAddress) {
+    if (!miniWalletAddress) {
       setLpGateState({ lpStatus: 'DISCONNECTED', walletAddress: null, lpPositions: [] });
       return;
     }
 
     let cancelled = false;
+    const walletAddress = miniWalletAddress;
     const runCheck = async () => {
-      setLpGateState({ lpStatus: 'CHECKING', walletAddress: primaryAddress, lpPositions: [] });
+      setLpGateState({ lpStatus: 'CHECKING', walletAddress, lpPositions: [] });
 
       try {
-        const response = await fetch(`/api/lp-nft?address=${primaryAddress}`);
+        const response = await fetch(`/api/lp-nft?address=${walletAddress}`);
         if (!response.ok) {
           throw new Error(`LP check failed: ${response.status}`);
         }
@@ -301,7 +303,7 @@ export default function MiniAppPage() {
         if (data.error) {
           setLpGateState({
             lpStatus: 'ERROR',
-            walletAddress: primaryAddress,
+            walletAddress,
             lpPositions: []
           });
           return;
@@ -309,7 +311,7 @@ export default function MiniAppPage() {
 
         setLpGateState({
           lpStatus: data.hasLpNft ? 'HAS_LP' : 'NO_LP',
-          walletAddress: primaryAddress,
+          walletAddress,
           lpPositions: data.lpPositions ?? []
         });
       } catch (err) {
@@ -317,7 +319,7 @@ export default function MiniAppPage() {
         if (cancelled) return;
         setLpGateState({
           lpStatus: 'ERROR',
-          walletAddress: primaryAddress,
+          walletAddress,
           lpPositions: []
         });
       }
@@ -328,7 +330,7 @@ export default function MiniAppPage() {
     return () => {
       cancelled = true;
     };
-  }, [effectivePersona, primaryAddress, lpRefreshNonce]);
+  }, [effectivePersona, miniWalletAddress, lpRefreshNonce]);
 
   useEffect(() => {
     const tick = () => {
@@ -526,11 +528,80 @@ export default function MiniAppPage() {
     }
   };
 
+  const handleMiniWalletAccountsChanged = useCallback((accounts?: readonly string[]) => {
+    if (Array.isArray(accounts) && accounts.length > 0) {
+      setMiniWalletAddress(accounts[0] ?? null);
+    } else {
+      setMiniWalletAddress(null);
+    }
+  }, []);
+
   const getMiniWalletProvider = useCallback(async () => {
     return (
       (await sdk.wallet.getEthereumProvider().catch(() => undefined)) ?? sdk.wallet.ethProvider
     );
   }, []);
+
+  const syncMiniWalletAddress = useCallback(async () => {
+    try {
+      const provider = await getMiniWalletProvider();
+      if (!provider || typeof provider.request !== 'function') {
+        setMiniWalletAddress(null);
+        return null;
+      }
+      const accounts = (await provider.request({
+        method: 'eth_accounts'
+      })) as string[] | undefined;
+      handleMiniWalletAccountsChanged(accounts);
+      return accounts?.[0] ?? null;
+    } catch (err) {
+      console.warn('Failed to sync mini wallet address', err);
+      setMiniWalletAddress(null);
+      return null;
+    }
+  }, [getMiniWalletProvider, handleMiniWalletAccountsChanged]);
+
+  useEffect(() => {
+    void syncMiniWalletAddress();
+  }, [syncMiniWalletAddress]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+
+    const attachListeners = async () => {
+      const provider = await getMiniWalletProvider();
+      if (!provider) return;
+
+      const anyProvider = provider as typeof provider & {
+        on?: (event: string, listener: (...args: unknown[]) => void) => void;
+        off?: (event: string, listener: (...args: unknown[]) => void) => void;
+        removeListener?: (event: string, listener: (...args: unknown[]) => void) => void;
+      };
+
+      if (typeof anyProvider.on === 'function') {
+        const listener = (...args: unknown[]) => {
+          const accounts = Array.isArray(args[0]) ? (args[0] as readonly string[]) : undefined;
+          handleMiniWalletAccountsChanged(accounts);
+        };
+        anyProvider.on('accountsChanged', listener);
+        cleanup = () => {
+          if (typeof anyProvider.removeListener === 'function') {
+            anyProvider.removeListener('accountsChanged', listener);
+          } else if (typeof anyProvider.off === 'function') {
+            anyProvider.off('accountsChanged', listener);
+          }
+        };
+      }
+    };
+
+    void attachListeners();
+
+    return () => {
+      if (cleanup) {
+        cleanup();
+      }
+    };
+  }, [getMiniWalletProvider, handleMiniWalletAccountsChanged]);
 
   const openExternalUrl = async (url: string) => {
     try {
@@ -588,6 +659,7 @@ export default function MiniAppPage() {
   const handleOpenLpClaimModal = () => {
     setLpClaimError(null);
     setIsLpClaimModalOpen(true);
+    void syncMiniWalletAddress();
   };
 
   const handleCloseLpClaimModal = () => {
@@ -598,10 +670,16 @@ export default function MiniAppPage() {
   };
 
   const refreshFundingStatus = useCallback(async () => {
-    if (!primaryAddress) return;
+    if (!miniWalletAddress) {
+      setWmonBalanceWei(null);
+      setWmonAllowanceWei(null);
+      setMoonBalanceWei(null);
+      setFundingStatus('idle');
+      return;
+    }
     setFundingStatus('loading');
     try {
-      const response = await fetch(`/api/lp-funding?address=${primaryAddress}`);
+      const response = await fetch(`/api/lp-funding?address=${miniWalletAddress}`);
       if (!response.ok) {
         const errorBody = await response.json().catch(() => null);
         throw new Error(errorBody?.error ?? 'funding_lookup_failed');
@@ -631,15 +709,15 @@ export default function MiniAppPage() {
       console.error('Failed to refresh funding status', err);
       setFundingStatus('error');
     }
-  }, [primaryAddress]);
+  }, [miniWalletAddress]);
 
   useEffect(() => {
-    if (!isLpClaimModalOpen || !primaryAddress) return;
+    if (!isLpClaimModalOpen || !miniWalletAddress) return;
     refreshFundingStatus();
-  }, [isLpClaimModalOpen, primaryAddress, fundingRefreshNonce, refreshFundingStatus]);
+  }, [isLpClaimModalOpen, miniWalletAddress, fundingRefreshNonce, refreshFundingStatus]);
 
   const handleSubmitLpClaim = async () => {
-    if (!primaryAddress) {
+    if (!miniWalletAddress) {
       setLpClaimError('Connect your wallet to continue.');
       return;
     }
@@ -681,7 +759,7 @@ export default function MiniAppPage() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          address: primaryAddress,
+          address: miniWalletAddress,
           amount: sanitizedAmount,
           preset: 'backstop'
         })
@@ -707,7 +785,7 @@ export default function MiniAppPage() {
         method: 'eth_sendTransaction',
         params: [
           {
-            from: asHexAddress(primaryAddress),
+            from: asHexAddress(miniWalletAddress),
             to: asHexAddress(payload.to),
             data: payload.data as `0x${string}`,
             value: normalizeHexValue(payload.value)
@@ -732,7 +810,7 @@ export default function MiniAppPage() {
   };
 
   const handleApproveWmon = async () => {
-    if (!primaryAddress) {
+    if (!miniWalletAddress) {
       setLpClaimError('Connect your wallet to continue.');
       return;
     }
@@ -757,7 +835,7 @@ export default function MiniAppPage() {
         method: 'eth_sendTransaction',
         params: [
           {
-            from: asHexAddress(primaryAddress),
+            from: asHexAddress(miniWalletAddress),
             to: asHexAddress(WMON_ADDRESS),
             data,
             value: '0x0'
@@ -873,7 +951,7 @@ export default function MiniAppPage() {
   }, [lpClaimAmount]);
 
   const renderLpClaimModal = () => {
-    const walletReady = Boolean(primaryAddress);
+    const walletReady = Boolean(miniWalletAddress);
     const hasFundingSnapshot =
       wmonBalanceWei !== null &&
       wmonAllowanceWei !== null &&
@@ -1013,7 +1091,7 @@ export default function MiniAppPage() {
                 onClick={handleApproveWmon}
                 disabled={
                   isApprovingWmon ||
-                  !primaryAddress ||
+                  !miniWalletAddress ||
                   tokenInfoPending ||
                   (hasSufficientAllowance && fundingStatus !== 'error')
                 }
