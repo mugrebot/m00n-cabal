@@ -11,6 +11,8 @@ const TOKEN_WMON_ADDRESS = '0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A';
 const HOOK_ADDRESS = '0x94f802a9efe4dd542fdbd77a25d9e69a6dc828cc';
 const FEE = 8_388_608;
 const TICK_SPACING = 200;
+const DEFAULT_MONAD_CHAIN_ID = 143;
+const DEFAULT_MONAD_RPC_URL = 'https://rpc.monad.xyz';
 const BACKSTOP_PRESET = {
   tickLower: -106_600,
   tickUpper: -104_600
@@ -18,30 +20,26 @@ const BACKSTOP_PRESET = {
 const DEFAULT_SLIPPAGE_BPS = BigInt(50); // 0.5%
 const DEADLINE_SECONDS = 10 * 60; // 10 minutes
 
-const monadChainId = Number(process.env.MONAD_CHAIN_ID ?? '0');
-const monadRpcUrl = process.env.MONAD_RPC_URL;
+const envChainId = Number(process.env.MONAD_CHAIN_ID);
+const monadChainId =
+  Number.isFinite(envChainId) && envChainId > 0 ? envChainId : DEFAULT_MONAD_CHAIN_ID;
+const monadRpcUrl = (process.env.MONAD_RPC_URL ?? '').trim() || DEFAULT_MONAD_RPC_URL;
 
-const monadChain =
-  monadRpcUrl && monadChainId
-    ? defineChain({
-        id: monadChainId,
-        name: 'Monad',
-        network: 'monad',
-        nativeCurrency: { name: 'Monad', symbol: 'MON', decimals: 18 },
-        rpcUrls: {
-          default: { http: [monadRpcUrl] },
-          public: { http: [monadRpcUrl] }
-        }
-      })
-    : null;
+const monadChain = defineChain({
+  id: monadChainId,
+  name: 'Monad',
+  network: 'monad',
+  nativeCurrency: { name: 'Monad', symbol: 'MON', decimals: 18 },
+  rpcUrls: {
+    default: { http: [monadRpcUrl] },
+    public: { http: [monadRpcUrl] }
+  }
+});
 
-const publicClient =
-  monadChain && monadRpcUrl
-    ? createPublicClient({
-        chain: monadChain,
-        transport: http(monadRpcUrl)
-      })
-    : null;
+const publicClient = createPublicClient({
+  chain: monadChain,
+  transport: http(monadRpcUrl)
+});
 
 const poolManagerAbi = [
   {
@@ -74,10 +72,6 @@ function buildError(message: string, status = 400) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!publicClient || !monadChain) {
-    return buildError('monad_rpc_unconfigured', 500);
-  }
-
   let body: { address?: string; amount?: string; preset?: string };
   try {
     body = await request.json();
