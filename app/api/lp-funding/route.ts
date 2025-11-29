@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createPublicClient, defineChain, erc20Abi, http, isAddress } from 'viem';
 
-const WMON_ADDRESS = '0x3bd359C1119dA7Da1D913D1C4D2B7c461115433A';
-const POSITION_MANAGER_ADDRESS = '0x5b7eC4a94fF9beDb700fb82aB09d5846972F4016';
-const MOON_TOKEN_ADDRESS = '0x22Cd99EC337a2811F594340a4A6E41e4A3022b07';
+const WMON_ADDRESS = '0x3bd359c1119da7da1d913d1c4d2b7c461115433a';
+const POSITION_MANAGER_ADDRESS = '0x5b7ec4a94ff9bedb700fb82ab09d5846972f4016';
+const MOON_TOKEN_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
 const DEFAULT_MONAD_CHAIN_ID = 143;
 const DEFAULT_MONAD_RPC_URL = 'https://rpc.monad.xyz';
 
@@ -35,31 +35,44 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [wmonBalanceWei, wmonAllowanceWei, moonBalanceWei] = await Promise.all([
-      publicClient.readContract({
-        address: WMON_ADDRESS,
-        abi: erc20Abi,
-        functionName: 'balanceOf',
-        args: [address as `0x${string}`]
-      }),
-      publicClient.readContract({
-        address: WMON_ADDRESS,
-        abi: erc20Abi,
-        functionName: 'allowance',
-        args: [address as `0x${string}`, POSITION_MANAGER_ADDRESS as `0x${string}`]
-      }),
-      publicClient.readContract({
-        address: MOON_TOKEN_ADDRESS,
-        abi: erc20Abi,
-        functionName: 'balanceOf',
-        args: [address as `0x${string}`]
-      })
-    ]);
+    const [wmonBalanceWei, wmonAllowanceWei, moonBalanceWei, wmonDecimals, moonDecimals] =
+      await Promise.all([
+        publicClient.readContract({
+          address: WMON_ADDRESS,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [address as `0x${string}`]
+        }),
+        publicClient.readContract({
+          address: WMON_ADDRESS,
+          abi: erc20Abi,
+          functionName: 'allowance',
+          args: [address as `0x${string}`, POSITION_MANAGER_ADDRESS as `0x${string}`]
+        }),
+        publicClient.readContract({
+          address: MOON_TOKEN_ADDRESS,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [address as `0x${string}`]
+        }),
+        publicClient.readContract({
+          address: WMON_ADDRESS,
+          abi: erc20Abi,
+          functionName: 'decimals'
+        }),
+        publicClient.readContract({
+          address: MOON_TOKEN_ADDRESS,
+          abi: erc20Abi,
+          functionName: 'decimals'
+        })
+      ]);
 
     return NextResponse.json({
       wmonBalanceWei: wmonBalanceWei.toString(),
       wmonAllowanceWei: wmonAllowanceWei.toString(),
-      moonBalanceWei: moonBalanceWei.toString()
+      moonBalanceWei: moonBalanceWei.toString(),
+      wmonDecimals,
+      moonDecimals
     });
   } catch (error) {
     console.error('Failed to fetch LP funding data', error);

@@ -153,6 +153,7 @@ export default function MiniAppPage() {
   const [fundingRefreshNonce, setFundingRefreshNonce] = useState(0);
   const [isApprovingWmon, setIsApprovingWmon] = useState(false);
   const [swapInFlight, setSwapInFlight] = useState<'wmon' | 'moon' | null>(null);
+  const [tokenDecimals, setTokenDecimals] = useState({ wmon: 18, moon: 18 });
 
   const formatAmount = (amount?: string | number) => {
     if (amount === undefined || amount === null) return '0';
@@ -512,16 +513,17 @@ export default function MiniAppPage() {
   const asHexAddress = (value: string): `0x${string}` =>
     (value.startsWith('0x') ? value : `0x${value}`) as `0x${string}`;
 
-  const formatTokenAmount = (value?: bigint | null, precision = 4) => {
+  const formatTokenAmount = (value?: bigint | null, decimals = 18, precision = 4) => {
     if (value === undefined || value === null) return '—';
     try {
-      const asNumber = Number(formatUnits(value, 18));
+      const asNumber = Number(formatUnits(value, decimals));
       if (Number.isFinite(asNumber)) {
         return asNumber.toLocaleString(undefined, { maximumFractionDigits: precision });
       }
-      return formatUnits(value, 18);
+      const formatted = formatUnits(value, decimals);
+      return Number(formatted).toLocaleString(undefined, { maximumFractionDigits: precision });
     } catch {
-      return formatUnits(value, 18);
+      return formatUnits(value, decimals);
     }
   };
 
@@ -609,10 +611,22 @@ export default function MiniAppPage() {
         wmonBalanceWei?: string;
         wmonAllowanceWei?: string;
         moonBalanceWei?: string;
+        wmonDecimals?: number;
+        moonDecimals?: number;
       };
       setWmonBalanceWei(BigInt(data.wmonBalanceWei ?? '0'));
       setWmonAllowanceWei(BigInt(data.wmonAllowanceWei ?? '0'));
       setMoonBalanceWei(BigInt(data.moonBalanceWei ?? '0'));
+      setTokenDecimals({
+        wmon:
+          typeof data.wmonDecimals === 'number' && Number.isFinite(data.wmonDecimals)
+            ? data.wmonDecimals
+            : 18,
+        moon:
+          typeof data.moonDecimals === 'number' && Number.isFinite(data.moonDecimals)
+            ? data.moonDecimals
+            : 18
+      });
       setFundingStatus('idle');
     } catch (err) {
       console.error('Failed to refresh funding status', err);
@@ -937,19 +951,25 @@ export default function MiniAppPage() {
             <div className="flex items-center justify-between">
               <span className="opacity-70">WMON Balance</span>
               <span className="font-mono text-xs">
-                {tokenInfoPending ? '—' : `${formatTokenAmount(wmonBalanceWei)} WMON`}
+                {tokenInfoPending
+                  ? '—'
+                  : `${formatTokenAmount(wmonBalanceWei, tokenDecimals.wmon)} WMON`}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="opacity-70">m00n Balance</span>
               <span className="font-mono text-xs">
-                {tokenInfoPending ? '—' : `${formatTokenAmount(moonBalanceWei)} m00n`}
+                {tokenInfoPending
+                  ? '—'
+                  : `${formatTokenAmount(moonBalanceWei, tokenDecimals.moon)} m00n`}
               </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="opacity-70">Allowance to LP Manager</span>
               <span className="font-mono text-xs">
-                {tokenInfoPending ? '—' : `${formatTokenAmount(wmonAllowanceWei)} WMON`}
+                {tokenInfoPending
+                  ? '—'
+                  : `${formatTokenAmount(wmonAllowanceWei, tokenDecimals.wmon)} WMON`}
               </span>
             </div>
             <div className="flex items-center gap-3">
