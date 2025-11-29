@@ -145,6 +145,10 @@ function buildMintCallParameters(position: Position, recipient: string, deadline
     throw new Error('zero_liquidity');
   }
 
+  // Clamp liquidity to uint256 to avoid any overflow in the ABI encoder,
+  // even if pool state decoding were ever to produce an out-of-range value.
+  const safeLiquidity = clampJsbiToUint256(position.liquidity);
+
   // Dual-sided mint: use the position's mintAmounts (derived from your WMON input)
   // and add a fixed 5% slippage cushion to both m00n and WMON.
   const { amount0Max, amount1Max } = getMaxAmountsWithSlippage(
@@ -159,7 +163,7 @@ function buildMintCallParameters(position: Position, recipient: string, deadline
     position.pool,
     position.tickLower,
     position.tickUpper,
-    position.liquidity,
+    safeLiquidity,
     amount0Max.toString(),
     amount1Max.toString(),
     recipient,
