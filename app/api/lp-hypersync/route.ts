@@ -111,13 +111,7 @@ async function getOwnedLpTokenIds(owner: Address): Promise<bigint[]> {
       }
     ],
     fieldSelection: {
-      log: [
-        LogField.BlockNumber,
-        LogField.Topic0,
-        LogField.Topic1,
-        LogField.Topic2,
-        LogField.Topic3
-      ]
+      log: ['BlockNumber', 'Topic0', 'Topic1', 'Topic2', 'Topic3']
     },
     joinMode: JoinMode.JoinNothing
   };
