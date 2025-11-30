@@ -44,10 +44,13 @@ export const publicClient = createPublicClient({
 // -----------------------------
 
 const UNISWAP_V4_SUBGRAPH_ID = '3kaAG19ytkGfu8xD7YAAZ3qAQ3UDJRkmKH2kHUuyGHah';
-const THEGRAPH_API_KEY = (typeof process !== 'undefined' && process.env.THEGRAPH_API_KEY) || '';
+const THE_GRAPH_API_KEY =
+  (typeof process !== 'undefined' && process.env.THE_GRAPH_API_KEY) ||
+  (typeof process !== 'undefined' && process.env.THEGRAPH_API_KEY) ||
+  '';
 const UNISWAP_V4_SUBGRAPH_URL =
   (typeof process !== 'undefined' && process.env.UNISWAP_V4_SUBGRAPH_URL?.trim()) ||
-  `https://gateway.thegraph.com/api/${THEGRAPH_API_KEY}/subgraphs/id/${UNISWAP_V4_SUBGRAPH_ID}`;
+  `https://gateway.thegraph.com/api/${THE_GRAPH_API_KEY}/subgraphs/id/${UNISWAP_V4_SUBGRAPH_ID}`;
 
 const graphClient = new GraphQLClient(UNISWAP_V4_SUBGRAPH_URL);
 
