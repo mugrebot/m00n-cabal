@@ -134,6 +134,8 @@ interface LpGateState {
   indexerPositionCount?: number;
   hasLpFromHypersync?: boolean;
   hypersyncNote?: string;
+  hypersyncPositionsLength?: number;
+  lpPositionsSource?: 'hypersync' | 'onchain' | 'mixed';
 }
 
 interface HypersyncApiPosition {
@@ -484,6 +486,13 @@ function MiniAppPageInner() {
         const lpPositions =
           hypersyncPositions.length > 0 ? hypersyncPositions : (onchainData.lpPositions ?? []);
 
+        const lpPositionsSource: LpGateState['lpPositionsSource'] =
+          hypersyncPositions.length > 0
+            ? 'hypersync'
+            : (onchainData.lpPositions?.length ?? 0) > 0
+              ? 'onchain'
+              : undefined;
+
         const hasLpSignal = lpPositions.length > 0 || onchainData.hasLpNft;
 
         console.log('LP_GATE_FETCH:result', {
@@ -500,7 +509,9 @@ function MiniAppPageInner() {
           hasLpFromSubgraph: onchainData.hasLpFromSubgraph,
           indexerPositionCount: onchainData.indexerPositionCount,
           hasLpFromHypersync: hypersyncData?.hasLpFromHypersync,
-          hypersyncNote: hypersyncData?.note
+          hypersyncNote: hypersyncData?.note,
+          hypersyncPositionsLength: hypersyncPositions.length,
+          lpPositionsSource
         });
       } catch (err) {
         console.error('LP gate lookup failed', err);
@@ -1737,6 +1748,8 @@ function MiniAppPageInner() {
       hasLpFromSubgraph: lpGateState.hasLpFromSubgraph ?? null,
       indexerPositionCount: lpGateState.indexerPositionCount ?? null,
       hasLpFromHypersync: lpGateState.hasLpFromHypersync ?? null,
+      hypersyncPositionsLength: lpGateState.hypersyncPositionsLength ?? 0,
+      lpPositionsSource: lpGateState.lpPositionsSource ?? 'pending',
       lpPositionsLength: lpGateState.lpPositions?.length ?? 0,
       timestamp: new Date().toISOString()
     };
