@@ -366,8 +366,11 @@ function MiniAppPageInner() {
   const [moonAllowanceWei, setMoonAllowanceWei] = useState<bigint | null>(null);
   const [fundingStatus, setFundingStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [fundingRefreshNonce, setFundingRefreshNonce] = useState(0);
-  const [isApprovingMoon, setIsApprovingMoon] = useState(false);
   const [swapInFlight, setSwapInFlight] = useState<'wmon' | 'moon' | null>(null);
+  const [toast, setToast] = useState<{
+    kind: 'info' | 'success' | 'error';
+    message: string;
+  } | null>(null);
   const [tokenDecimals, setTokenDecimals] = useState({ wmon: 18, moon: 18 });
   const [personaRecord, setPersonaRecord] = useState<CsvPersonaRecord | null>(null);
   const [personaHint, setPersonaHint] = useState<CsvPersonaHint | null>(null);
@@ -390,6 +393,16 @@ function MiniAppPageInner() {
       text: entry.text
     }))
   );
+
+  const showToast = useCallback((kind: 'info' | 'success' | 'error', message: string) => {
+    setToast({ kind, message });
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   const formatAmount = (amount?: string | number) => {
     if (amount === undefined || amount === null) return '0';
@@ -1256,30 +1269,11 @@ function MiniAppPageInner() {
       const needsWmonApproval = wmonAllowanceWei === null || wmonAllowanceWei < requiredWmonWei;
       const needsMoonApproval = moonAllowanceWei === null || moonAllowanceWei < requiredMoonWei;
 
-      if (needsWmonApproval || needsMoonApproval) {
-        const approvalTokens = [
-          needsWmonApproval ? 'WMON' : null,
-          needsMoonApproval ? 'm00n' : null
-        ].filter(Boolean);
-        const message =
-          approvalTokens.length > 0
-            ? `Token approvals are missing for this LP band. Approve ${approvalTokens.join(
-                ' + '
-              )} in the modal, then retry the claim.`
-            : 'Token approvals are missing for this LP band.';
-        setLpClaimError(message);
-        setLpDebugLog((prev) =>
-          [
-            prev,
-            '',
-            '❌ Cannot mint: insufficient token approvals.',
-            needsWmonApproval ? '  - WMON approval missing or too low.' : '',
-            needsMoonApproval ? '  - m00n approval missing or too low.' : ''
-          ]
-            .filter(Boolean)
-            .join('\n')
-        );
-        return;
+      if (needsWmonApproval) {
+        await approveTokenForLp('wmon', requiredWmonWei);
+      }
+      if (needsMoonApproval) {
+        await approveTokenForLp('moon', requiredMoonWei);
       }
 
       const rawValue = (payload.value ?? '').trim();
@@ -1329,71 +1323,6 @@ function MiniAppPageInner() {
     }
   };
 
-  const handleApproveMoon = async () => {
-    if (!miniWalletAddress) {
-      setLpClaimError('Connect your wallet to continue.');
-      return;
-    }
-    const decimals = Number.isFinite(tokenDecimals.moon) ? tokenDecimals.moon : 18;
-    const fallbackAmount = parseUnits('10', decimals);
-    const amountToApprove =
-      desiredAmountWei && desiredAmountWei > BigInt(0) ? desiredAmountWei : fallbackAmount;
-
-    setIsApprovingMoon(true);
-    setLpClaimError(null);
-    try {
-      const nowSec = Math.floor(Date.now() / 1000);
-      const permitExpiration = nowSec + 60 * 60 * 24 * 30; // ~30 days
-
-      const approveUnderlyingData = encodeFunctionData({
-        abi: erc20Abi,
-        functionName: 'approve',
-        args: [asHexAddress(PERMIT2_ADDRESS), amountToApprove]
-      });
-
-      const permitData = encodeFunctionData({
-        abi: permit2Abi,
-        functionName: 'approve',
-        args: [
-          asHexAddress(TOKEN_ADDRESS),
-          asHexAddress(POSITION_MANAGER_ADDRESS),
-          amountToApprove,
-          permitExpiration
-        ]
-      });
-
-      await sendCallsViaProvider({
-        calls: [
-          {
-            to: asHexAddress(TOKEN_ADDRESS),
-            data: approveUnderlyingData,
-            value: BigInt(0)
-          },
-          {
-            to: asHexAddress(PERMIT2_ADDRESS),
-            data: permitData,
-            value: BigInt(0)
-          }
-        ]
-      });
-
-      setFundingRefreshNonce((prev) => prev + 1);
-      setLpDebugLog((prev) =>
-        [
-          prev,
-          `✅ Approved m00n via Permit2 for ${amountToApprove.toString()} wei (PositionManager).`
-        ]
-          .filter(Boolean)
-          .join('\n')
-      );
-    } catch (err) {
-      console.error('Approve m00n failed', err);
-      setLpClaimError(err instanceof Error ? err.message : 'approve_failed');
-    } finally {
-      setIsApprovingMoon(false);
-    }
-  };
-
   const handleSwapMonToToken = async (target: 'wmon' | 'moon') => {
     setSwapInFlight(target);
     try {
@@ -1420,6 +1349,74 @@ function MiniAppPageInner() {
       console.error('viewToken failed', err);
     }
   };
+
+  const approveTokenForLp = useCallback(
+    async (token: 'moon' | 'wmon', amountWei: bigint) => {
+      if (!miniWalletAddress) {
+        throw new Error('wallet_provider_unavailable');
+      }
+      if (amountWei <= BigInt(0)) {
+        return;
+      }
+      const tokenAddress = token === 'moon' ? TOKEN_ADDRESS : WMON_ADDRESS;
+      const label = token === 'moon' ? 'm00n' : 'WMON';
+      const decimals =
+        token === 'moon'
+          ? Number.isFinite(tokenDecimals.moon)
+            ? tokenDecimals.moon
+            : 18
+          : Number.isFinite(tokenDecimals.wmon)
+            ? tokenDecimals.wmon
+            : 18;
+      const formattedAmount = formatTokenAmount(amountWei, decimals, 2);
+
+      const nowSec = Math.floor(Date.now() / 1000);
+      const permitExpiration = nowSec + 60 * 60 * 24 * 30;
+
+      const approveUnderlyingData = encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [asHexAddress(PERMIT2_ADDRESS), amountWei]
+      });
+
+      const permitData = encodeFunctionData({
+        abi: permit2Abi,
+        functionName: 'approve',
+        args: [
+          asHexAddress(tokenAddress),
+          asHexAddress(POSITION_MANAGER_ADDRESS),
+          amountWei,
+          permitExpiration
+        ]
+      });
+
+      showToast('info', `Approving ${label} (~${formattedAmount} ${label})…`);
+      setLpDebugLog((prev) =>
+        [prev, `🔐 Auto-approving ${label} via Permit2 for ${amountWei.toString()} wei…`]
+          .filter(Boolean)
+          .join('\n')
+      );
+
+      try {
+        await sendCallsViaProvider({
+          calls: [
+            { to: asHexAddress(tokenAddress), data: approveUnderlyingData, value: BigInt(0) },
+            { to: asHexAddress(PERMIT2_ADDRESS), data: permitData, value: BigInt(0) }
+          ]
+        });
+      } catch (error) {
+        showToast('error', `Approval failed for ${label}. Check wallet and retry.`);
+        throw error;
+      }
+
+      setLpDebugLog((prev) =>
+        [prev, `✅ ${label} Permit2 approval complete.`].filter(Boolean).join('\n')
+      );
+      setFundingRefreshNonce((prev) => prev + 1);
+      showToast('success', `Approved ${label} for LP.`);
+    },
+    [miniWalletAddress, sendCallsViaProvider, showToast, tokenDecimals.moon, tokenDecimals.wmon]
+  );
 
   const handleEmojiSend = () => {
     const sanitized = filterEmojiOnly(emojiInput).trim();
@@ -1531,13 +1528,8 @@ function MiniAppPageInner() {
       desiredAmountWei !== null &&
       inputBalanceWei !== null &&
       inputBalanceWei >= desiredAmountWei;
-    const hasSufficientMoonAllowance =
-      walletReady && moonAllowanceWei !== null && moonAllowanceWei > BigInt(0);
     const hasSomeInputToken =
       walletReady && inputBalanceWei !== null && inputBalanceWei > BigInt(0);
-    const hasWmonAllowance =
-      walletReady && wmonAllowanceWei !== null && wmonAllowanceWei > BigInt(0);
-    const needsWmonApproval = lpClaimPreset === 'backstop';
     const amountPlaceholder =
       presetConfig.quickAmounts[0] ?? (lpClaimPreset === 'moon_upside' ? '50000' : '1.0');
     const fundingWarning = !walletReady
@@ -1554,23 +1546,13 @@ function MiniAppPageInner() {
                 ? `You also need ${presetConfig.inputToken} in your Warp wallet for this LP band.`
                 : !hasSufficientInputBalance
                   ? `Not enough ${presetConfig.inputToken} for this deposit.`
-                  : needsWmonApproval && !hasWmonAllowance
-                    ? 'Approve WMON for the position manager before minting.'
-                    : !hasSufficientMoonAllowance
-                      ? 'Approve m00n for the position manager before minting.'
-                      : null;
+                  : null;
 
     const primaryLabel = walletReady
       ? isSubmittingLpClaim
         ? 'CLAIMING…'
         : 'CLAIM LP'
       : 'CONNECT WALLET';
-    const approvalDecimals = Number.isFinite(tokenDecimals.moon) ? tokenDecimals.moon : 18;
-    const approvalFallbackWei = parseUnits('10', approvalDecimals);
-    const approvalAmountWei =
-      desiredAmountWei && desiredAmountWei > BigInt(0) ? desiredAmountWei : approvalFallbackWei;
-    const approvalAmountDisplay = formatTokenAmount(approvalAmountWei, approvalDecimals, 6);
-
     const primaryHandler = walletReady ? handleSubmitLpClaim : handleSignIn;
     const primaryDisabled =
       (!walletReady && isSubmittingLpClaim) ||
@@ -1663,103 +1645,6 @@ function MiniAppPageInner() {
               </button>
             </div>
           </div>
-          {walletReady && (
-            <div className="space-y-3">
-              {needsWmonApproval && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (!miniWalletAddress) return;
-                    if (!wmonBalanceWei || wmonBalanceWei <= BigInt(0)) {
-                      setLpClaimError(
-                        'You need some WMON in your Warp wallet before approving it.'
-                      );
-                      return;
-                    }
-                    setLpClaimError(null);
-                    try {
-                      const amountToApprove = wmonBalanceWei;
-                      const nowSec = Math.floor(Date.now() / 1000);
-                      const permitExpiration = nowSec + 60 * 60 * 24 * 30; // ~30 days
-
-                      const approveUnderlyingData = encodeFunctionData({
-                        abi: erc20Abi,
-                        functionName: 'approve',
-                        args: [asHexAddress(PERMIT2_ADDRESS), amountToApprove]
-                      });
-
-                      const permitData = encodeFunctionData({
-                        abi: permit2Abi,
-                        functionName: 'approve',
-                        args: [
-                          asHexAddress(WMON_ADDRESS),
-                          asHexAddress(POSITION_MANAGER_ADDRESS),
-                          amountToApprove,
-                          permitExpiration
-                        ]
-                      });
-
-                      await sendCallsViaProvider({
-                        calls: [
-                          {
-                            to: asHexAddress(WMON_ADDRESS),
-                            data: approveUnderlyingData,
-                            value: BigInt(0)
-                          },
-                          {
-                            to: asHexAddress(PERMIT2_ADDRESS),
-                            data: permitData,
-                            value: BigInt(0)
-                          }
-                        ]
-                      });
-
-                      setFundingRefreshNonce((prev) => prev + 1);
-                      setLpDebugLog((prev) =>
-                        [
-                          prev,
-                          `✅ Approved WMON via Permit2 for ${amountToApprove.toString()} wei (PositionManager).`
-                        ]
-                          .filter(Boolean)
-                          .join('\n')
-                      );
-                    } catch (err) {
-                      console.error('Approve WMON failed', err);
-                      setLpClaimError(err instanceof Error ? err.message : 'approve_wmon_failed');
-                    }
-                  }}
-                  disabled={tokenInfoPending}
-                  className="w-full rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
-                >
-                  APPROVE WMON BALANCE
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleApproveMoon}
-                disabled={
-                  isApprovingMoon ||
-                  !miniWalletAddress ||
-                  tokenInfoPending ||
-                  (hasSufficientMoonAllowance && fundingStatus !== 'error')
-                }
-                className="w-full rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
-              >
-                {isApprovingMoon ? 'APPROVING…' : `APPROVE ${approvalAmountDisplay} m00n`}
-              </button>
-              {!hasSufficientMoonAllowance && walletReady && (
-                <p className="text-xs text-red-300">
-                  Approval lets the position manager pull your m00n just once.
-                </p>
-              )}
-              {walletReady && (
-                <p className="text-xs text-white/60">
-                  Wallet prompt will approve up to {approvalAmountDisplay} m00n (falls back to 10 if
-                  no amount is entered).
-                </p>
-              )}
-            </div>
-          )}
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">
               {presetConfig.amountLabel}
@@ -2735,6 +2620,19 @@ function MiniAppPageInner() {
       {renderAdminPanel()}
       <BackgroundOrbs />
       <StickerRain />
+      {toast && (
+        <div
+          className={`fixed top-6 left-1/2 z-50 -translate-x-1/2 px-4 py-2 rounded-full border backdrop-blur ${
+            toast.kind === 'success'
+              ? 'bg-green-500/20 border-green-400 text-green-100'
+              : toast.kind === 'error'
+                ? 'bg-red-500/20 border-red-400 text-red-100'
+                : 'bg-white/10 border-white/40 text-white'
+          }`}
+        >
+          <span className="pixel-font text-xs tracking-[0.3em]">{toast.message}</span>
+        </div>
+      )}
       {content}
       {isLpClaimModalOpen && renderLpClaimModal()}
     </div>
