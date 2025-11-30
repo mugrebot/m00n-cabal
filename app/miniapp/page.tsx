@@ -1228,10 +1228,18 @@ function MiniAppPageInner() {
         value?: string;
         requiredMoonWei?: string;
         requiredWmonWei?: string;
+        maxRequiredMoonWei?: string;
+        maxRequiredWmonWei?: string;
       };
 
       const requiredMoonWei = BigInt(payload.requiredMoonWei ?? '0');
       const requiredWmonWei = BigInt(payload.requiredWmonWei ?? '0');
+      const targetMoonAllowance = BigInt(
+        payload.maxRequiredMoonWei ?? payload.requiredMoonWei ?? '0'
+      );
+      const targetWmonAllowance = BigInt(
+        payload.maxRequiredWmonWei ?? payload.requiredWmonWei ?? '0'
+      );
 
       setLpDebugLog((prev) =>
         [
@@ -1273,17 +1281,17 @@ function MiniAppPageInner() {
       }
 
       const needsWmonApproval =
-        requiredWmonWei > BigInt(0) &&
-        (wmonAllowanceWei === null || wmonAllowanceWei < requiredWmonWei);
+        targetWmonAllowance > BigInt(0) &&
+        (wmonAllowanceWei === null || wmonAllowanceWei < targetWmonAllowance);
       const needsMoonApproval =
-        requiredMoonWei > BigInt(0) &&
-        (moonAllowanceWei === null || moonAllowanceWei < requiredMoonWei);
+        targetMoonAllowance > BigInt(0) &&
+        (moonAllowanceWei === null || moonAllowanceWei < targetMoonAllowance);
 
       if (needsWmonApproval) {
-        await approveTokenForLp('wmon', requiredWmonWei);
+        await approveTokenForLp('wmon', targetWmonAllowance);
       }
       if (needsMoonApproval) {
-        await approveTokenForLp('moon', requiredMoonWei);
+        await approveTokenForLp('moon', targetMoonAllowance);
       }
 
       const rawValue = (payload.value ?? '').trim();

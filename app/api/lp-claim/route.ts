@@ -20,6 +20,7 @@ const FEE = 8_388_608;
 const TICK_SPACING = 200;
 const DEFAULT_MONAD_CHAIN_ID = 143;
 const DEFAULT_MONAD_RPC_URL = 'https://rpc.monad.xyz';
+const SLIPPAGE_BPS = 500; // 5%
 // Crash-band preset: place the band ~20% below the current price, fully below
 // the active tick, and fund it with token1 (WMON) only. As price nukes into
 // the band, WMON is converted into m00n.
@@ -90,6 +91,8 @@ function buildError(message: string, status = 400) {
 const snapDownToSpacing = (tick: number) => Math.floor(tick / TICK_SPACING) * TICK_SPACING;
 const snapUpToSpacing = (tick: number) => Math.ceil(tick / TICK_SPACING) * TICK_SPACING;
 const ratioToTickDelta = (ratio: number) => Math.floor(Math.log(ratio) / Math.log(1.0001));
+const withSlippageBuffer = (value: bigint) =>
+  value + (value * BigInt(SLIPPAGE_BPS)) / BigInt(10_000);
 
 export async function POST(request: NextRequest) {
   let body: { address?: string; amount?: string; preset?: string };
@@ -224,7 +227,7 @@ export async function POST(request: NextRequest) {
     const currentTimestamp = Number(currentBlock.timestamp);
     const deadlineSeconds = currentTimestamp + DEADLINE_SECONDS;
 
-    const slippagePct = new Percent(500, 10_000);
+    const slippagePct = new Percent(SLIPPAGE_BPS, 10_000);
     const deadline = deadlineSeconds.toString();
 
     const { calldata: innerCalldata, value } = V4PositionManager.addCallParameters(position, {
@@ -242,12 +245,19 @@ export async function POST(request: NextRequest) {
       args: [[innerCalldata as Hex]]
     });
 
+    const requiredMoonWei = position.amount0.quotient;
+    const requiredWmonWei = position.amount1.quotient;
+    const maxRequiredMoonWei = withSlippageBuffer(requiredMoonWei);
+    const maxRequiredWmonWei = withSlippageBuffer(requiredWmonWei);
+
     return NextResponse.json({
       to: POSITION_MANAGER_ADDRESS,
       data: calldata,
       value,
-      requiredMoonWei: position.amount0.quotient.toString(),
-      requiredWmonWei: position.amount1.quotient.toString()
+      requiredMoonWei: requiredMoonWei.toString(),
+      requiredWmonWei: requiredWmonWei.toString(),
+      maxRequiredMoonWei: maxRequiredMoonWei.toString(),
+      maxRequiredWmonWei: maxRequiredWmonWei.toString()
     });
   } catch (error) {
     console.error('LP claim build failed', error);
