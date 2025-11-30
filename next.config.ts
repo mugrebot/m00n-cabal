@@ -2,7 +2,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   experimental: {
-    serverExternalPackages: ['@envio-dev/hypersync-client']
+    serverComponentsExternalPackages: ['@envio-dev/hypersync-client']
   }
 };
 
