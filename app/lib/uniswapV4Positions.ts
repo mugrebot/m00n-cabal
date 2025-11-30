@@ -78,6 +78,7 @@ export interface PositionWithAmounts extends PositionDetails {
   rangeStatus: 'below-range' | 'in-range' | 'above-range';
   valueUsd?: number;
   currentTick: number;
+  sqrtPriceX96: bigint;
 }
 
 export interface UserPositionsSummary {
@@ -602,7 +603,8 @@ export async function enrichPositionWithAmounts(
     amount0,
     amount1,
     rangeStatus,
-    currentTick
+    currentTick,
+    sqrtPriceX96
   };
 }
 

@@ -68,6 +68,41 @@ const WMON_CAIP = `${CHAIN_CAIP}/erc20:${WMON_ADDRESS.toLowerCase()}`;
 const MOON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_ADDRESS.toLowerCase()}`;
 const truncateAddress = (value?: string | null) =>
   value ? `${value.slice(0, 6)}…${value.slice(-4)}` : null;
+
+const formatAmountDisplay = (value?: string) => {
+  if (!value) return '0';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return value;
+  }
+  if (parsed >= 1000) {
+    return parsed.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
+  if (parsed >= 1) {
+    return parsed.toLocaleString(undefined, { maximumFractionDigits: 3 });
+  }
+  return parsed.toLocaleString(undefined, { maximumFractionDigits: 6 });
+};
+
+const formatTokenDisplay = (token?: TokenBreakdown) => {
+  if (!token) return '0';
+  const amount = formatAmountDisplay(token.amountFormatted);
+  const symbol = token.symbol ?? 'token';
+  return `${amount} ${symbol}`;
+};
+
+const describeBandTypeLabel = (bandType?: LpPosition['bandType']) => {
+  switch (bandType) {
+    case 'crash_band':
+      return 'Crash band (sells m00n if price spikes)';
+    case 'upside_band':
+      return 'Upside band (buys m00n on dumps)';
+    case 'in_range':
+      return 'Active band (earning fees)';
+    default:
+      return 'Band type unknown';
+  }
+};
 type UserPersona =
   | 'claimed_sold'
   | 'claimed_held'
@@ -76,6 +111,15 @@ type UserPersona =
   | 'eligible_holder'
   | 'locked_out';
 type AdminPortalView = 'default' | UserPersona;
+
+interface TokenBreakdown {
+  address: string;
+  symbol?: string;
+  label?: string;
+  decimals?: number;
+  amountWei?: string;
+  amountFormatted?: string;
+}
 
 interface LpPosition {
   tokenId: string;
@@ -88,24 +132,12 @@ interface LpPosition {
     fee: number;
     hooks: string;
   };
-  poolAddress?: string;
-  token0?: {
-    address: string;
-    symbol?: string;
-    decimals?: number;
-  };
-  token1?: {
-    address: string;
-    symbol?: string;
-    decimals?: number;
-  };
   currentTick?: number;
-  amount0?: string;
-  amount1?: string;
-  inRange?: boolean;
-  // Optional fields returned by the enriched /api/lp-nft endpoint.
-  bandType?: 'crash_band' | 'upside_band' | 'in_range' | 'unknown';
-  hasSubscriber?: boolean;
+  sqrtPriceX96?: string;
+  rangeStatus?: 'below-range' | 'in-range' | 'above-range';
+  bandType?: 'crash_band' | 'upside_band' | 'in_range';
+  token0?: TokenBreakdown;
+  token1?: TokenBreakdown;
 }
 
 interface LpGateState {
@@ -115,6 +147,8 @@ interface LpGateState {
   hasLpFromOnchain?: boolean;
   hasLpFromSubgraph?: boolean;
   indexerPositionCount?: number;
+  poolCurrentTick?: number;
+  poolSqrtPriceX96?: string;
 }
 
 interface ReplyGlow {
@@ -375,6 +409,8 @@ function MiniAppPageInner() {
           hasLpFromOnchain?: boolean;
           hasLpFromSubgraph?: boolean;
           indexerPositionCount?: number;
+          currentTick?: number;
+          sqrtPriceX96?: string;
         };
 
         if (data.error) {
@@ -397,7 +433,9 @@ function MiniAppPageInner() {
           lpPositions,
           hasLpFromOnchain: data.hasLpFromOnchain,
           hasLpFromSubgraph: data.hasLpFromSubgraph,
-          indexerPositionCount: data.indexerPositionCount
+          indexerPositionCount: data.indexerPositionCount,
+          poolCurrentTick: data.currentTick,
+          poolSqrtPriceX96: data.sqrtPriceX96
         });
       } catch (err) {
         console.error('LP gate lookup failed', err);
@@ -1633,6 +1671,8 @@ function MiniAppPageInner() {
       hasLpFromOnchain: lpGateState.hasLpFromOnchain ?? null,
       hasLpFromSubgraph: lpGateState.hasLpFromSubgraph ?? null,
       indexerPositionCount: lpGateState.indexerPositionCount ?? null,
+      poolCurrentTick: lpGateState.poolCurrentTick ?? null,
+      poolSqrtPriceX96: lpGateState.poolSqrtPriceX96 ?? null,
       lpPositionsLength: lpGateState.lpPositions?.length ?? 0,
       timestamp: new Date().toISOString()
     };
@@ -1670,18 +1710,22 @@ function MiniAppPageInner() {
             LP SIGILS
           </p>
           {previewPositions.map((position) => (
-            <div key={position.tokenId} className="text-sm opacity-85">
-              <p>Token #{position.tokenId}</p>
+            <div key={position.tokenId} className="text-sm opacity-85 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-semibold">Sigil #{position.tokenId}</p>
+                {position.bandType && (
+                  <span className="text-[10px] uppercase tracking-[0.3em] text-[var(--moss-green)]">
+                    {describeBandTypeLabel(position.bandType)}
+                  </span>
+                )}
+              </div>
               <p className="text-xs opacity-70">
                 Tick band: {position.tickLower} → {position.tickUpper}
               </p>
-              {(position.amount0 || position.amount1) && (
-                <p className="text-xs opacity-70">
-                  {position.amount0 ? `m00nad: ${position.amount0}` : null}
-                  {position.amount0 && position.amount1 ? ' · ' : ''}
-                  {position.amount1 ? `WMON: ${position.amount1}` : null}
-                </p>
-              )}
+              <div className="text-xs text-white/70 space-y-0.5 font-mono">
+                <p>{formatTokenDisplay(position.token0)}</p>
+                <p>{formatTokenDisplay(position.token1)}</p>
+              </div>
             </div>
           ))}
           {positionCount > 2 && (
@@ -1748,19 +1792,6 @@ function MiniAppPageInner() {
       lpPositionCount: positionCount
     });
 
-    const describeBandType = (bandType?: LpPosition['bandType']) => {
-      switch (bandType) {
-        case 'crash_band':
-          return 'Crash band (buys m00n with MON if price nukes into it)';
-        case 'upside_band':
-          return 'Upside band (sells m00n for MON as price rips up)';
-        case 'in_range':
-          return 'Active band (earning fees right now)';
-        default:
-          return 'Band type unknown';
-      }
-    };
-
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-4xl w-full space-y-8 scanline bg-black/50 border border-[var(--monad-purple)] rounded-3xl px-10 py-10">
@@ -1773,6 +1804,14 @@ function MiniAppPageInner() {
               <p className="text-xs opacity-70">
                 {displayCount} active {displayCount === 1 ? 'sigil' : 'sigils'}
               </p>
+              {typeof lpGateState.poolCurrentTick === 'number' && (
+                <p className="text-[11px] opacity-60">
+                  Pool tick: {lpGateState.poolCurrentTick}{' '}
+                  {lpGateState.poolSqrtPriceX96
+                    ? `| √P: ${lpGateState.poolSqrtPriceX96.slice(0, 8)}…`
+                    : null}
+                </p>
+              )}
             </div>
           </div>
 
@@ -1792,7 +1831,7 @@ function MiniAppPageInner() {
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-mono text-white/80">Sigil #{pos.tokenId}</span>
                       <span className="text-[10px] uppercase tracking-[0.25em] text-[var(--moss-green)]">
-                        {describeBandType(pos.bandType)}
+                        {describeBandTypeLabel(pos.bandType)}
                       </span>
                     </div>
                     <p className="text-xs text-white/70">
@@ -1802,14 +1841,12 @@ function MiniAppPageInner() {
                       Liquidity units:&nbsp;
                       <span className="font-mono">{pos.liquidity}</span>
                     </p>
-                    {(pos.amount0 || pos.amount1) && (
-                      <p className="text-xs text-white/70">
-                        Holdings: {pos.amount0 ? `${pos.amount0} m00nad` : '—'} /{' '}
-                        {pos.amount1 ? `${pos.amount1} WMON` : '—'}
-                      </p>
-                    )}
+                    <div className="text-xs text-white/70 font-mono space-y-0.5">
+                      <p>{formatTokenDisplay(pos.token0)}</p>
+                      <p>{formatTokenDisplay(pos.token1)}</p>
+                    </div>
                     {typeof pos.currentTick === 'number' && (
-                      <p className="text-[10px] text-white/50">Current tick: {pos.currentTick}</p>
+                      <p className="text-[10px] text-white/50">Pool tick: {pos.currentTick}</p>
                     )}
                   </div>
                 ))}
