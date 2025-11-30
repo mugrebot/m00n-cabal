@@ -23,7 +23,7 @@ const DEFAULT_MONAD_RPC_URL = 'https://rpc.monad.xyz';
 // Crash-band preset: place the band ~20% below the current price, fully below
 // the active tick, and fund it with token1 (WMON) only. As price nukes into
 // the band, WMON is converted into m00n.
-const CRASH_BAND_WIDTH_TICKS = 10 * TICK_SPACING;
+const CRASH_BAND_WIDTH_TICKS = 6 * TICK_SPACING;
 const DEADLINE_SECONDS = 10 * 60; // 10 minutes
 
 const envChainId = Number(process.env.MONAD_CHAIN_ID);
@@ -166,12 +166,12 @@ export async function POST(request: NextRequest) {
     const currentTick = Number(slot0[1]);
     const poolLiquidity = poolLiquidityRaw as bigint;
 
-    // Compute a crash band whose upper bound is approximately 20% below the
+    // Compute a crash band whose upper bound is approximately 10% below the
     // current price, and whose lower bound extends a fixed width further down.
-    // Price in Uniswap ticks is P = 1.0001^tick, so a 20% decrease corresponds
-    // to adding log(0.8) / log(1.0001) ticks (a negative number).
-    const twentyPercentDownTicks = Math.floor(Math.log(0.8) / Math.log(1.0001));
-    const rawUpperTick = currentTick + twentyPercentDownTicks;
+    // Price in Uniswap ticks is P = 1.0001^tick, so a 10% decrease corresponds
+    // to adding log(0.9) / log(1.0001) ticks (a negative number).
+    const tenPercentDownTicks = Math.floor(Math.log(0.9) / Math.log(1.0001));
+    const rawUpperTick = currentTick + tenPercentDownTicks;
     const tickUpper = snapToSpacing(rawUpperTick);
     const tickLower = tickUpper - CRASH_BAND_WIDTH_TICKS;
 
