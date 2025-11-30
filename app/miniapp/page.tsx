@@ -66,6 +66,14 @@ const CHAIN_CAIP = 'eip155:143';
 const MON_NATIVE_CAIP = `${CHAIN_CAIP}/native`;
 const WMON_CAIP = `${CHAIN_CAIP}/erc20:${WMON_ADDRESS.toLowerCase()}`;
 const MOON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_ADDRESS.toLowerCase()}`;
+const MOON_EMOJI_THRESHOLD_WEI = parseUnits('1000000', 18);
+const EMOJI_CHAR_REGEX = /\p{Extended_Pictographic}/u;
+const EMOJI_ORACLE_OPENING = [
+  { speaker: 'oracle', text: '🔐 Only glyphs pass the gate. Leave words behind.' },
+  { speaker: 'seer', text: '🌫️ The sigil listens… offer your emoji.' },
+  { speaker: 'you', text: '🙏' }
+] as const;
+const EMOJI_AUTOREPLIES = ['🌖⚡', '🚪✨', '🛸💫', '🌊🌙', '🔮🧬', '☄️☁️', '🌀👁️'] as const;
 const truncateAddress = (value?: string | null) =>
   value ? `${value.slice(0, 6)}…${value.slice(-4)}` : null;
 
@@ -89,6 +97,39 @@ const formatTokenDisplay = (token?: TokenBreakdown) => {
   const amount = formatAmountDisplay(token.amountFormatted);
   const symbol = token.symbol ?? 'token';
   return `${amount} ${symbol}`;
+};
+
+const filterEmojiOnly = (value: string) =>
+  Array.from(value)
+    .filter((char) => EMOJI_CHAR_REGEX.test(char))
+    .join('');
+
+const LP_PRESET_CONTENT: Record<
+  LpClaimPreset,
+  {
+    title: string;
+    description: string;
+    amountLabel: string;
+    inputToken: 'WMON' | 'm00n';
+    helper: string;
+  }
+> = {
+  backstop: {
+    title: 'Crash Backstop',
+    description:
+      'Deploy a WMON-only crash band roughly 10% under spot with six tick-spacing units of depth. If price nukes, it auto-buys m00n.',
+    amountLabel: 'Amount (WMON)',
+    inputToken: 'WMON',
+    helper: 'Approx ticks: current −10% down to −10% − (6×spacing).'
+  },
+  moon_upside: {
+    title: 'Sky Ladder',
+    description:
+      'Deploy a holder-only, single-sided m00n band starting ~1.2× spot and stretching to ~5×. Pumps recycle m00n into WMON.',
+    amountLabel: 'Amount (m00n)',
+    inputToken: 'm00n',
+    helper: 'Approx ticks: current +20% up to +400% (snapped to spacing).'
+  }
 };
 
 const describeBandTypeLabel = (bandType?: LpPosition['bandType']) => {
@@ -142,7 +183,8 @@ type UserPersona =
   | 'claimed_bought_more'
   | 'lp_gate'
   | 'eligible_holder'
-  | 'locked_out';
+  | 'locked_out'
+  | 'emoji_chat';
 type AdminPortalView = 'default' | UserPersona;
 
 interface TokenBreakdown {
@@ -188,6 +230,34 @@ interface LpGateState {
   token0TotalSupply?: number;
   token0CirculatingSupply?: number;
 }
+
+type CsvPersonaHint = 'claimed_sold' | 'claimed_held' | 'claimed_bought_more' | 'emoji_chat';
+
+interface CsvPersonaRecord {
+  fid: number;
+  username?: string | null;
+  replyCount?: number | null;
+  hasClaimed?: boolean;
+  totalEstimatedBalance?: number | null;
+  totalPurchased?: number | null;
+  totalSold?: number | null;
+  totalReceivedAllWallets?: number | null;
+  totalSentAllWallets?: number | null;
+  totalTransactions?: number | null;
+  userCategory?: string | null;
+  behaviorPattern?: string | null;
+  earliestInteraction?: string | null;
+  latestInteraction?: string | null;
+}
+
+interface PersonaApiResponse {
+  found: boolean;
+  personaHint?: CsvPersonaHint | null;
+  record?: CsvPersonaRecord | null;
+}
+
+type LpClaimPreset = 'backstop' | 'moon_upside';
+type EmojiChatSpeaker = 'oracle' | 'seer' | 'you';
 
 interface ReplyGlow {
   color: string;
@@ -283,6 +353,7 @@ function MiniAppPageInner() {
   );
   const [isLpClaimModalOpen, setIsLpClaimModalOpen] = useState(false);
   const [lpClaimAmount, setLpClaimAmount] = useState('');
+  const [lpClaimPreset, setLpClaimPreset] = useState<LpClaimPreset>('backstop');
   const [isSubmittingLpClaim, setIsSubmittingLpClaim] = useState(false);
   const [lpClaimError, setLpClaimError] = useState<string | null>(null);
   const [lpDebugLog, setLpDebugLog] = useState<string>('');
@@ -295,6 +366,27 @@ function MiniAppPageInner() {
   const [isApprovingMoon, setIsApprovingMoon] = useState(false);
   const [swapInFlight, setSwapInFlight] = useState<'wmon' | 'moon' | null>(null);
   const [tokenDecimals, setTokenDecimals] = useState({ wmon: 18, moon: 18 });
+  const [personaRecord, setPersonaRecord] = useState<CsvPersonaRecord | null>(null);
+  const [personaHint, setPersonaHint] = useState<CsvPersonaHint | null>(null);
+  const [personaLookupStatus, setPersonaLookupStatus] = useState<
+    'idle' | 'loading' | 'error' | 'loaded'
+  >('idle');
+  const [primaryAddressMoonBalanceWei, setPrimaryAddressMoonBalanceWei] = useState<bigint | null>(
+    null
+  );
+  const [primaryBalanceStatus, setPrimaryBalanceStatus] = useState<
+    'idle' | 'loading' | 'error' | 'loaded'
+  >('idle');
+  const [emojiInput, setEmojiInput] = useState('');
+  const [emojiChatLog, setEmojiChatLog] = useState<
+    { id: number; speaker: EmojiChatSpeaker; text: string }[]
+  >(() =>
+    EMOJI_ORACLE_OPENING.map((entry, index) => ({
+      id: index,
+      speaker: entry.speaker,
+      text: entry.text
+    }))
+  );
 
   const formatAmount = (amount?: string | number) => {
     if (amount === undefined || amount === null) return '0';
@@ -321,9 +413,35 @@ function MiniAppPageInner() {
     return 'eligible_holder';
   }, []);
 
+  const csvPersona = useMemo<UserPersona | 'emoji_chat' | null>(() => {
+    if (!personaHint) return null;
+    if (
+      personaHint === 'claimed_sold' ||
+      personaHint === 'claimed_held' ||
+      personaHint === 'claimed_bought_more' ||
+      personaHint === 'emoji_chat'
+    ) {
+      return personaHint;
+    }
+    return null;
+  }, [personaHint]);
+
+  const emojiFallbackEligible = useMemo(() => {
+    if (csvPersona) return false;
+    if (primaryBalanceStatus !== 'loaded') return false;
+    if (!primaryAddressMoonBalanceWei) return false;
+    return primaryAddressMoonBalanceWei >= MOON_EMOJI_THRESHOLD_WEI;
+  }, [csvPersona, primaryAddressMoonBalanceWei, primaryBalanceStatus]);
+
   const derivedPersona: UserPersona = useMemo(() => {
     if (!userData) {
       return 'locked_out';
+    }
+    if (csvPersona) {
+      return csvPersona;
+    }
+    if (emojiFallbackEligible) {
+      return 'emoji_chat';
     }
     if (hasZeroPoints) {
       return 'locked_out';
@@ -343,6 +461,8 @@ function MiniAppPageInner() {
     classifyEligiblePersona,
     engagementData?.replyCount,
     hasZeroPoints,
+    csvPersona,
+    emojiFallbackEligible,
     userData
   ]);
 
@@ -511,6 +631,81 @@ function MiniAppPageInner() {
     const intervalId = window.setInterval(tick, 1000);
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    if (!primaryAddress) {
+      setPrimaryAddressMoonBalanceWei(null);
+      setPrimaryBalanceStatus('idle');
+      return;
+    }
+
+    let cancelled = false;
+    const address = primaryAddress;
+
+    const fetchBalance = async () => {
+      setPrimaryBalanceStatus('loading');
+      try {
+        const response = await fetch(`/api/lp-funding?address=${address}`);
+        if (!response.ok) {
+          throw new Error('funding_lookup_failed');
+        }
+        const data = await response.json();
+        if (cancelled) return;
+        setPrimaryAddressMoonBalanceWei(BigInt(data.moonBalanceWei ?? '0'));
+        setPrimaryBalanceStatus('loaded');
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Failed to fetch primary wallet m00n balance', err);
+        setPrimaryAddressMoonBalanceWei(null);
+        setPrimaryBalanceStatus('error');
+      }
+    };
+
+    void fetchBalance();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [primaryAddress]);
+
+  useEffect(() => {
+    if (!viewerContext?.fid) {
+      setPersonaRecord(null);
+      setPersonaHint(null);
+      setPersonaLookupStatus('idle');
+      return;
+    }
+
+    let cancelled = false;
+    const fid = viewerContext.fid;
+
+    const fetchPersona = async () => {
+      setPersonaLookupStatus('loading');
+      try {
+        const response = await fetch(`/api/persona?fid=${fid}`);
+        if (!response.ok) {
+          throw new Error('persona_lookup_failed');
+        }
+        const data = (await response.json()) as PersonaApiResponse;
+        if (cancelled) return;
+        setPersonaRecord(data.record ?? null);
+        setPersonaHint((data.personaHint as CsvPersonaHint | undefined) ?? null);
+        setPersonaLookupStatus('loaded');
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Failed to fetch persona row from CSV', err);
+        setPersonaRecord(null);
+        setPersonaHint(null);
+        setPersonaLookupStatus('error');
+      }
+    };
+
+    void fetchPersona();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [viewerContext?.fid]);
 
   const syncAddresses = async (fid: number) => {
     const response = await fetch(`/api/addresses?fid=${fid}`);
@@ -858,8 +1053,10 @@ function MiniAppPageInner() {
     }
   };
 
-  const handleOpenLpClaimModal = () => {
+  const handleOpenLpClaimModal = (preset: LpClaimPreset = 'backstop') => {
+    setLpClaimPreset(preset);
     setLpClaimError(null);
+    setLpClaimAmount('');
     setIsLpClaimModalOpen(true);
     void syncMiniWalletAddress();
   };
@@ -949,12 +1146,14 @@ function MiniAppPageInner() {
     }
 
     // Up-front check: user must at least have enough WMON for their desired input
-    if (wmonBalanceWei < amountWei) {
-      setLpClaimError('Not enough WMON balance for this deposit.');
+    const depositTokenLabel = lpClaimPreset === 'moon_upside' ? 'm00n' : 'WMON';
+    const depositBalanceWei = lpClaimPreset === 'moon_upside' ? moonBalanceWei : wmonBalanceWei;
+    if (depositBalanceWei < amountWei) {
+      setLpClaimError(`Not enough ${depositTokenLabel} balance for this deposit.`);
       setLpDebugLog(
-        `❌ WMON balance too low for input.\n` +
-          `  desiredInputWmonWei=${amountWei.toString()}\n` +
-          `  walletWmonWei=${wmonBalanceWei.toString()}`
+        `❌ ${depositTokenLabel} balance too low for input.\n` +
+          `  desiredInputWei=${amountWei.toString()}\n` +
+          `  walletDepositWei=${depositBalanceWei.toString()}`
       );
       return;
     }
@@ -964,9 +1163,10 @@ function MiniAppPageInner() {
     setLpDebugLog(
       [
         '🚀 Starting LP claim ritual…',
-        `  input (WMON): ${sanitizedAmount} (${amountWei.toString()} wei)`,
+        `  input (${depositTokenLabel}): ${sanitizedAmount} (${amountWei.toString()} wei)`,
         `  wallet WMON: ${wmonBalanceWei.toString()} wei`,
-        `  wallet m00n: ${moonBalanceWei.toString()} wei`
+        `  wallet m00n: ${moonBalanceWei.toString()} wei`,
+        `  preset: ${lpClaimPreset}`
       ].join('\n')
     );
 
@@ -979,7 +1179,7 @@ function MiniAppPageInner() {
         body: JSON.stringify({
           address: miniWalletAddress,
           amount: sanitizedAmount,
-          preset: 'backstop'
+          preset: lpClaimPreset
         })
       });
 
@@ -1054,8 +1254,16 @@ function MiniAppPageInner() {
       const needsMoonApproval = moonAllowanceWei === null || moonAllowanceWei < requiredMoonWei;
 
       if (needsWmonApproval || needsMoonApproval) {
+        const approvalTokens = [
+          needsWmonApproval ? 'WMON' : null,
+          needsMoonApproval ? 'm00n' : null
+        ].filter(Boolean);
         const message =
-          'Token approvals are missing for this LP band. Approve WMON and m00n in the modal, then retry the claim.';
+          approvalTokens.length > 0
+            ? `Token approvals are missing for this LP band. Approve ${approvalTokens.join(
+                ' + '
+              )} in the modal, then retry the claim.`
+            : 'Token approvals are missing for this LP band.';
         setLpClaimError(message);
         setLpDebugLog((prev) =>
           [
@@ -1210,9 +1418,27 @@ function MiniAppPageInner() {
     }
   };
 
+  const handleEmojiSend = () => {
+    const sanitized = filterEmojiOnly(emojiInput).trim();
+    if (!sanitized) {
+      setEmojiInput('');
+      return;
+    }
+    const oracleReply = EMOJI_AUTOREPLIES[Math.floor(Math.random() * EMOJI_AUTOREPLIES.length)];
+    setEmojiChatLog((prev) => {
+      const lastId = prev.length > 0 ? prev[prev.length - 1].id : 0;
+      return [
+        ...prev,
+        { id: lastId + 1, speaker: 'you', text: sanitized },
+        { id: lastId + 2, speaker: 'oracle', text: oracleReply }
+      ];
+    });
+    setEmojiInput('');
+  };
+
   const personaActionHandlers: Record<PersonaActionId, (() => void) | undefined> = {
     lp_connect_wallet: handleSignIn,
-    lp_become_lp: handleOpenLpClaimModal,
+    lp_become_lp: () => handleOpenLpClaimModal('backstop'),
     lp_open_docs: handleOpenLpDocs,
     lp_try_again: handleRetryLpStatus,
     lp_enter_lounge: handleEnterLpLounge,
@@ -1275,16 +1501,20 @@ function MiniAppPageInner() {
   const desiredAmountWei = useMemo(() => {
     const sanitized = lpClaimAmount.trim();
     if (!sanitized) return null;
+    const decimals =
+      lpClaimPreset === 'moon_upside' ? (tokenDecimals.moon ?? 18) : (tokenDecimals.wmon ?? 18);
     try {
-      // Treat modal input as WMON (token1) amount
-      return parseUnits(sanitized, tokenDecimals.wmon ?? 18);
+      return parseUnits(sanitized, decimals);
     } catch {
       return null;
     }
-  }, [lpClaimAmount, tokenDecimals.wmon]);
+  }, [lpClaimAmount, lpClaimPreset, tokenDecimals.moon, tokenDecimals.wmon]);
 
   const renderLpClaimModal = () => {
     const walletReady = Boolean(miniWalletAddress);
+    const presetConfig = LP_PRESET_CONTENT[lpClaimPreset];
+    const inputTokenKey = presetConfig.inputToken === 'WMON' ? 'wmon' : 'moon';
+    const inputBalanceWei = inputTokenKey === 'wmon' ? wmonBalanceWei : moonBalanceWei;
     const hasFundingSnapshot =
       wmonBalanceWei !== null &&
       wmonAllowanceWei !== null &&
@@ -1293,31 +1523,34 @@ function MiniAppPageInner() {
       fundingStatus !== 'loading';
     const tokenInfoPending = walletReady && !hasFundingSnapshot;
     const hasAmountInput = Boolean(lpClaimAmount.trim());
-    const hasSufficientWmonInputBalance =
+    const hasSufficientInputBalance =
       walletReady &&
       desiredAmountWei !== null &&
-      wmonBalanceWei !== null &&
-      wmonBalanceWei >= desiredAmountWei;
+      inputBalanceWei !== null &&
+      inputBalanceWei >= desiredAmountWei;
     const hasSufficientMoonAllowance =
       walletReady && moonAllowanceWei !== null && moonAllowanceWei > BigInt(0);
-    const hasSomeWmon = walletReady && wmonBalanceWei !== null && wmonBalanceWei > BigInt(0);
+    const hasSomeInputToken =
+      walletReady && inputBalanceWei !== null && inputBalanceWei > BigInt(0);
     const hasWmonAllowance =
       walletReady && wmonAllowanceWei !== null && wmonAllowanceWei > BigInt(0);
+    const needsWmonApproval = lpClaimPreset === 'backstop';
+    const amountPlaceholder = lpClaimPreset === 'moon_upside' ? '25000' : '1.0';
     const fundingWarning = !walletReady
       ? 'Connect your Warpcast wallet to fund the LP ritual.'
       : !hasAmountInput
-        ? 'Enter an amount denominated in WMON.'
+        ? `Enter an amount denominated in ${presetConfig.inputToken}.`
         : tokenInfoPending
           ? 'Checking wallet balances…'
           : fundingStatus === 'error'
             ? 'Failed to load wallet balances. Tap refresh or VIEW token.'
             : desiredAmountWei === null
               ? 'Amount is invalid.'
-              : !hasSomeWmon
-                ? 'You also need some WMON in your Warp wallet for this LP band.'
-                : !hasSufficientWmonInputBalance
-                  ? 'Not enough WMON for this deposit.'
-                  : !hasWmonAllowance
+              : !hasSomeInputToken
+                ? `You also need ${presetConfig.inputToken} in your Warp wallet for this LP band.`
+                : !hasSufficientInputBalance
+                  ? `Not enough ${presetConfig.inputToken} for this deposit.`
+                  : needsWmonApproval && !hasWmonAllowance
                     ? 'Approve WMON for the position manager before minting.'
                     : !hasSufficientMoonAllowance
                       ? 'Approve m00n for the position manager before minting.'
@@ -1354,7 +1587,7 @@ function MiniAppPageInner() {
         />
         <div className="relative w-full max-w-md space-y-5 rounded-3xl border border-[var(--monad-purple)] bg-black/80 p-6 text-left shadow-2xl">
           <div className="flex items-center justify-between">
-            <h2 className="pixel-font text-xl text-white">Claim LP Backstop</h2>
+            <h2 className="pixel-font text-xl text-white">{presetConfig.title}</h2>
             <button
               onClick={handleCloseLpClaimModal}
               className="text-sm text-white/60 hover:text-white transition-colors"
@@ -1364,10 +1597,8 @@ function MiniAppPageInner() {
               CLOSE
             </button>
           </div>
-          <p className="text-sm opacity-80">
-            Deploy liquidity into the fixed crash-backstop band (-106600 → -104600) on the m00n /
-            W-MON pool. Input is denominated in WMON; required m00n is computed from the pool price.
-          </p>
+          <p className="text-sm opacity-80">{presetConfig.description}</p>
+          <p className="text-xs text-white/50">{presetConfig.helper}</p>
           {!walletReady && (
             <div className="rounded-lg border border-yellow-400/40 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-100">
               Connect your Warpcast wallet to enter the LP ritual.
@@ -1430,71 +1661,75 @@ function MiniAppPageInner() {
           </div>
           {walletReady && (
             <div className="space-y-3">
-              <button
-                type="button"
-                onClick={async () => {
-                  if (!miniWalletAddress) return;
-                  if (!wmonBalanceWei || wmonBalanceWei <= BigInt(0)) {
-                    setLpClaimError('You need some WMON in your Warp wallet before approving it.');
-                    return;
-                  }
-                  setLpClaimError(null);
-                  try {
-                    const amountToApprove = wmonBalanceWei;
-                    const nowSec = Math.floor(Date.now() / 1000);
-                    const permitExpiration = nowSec + 60 * 60 * 24 * 30; // ~30 days
+              {needsWmonApproval && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!miniWalletAddress) return;
+                    if (!wmonBalanceWei || wmonBalanceWei <= BigInt(0)) {
+                      setLpClaimError(
+                        'You need some WMON in your Warp wallet before approving it.'
+                      );
+                      return;
+                    }
+                    setLpClaimError(null);
+                    try {
+                      const amountToApprove = wmonBalanceWei;
+                      const nowSec = Math.floor(Date.now() / 1000);
+                      const permitExpiration = nowSec + 60 * 60 * 24 * 30; // ~30 days
 
-                    const approveUnderlyingData = encodeFunctionData({
-                      abi: erc20Abi,
-                      functionName: 'approve',
-                      args: [asHexAddress(PERMIT2_ADDRESS), amountToApprove]
-                    });
+                      const approveUnderlyingData = encodeFunctionData({
+                        abi: erc20Abi,
+                        functionName: 'approve',
+                        args: [asHexAddress(PERMIT2_ADDRESS), amountToApprove]
+                      });
 
-                    const permitData = encodeFunctionData({
-                      abi: permit2Abi,
-                      functionName: 'approve',
-                      args: [
-                        asHexAddress(WMON_ADDRESS),
-                        asHexAddress(POSITION_MANAGER_ADDRESS),
-                        amountToApprove,
-                        permitExpiration
-                      ]
-                    });
+                      const permitData = encodeFunctionData({
+                        abi: permit2Abi,
+                        functionName: 'approve',
+                        args: [
+                          asHexAddress(WMON_ADDRESS),
+                          asHexAddress(POSITION_MANAGER_ADDRESS),
+                          amountToApprove,
+                          permitExpiration
+                        ]
+                      });
 
-                    await sendCallsViaProvider({
-                      calls: [
-                        {
-                          to: asHexAddress(WMON_ADDRESS),
-                          data: approveUnderlyingData,
-                          value: BigInt(0)
-                        },
-                        {
-                          to: asHexAddress(PERMIT2_ADDRESS),
-                          data: permitData,
-                          value: BigInt(0)
-                        }
-                      ]
-                    });
+                      await sendCallsViaProvider({
+                        calls: [
+                          {
+                            to: asHexAddress(WMON_ADDRESS),
+                            data: approveUnderlyingData,
+                            value: BigInt(0)
+                          },
+                          {
+                            to: asHexAddress(PERMIT2_ADDRESS),
+                            data: permitData,
+                            value: BigInt(0)
+                          }
+                        ]
+                      });
 
-                    setFundingRefreshNonce((prev) => prev + 1);
-                    setLpDebugLog((prev) =>
-                      [
-                        prev,
-                        `✅ Approved WMON via Permit2 for ${amountToApprove.toString()} wei (PositionManager).`
-                      ]
-                        .filter(Boolean)
-                        .join('\n')
-                    );
-                  } catch (err) {
-                    console.error('Approve WMON failed', err);
-                    setLpClaimError(err instanceof Error ? err.message : 'approve_wmon_failed');
-                  }
-                }}
-                disabled={!walletReady || tokenInfoPending}
-                className="w-full rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
-              >
-                APPROVE WMON BALANCE
-              </button>
+                      setFundingRefreshNonce((prev) => prev + 1);
+                      setLpDebugLog((prev) =>
+                        [
+                          prev,
+                          `✅ Approved WMON via Permit2 for ${amountToApprove.toString()} wei (PositionManager).`
+                        ]
+                          .filter(Boolean)
+                          .join('\n')
+                      );
+                    } catch (err) {
+                      console.error('Approve WMON failed', err);
+                      setLpClaimError(err instanceof Error ? err.message : 'approve_wmon_failed');
+                    }
+                  }}
+                  disabled={tokenInfoPending}
+                  className="w-full rounded-xl border border-white/20 px-4 py-3 text-sm font-semibold text-white/80 hover:bg-white/5 transition-colors disabled:opacity-40"
+                >
+                  APPROVE WMON BALANCE
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleApproveMoon}
@@ -1523,7 +1758,7 @@ function MiniAppPageInner() {
           )}
           <div className="space-y-2">
             <label className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">
-              Amount (WMON)
+              {presetConfig.amountLabel}
             </label>
             <input
               type="number"
@@ -1531,7 +1766,7 @@ function MiniAppPageInner() {
               step="0.0001"
               value={lpClaimAmount}
               onChange={(event) => setLpClaimAmount(event.target.value)}
-              placeholder="1.0"
+              placeholder={amountPlaceholder}
               className="w-full rounded-xl border border-white/15 bg-black/40 px-4 py-3 font-mono text-sm text-white focus:border-[var(--monad-purple)] focus:outline-none disabled:opacity-40"
               disabled={!walletReady || isSubmittingLpClaim}
             />
@@ -1988,46 +2223,92 @@ function MiniAppPageInner() {
     );
   };
 
+  const renderPersonaStatsCard = () => {
+    if (!personaRecord) return null;
+    const formatStat = (value?: number | null) => {
+      if (value === null || value === undefined) return '—';
+      return formatAmountDisplay(String(value));
+    };
+    const behaviorLabel = personaRecord.behaviorPattern
+      ? personaRecord.behaviorPattern.replace(/_/g, ' ')
+      : null;
+
+    return (
+      <div className={`${PANEL_CLASS} space-y-3 text-left`}>
+        <p className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">Cabal dossier</p>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <p className="opacity-60">Replies logged</p>
+            <p className="font-mono text-lg">{personaRecord.replyCount ?? '—'}</p>
+          </div>
+          <div>
+            <p className="opacity-60">Estimated balance</p>
+            <p className="font-mono text-lg">
+              {formatStat(personaRecord.totalEstimatedBalance)} m00n
+            </p>
+          </div>
+          <div>
+            <p className="opacity-60">Total purchased</p>
+            <p className="font-mono text-lg">{formatStat(personaRecord.totalPurchased)}</p>
+          </div>
+          <div>
+            <p className="opacity-60">Total sold</p>
+            <p className="font-mono text-lg">{formatStat(personaRecord.totalSold)}</p>
+          </div>
+        </div>
+        {behaviorLabel && (
+          <p className="text-xs uppercase tracking-[0.3em] text-white/70">
+            Behavior: {behaviorLabel}
+          </p>
+        )}
+      </div>
+    );
+  };
+
   const renderClaimedHeldPortal = () => {
-    const copy = getPersonaCopy({ persona: 'claimed_held' });
+    const preset = LP_PRESET_CONTENT.moon_upside;
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
-        <div className="max-w-3xl w-full space-y-6 scanline bg-black/45 border border-[var(--monad-purple)] rounded-3xl px-8 py-10">
-          <div className="flex items-center justify-between">
-            <NeonHaloLogo size={130} />
+        <div className="max-w-4xl w-full space-y-8 scanline bg-black/45 border border-[var(--monad-purple)] rounded-3xl px-8 py-10">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <NeonHaloLogo size={140} />
             <div className="text-right">
-              <p className="pixel-font text-xs tracking-[0.5em] text-[var(--moss-green)]">
-                CABAL CHAT
+              <p className="pixel-font text-sm tracking-[0.5em] text-[var(--moss-green)]">
+                HOLDER BAND
               </p>
-              <p className="text-xs opacity-70">Hold-mode group line</p>
+              <p className="text-xs opacity-70">Single-sided ladder above spot</p>
             </div>
           </div>
-          <div className="text-center space-y-3">{renderCopyBody(copy.body)}</div>
-          {renderPersonaCtas(copy)}
-          <div className="bg-black/50 border border-white/10 rounded-2xl p-4 space-y-3 text-left h-64 overflow-y-auto">
-            <div>
-              <p className="text-xs text-[var(--moss-green)]">oracle.m00n</p>
-              <p className="text-sm opacity-85">
-                Keep holding. Fees drip. The moonlight stays purple.
-              </p>
+          <div className="grid md:grid-cols-2 gap-6 items-start">
+            <div className={`${PANEL_CLASS} space-y-4`}>
+              <div>
+                <p className="text-lg font-semibold text-white">{preset.title}</p>
+                <p className="text-sm opacity-80">{preset.description}</p>
+              </div>
+              <ul className="list-disc list-inside text-sm opacity-85 space-y-2">
+                <li>Band snaps to ~1.2× → 5× current tick (m00n-only input).</li>
+                <li>Pumps stream value into WMON without touching downside liquidity.</li>
+                <li>Modal enforces Permit2 approvals + 5% slippage guardrails.</li>
+                <li>Transaction ships via the Farcaster mini wallet on Monad.</li>
+              </ul>
             </div>
-            <div>
-              <p className="text-xs text-[var(--moss-green)]">clanker.herald</p>
-              <p className="text-sm opacity-85">LP wall solid. Chat stays calm.</p>
-            </div>
-            <div>
-              <p className="text-xs text-[var(--moss-green)]">you</p>
-              <p className="text-sm opacity-85 italic">Typing…</p>
-            </div>
+            {renderPersonaStatsCard()}
           </div>
-          <div className="flex gap-3">
-            <input
-              readOnly
-              placeholder="Only holders can speak…"
-              className="flex-1 bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-sm opacity-60 cursor-not-allowed"
-            />
-            <button className="pixel-font px-4 py-2 bg-[var(--monad-purple)] text-white rounded-lg opacity-40 cursor-not-allowed">
-              SEND
+          <div className="flex flex-col sm:flex-row gap-4">
+            <button
+              type="button"
+              onClick={() => handleOpenLpClaimModal('moon_upside')}
+              className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-colors"
+            >
+              DEPLOY 1.2×–5× BAND
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSwapMonToToken('moon')}
+              disabled={swapInFlight === 'moon'}
+              className="pixel-font px-6 py-3 border border-[var(--moss-green)] text-[var(--moss-green)] rounded-lg hover:bg-[var(--moss-green)] hover:text-black transition-colors disabled:opacity-40"
+            >
+              {swapInFlight === 'moon' ? 'SWAPPING…' : 'BUY MORE m00n'}
             </button>
           </div>
         </div>
@@ -2036,16 +2317,127 @@ function MiniAppPageInner() {
   };
 
   const renderClaimedBoughtMorePortal = () => {
-    const copy = getPersonaCopy({ persona: 'claimed_bought_more' });
+    const preset = LP_PRESET_CONTENT.backstop;
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
-        <div className="max-w-3xl w-full space-y-6 text-center scanline bg-black/45 border border-white/20 rounded-3xl px-8 py-10">
-          <div className="flex justify-center">
-            <div className="w-48 h-48 rounded-full bg-gradient-to-br from-purple-200 via-pink-200 to-white blur-2xl opacity-70" />
+        <div className="max-w-4xl w-full space-y-8 scanline bg-black/45 border border-white/20 rounded-3xl px-8 py-10">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-200 via-pink-200 to-white blur-2xl opacity-80" />
+              <div>
+                <p className="pixel-font text-lg text-white">{preset.title}</p>
+                <p className="text-xs opacity-70">Crash-backstop preset</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="pixel-font text-sm tracking-[0.5em] text-[var(--moss-green)]">
+                SUPERFAN MODE
+              </p>
+              <p className="text-xs opacity-70">Keep walls thick below spot</p>
+            </div>
           </div>
-          <h1 className="pixel-font text-3xl text-white">{copy.title}</h1>
-          {renderCopyBody(copy.body)}
-          {renderPersonaCtas(copy)}
+          <div className="grid md:grid-cols-2 gap-6 items-start">
+            <div className={`${PANEL_CLASS} space-y-4 text-left`}>
+              <p className="text-sm opacity-85">{preset.description}</p>
+              <ul className="list-disc list-inside text-sm opacity-85 space-y-2">
+                <li>Band hovers ~10% under spot across 6× tick spacing.</li>
+                <li>Input asset WMON; backend computes any required m00n.</li>
+                <li>Permit2 approvals stay per-asset—never unlimited.</li>
+                <li>Debugger panel lets you copy the exact viem payload.</li>
+              </ul>
+            </div>
+            {renderPersonaStatsCard()}
+          </div>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <button
+              type="button"
+              onClick={() => handleOpenLpClaimModal('backstop')}
+              className="pixel-font px-6 py-3 bg-white/15 text-white rounded-lg hover:bg-white/25 transition-colors"
+            >
+              DEPLOY CRASH BACKSTOP
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSwapMonToToken('wmon')}
+              disabled={swapInFlight === 'wmon'}
+              className="pixel-font px-6 py-3 border border-white/30 text-white rounded-lg hover:bg-white/10 transition-colors disabled:opacity-40"
+            >
+              {swapInFlight === 'wmon' ? 'SWAPPING…' : 'BUY MORE WMON'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderEmojiChatPortal = () => {
+    return renderShell(
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
+        <div className="max-w-3xl w-full space-y-6 scanline bg-black/50 border border-white/15 rounded-3xl px-8 py-10">
+          <div className="text-center space-y-2">
+            <p className="pixel-font text-2xl text-white">Heaven&apos;s Gate</p>
+            <p className="text-sm opacity-75">
+              Emoji-only uplink. Words short-circuit the cabal transceiver.
+            </p>
+          </div>
+          <div className={`${PANEL_CLASS} h-72 overflow-y-auto space-y-3`}>
+            {emojiChatLog.map((entry) => (
+              <div
+                key={entry.id}
+                className={`flex ${entry.speaker === 'you' ? 'justify-end' : 'justify-start'}`}
+              >
+                <span
+                  className={`inline-block px-3 py-2 rounded-full text-lg ${
+                    entry.speaker === 'you'
+                      ? 'bg-[var(--monad-purple)] text-white'
+                      : 'bg-white/10 text-white'
+                  }`}
+                >
+                  {entry.text}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <input
+              value={emojiInput}
+              onChange={(event) => setEmojiInput(filterEmojiOnly(event.target.value))}
+              placeholder="emoji only — words jam the gate"
+              className="flex-1 rounded-xl border border-white/15 bg-black/40 px-4 py-3 font-mono text-sm text-white focus:border-[var(--monad-purple)] focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleEmojiSend}
+              disabled={!emojiInput.trim()}
+              className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-colors disabled:opacity-40"
+            >
+              SEND
+            </button>
+          </div>
+          {renderPersonaStatsCard()}
+          {personaLookupStatus === 'loading' && (
+            <p className="text-xs text-center text-yellow-300">Syncing cabal dossier…</p>
+          )}
+          {personaLookupStatus === 'error' && (
+            <p className="text-xs text-center text-red-300">CSV dossier temporarily unavailable.</p>
+          )}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <button
+              type="button"
+              onClick={() => handleSwapMonToToken('moon')}
+              disabled={swapInFlight === 'moon'}
+              className="pixel-font px-6 py-3 border border-[var(--moss-green)] text-[var(--moss-green)] rounded-lg hover:bg-[var(--moss-green)] hover:text-black transition-colors disabled:opacity-40"
+            >
+              {swapInFlight === 'moon' ? 'SWAPPING…' : 'BUY MORE m00n'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenLpClaimModal('moon_upside')}
+              className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
+            >
+              DEPLOY HOLDER BAND
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -2266,6 +2658,7 @@ function MiniAppPageInner() {
       { id: 'claimed_sold', label: 'Claimed + sold' },
       { id: 'claimed_held', label: 'Claimed + held' },
       { id: 'claimed_bought_more', label: 'Claimed + bought' },
+      { id: 'emoji_chat', label: 'Emoji chat' },
       { id: 'eligible_holder', label: 'Claim console' },
       { id: 'locked_out', label: 'Lockout gate' },
       { id: 'lp_gate', label: 'No claim + LP' }
@@ -2486,6 +2879,8 @@ function MiniAppPageInner() {
         return renderClaimedHeldPortal();
       case 'claimed_bought_more':
         return renderClaimedBoughtMorePortal();
+      case 'emoji_chat':
+        return renderEmojiChatPortal();
       case 'lp_gate':
         return isLpLoungeOpen && lpGateState.lpStatus === 'HAS_LP'
           ? renderLpLoungePanel()
@@ -2506,6 +2901,8 @@ function MiniAppPageInner() {
       return renderClaimedHeldPortal();
     case 'claimed_bought_more':
       return renderClaimedBoughtMorePortal();
+    case 'emoji_chat':
+      return renderEmojiChatPortal();
     case 'lp_gate':
       if (isLpLoungeOpen && lpGateState.lpStatus === 'HAS_LP') {
         return renderLpLoungePanel();
