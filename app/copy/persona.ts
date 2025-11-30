@@ -105,26 +105,27 @@ export function getPersonaCopy(input: PersonaStateInput): PersonaCopy {
       return {
         title: '☠️ Rest in Piss',
         body: [
-          'You flipped your drop the moment it unlocked.',
-          'The cabal keeps the receipts—come back when you’re ready to build walls, not dumps.'
+          'Leave the rest in piss.',
+          'You flipped your drop the moment it unlocked. The cabal keeps receipts.'
         ],
         secondaryCta: { label: 'LEARN MORE', actionId: 'learn_more' }
       };
     case 'claimed_held':
       return {
-        title: '🕸️ Holder Frequency',
+        title: '🪜 The Ones Who Came Anyway',
         body: [
-          'You stayed in the circle. The private chat is yours—share intel, plan walls, stay weird.',
-          'Only active holders can post inside.'
+          'Deploy the single-sided m00n ladder ~20% above spot and let pumps recycle into WMON.',
+          'Stay in range, keep the ladder humming, and hold the line.'
         ],
-        primaryCta: { label: 'OPEN HOLDER CHAT', actionId: 'open_chat' }
+        primaryCta: { label: 'DEPLOY SKY LADDER', actionId: 'lp_become_lp' },
+        secondaryCta: { label: 'ENTER LP LOUNGE', actionId: 'lp_enter_lounge' }
       };
     case 'claimed_bought_more':
       return {
-        title: '🌌 Superfan Heaven',
+        title: '🔥 The Ones Who Doubled Down',
         body: [
-          'You doubled down after the claim. Enjoy the faux-celestial lounge until the next ritual.',
-          'Want more action? Queue up the heaven mini-game.'
+          'Flood the crash band ~20% below tick with WMON so dumps auto-fill the treasury.',
+          'Keep the floor thick and the sigil spinning.'
         ],
         primaryCta: { label: 'ENTER HEAVEN MODE', actionId: 'open_heaven_mode' }
       };

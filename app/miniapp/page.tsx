@@ -62,6 +62,7 @@ const STICKER_COLORS = ['#6ce5b1', '#8c54ff', '#ff9b54', '#5ea3ff', '#f7e6ff'];
 const HOLDER_CHAT_URL =
   process.env.NEXT_PUBLIC_HOLDER_CHAT_URL ?? 'https://warpcast.com/~/channel/m00n';
 const HEAVEN_MODE_URL = process.env.NEXT_PUBLIC_HEAVEN_URL ?? 'https://warpcast.com/~/channel/m00n';
+const MOONLANDER_URL = 'https://farcaster.xyz/miniapps/xXgsbdvvhOB7/m00nlander';
 const CHAIN_CAIP = 'eip155:143';
 const MON_NATIVE_CAIP = `${CHAIN_CAIP}/native`;
 const WMON_CAIP = `${CHAIN_CAIP}/erc20:${WMON_ADDRESS.toLowerCase()}`;
@@ -138,9 +139,9 @@ const LP_PRESET_CONTENT: Record<
 const describeBandTypeLabel = (bandType?: LpPosition['bandType']) => {
   switch (bandType) {
     case 'crash_band':
-      return 'Crash band (sells m00n if price spikes)';
+      return 'Crash band (scales into WMON for m00n ~10% under spot)';
     case 'upside_band':
-      return 'Upside band (buys m00n on dumps)';
+      return 'Upside band (scales out of m00n into WMON from 1.2× → 5×)';
     case 'in_range':
       return 'Active band (earning fees)';
     default:
@@ -394,6 +395,8 @@ function MiniAppPageInner() {
     }))
   );
 
+  const hasLpNft = lpGateState.lpStatus === 'HAS_LP' || (lpGateState.lpPositions?.length ?? 0) > 0;
+
   const showToast = useCallback((kind: 'info' | 'success' | 'error', message: string) => {
     setToast({ kind, message });
   }, []);
@@ -455,12 +458,32 @@ function MiniAppPageInner() {
     return primaryAddressMoonBalanceWei >= MOON_EMOJI_THRESHOLD_WEI;
   }, [csvPersona, primaryAddressMoonBalanceWei, primaryBalanceStatus]);
 
+  const personaFromLpPositions = useMemo<UserPersona | null>(() => {
+    if (lpGateState.lpStatus !== 'HAS_LP') {
+      return null;
+    }
+    const positions = lpGateState.lpPositions ?? [];
+    if (positions.length === 0) {
+      return null;
+    }
+    if (positions.some((pos) => pos.bandType === 'upside_band')) {
+      return 'claimed_held';
+    }
+    if (positions.some((pos) => pos.bandType === 'crash_band')) {
+      return 'claimed_bought_more';
+    }
+    return 'claimed_held';
+  }, [lpGateState.lpPositions, lpGateState.lpStatus]);
+
   const derivedPersona: UserPersona = useMemo(() => {
     if (!userData) {
       return 'locked_out';
     }
     if (csvPersona) {
       return csvPersona;
+    }
+    if (personaFromLpPositions) {
+      return personaFromLpPositions;
     }
     if (emojiFallbackEligible) {
       return 'emoji_chat';
@@ -485,6 +508,7 @@ function MiniAppPageInner() {
     hasZeroPoints,
     csvPersona,
     emojiFallbackEligible,
+    personaFromLpPositions,
     userData
   ]);
 
@@ -552,11 +576,6 @@ function MiniAppPageInner() {
 
   useEffect(() => {
     if (effectivePersona !== 'lp_gate') {
-      setLpGateState({
-        lpStatus: 'DISCONNECTED',
-        walletAddress: miniWalletAddress ?? null,
-        lpPositions: []
-      });
       setIsLpLoungeOpen(false);
       return;
     }
@@ -1065,6 +1084,10 @@ function MiniAppPageInner() {
     await openExternalUrl(HEAVEN_MODE_URL);
   };
 
+  const handleOpenMoonLander = async () => {
+    await openExternalUrl(MOONLANDER_URL);
+  };
+
   const handleRetryLpStatus = () => {
     setLpRefreshNonce((prev) => prev + 1);
   };
@@ -1495,9 +1518,12 @@ function MiniAppPageInner() {
       ? personaActionHandlers[copy.secondaryCta.actionId]
       : undefined;
 
+    const shouldHidePrimary = copy.primaryCta?.actionId === 'lp_enter_lounge' && !hasLpNft;
+    const shouldHideSecondary = copy.secondaryCta?.actionId === 'lp_enter_lounge' && !hasLpNft;
+
     return (
       <div className="flex flex-col sm:flex-row sm:justify-center gap-3">
-        {copy.primaryCta && (
+        {copy.primaryCta && !shouldHidePrimary && (
           <button
             onClick={primaryHandler}
             disabled={!primaryHandler || options?.disablePrimary}
@@ -1507,7 +1533,7 @@ function MiniAppPageInner() {
             {copy.primaryCta.label}
           </button>
         )}
-        {copy.secondaryCta && (
+        {copy.secondaryCta && !shouldHideSecondary && (
           <button
             onClick={secondaryHandler}
             disabled={!secondaryHandler || options?.disableSecondary}
@@ -1852,6 +1878,8 @@ function MiniAppPageInner() {
     });
   };
 
+  const SHOW_LP_SOURCE_DIAGNOSTICS = false;
+
   const PANEL_CLASS =
     'bg-black/45 border border-[var(--monad-purple)] rounded-2xl px-8 py-6 backdrop-blur';
 
@@ -1885,7 +1913,7 @@ function MiniAppPageInner() {
   );
 
   const renderLpDiagnostics = () => {
-    if (!lpGateState.walletAddress) return null;
+    if (!SHOW_LP_SOURCE_DIAGNOSTICS || !lpGateState.walletAddress) return null;
 
     const diagnostics = {
       wallet: lpGateState.walletAddress,
@@ -2213,9 +2241,9 @@ function MiniAppPageInner() {
             <NeonHaloLogo size={140} />
             <div className="text-right">
               <p className="pixel-font text-sm tracking-[0.5em] text-[var(--moss-green)]">
-                HOLDER BAND
+                THE ONES WHO CAME ANYWAY
               </p>
-              <p className="text-xs opacity-70">Single-sided ladder above spot</p>
+              <p className="text-xs opacity-70">m00n-only ladder ~20% above tick</p>
             </div>
           </div>
           <div className="grid md:grid-cols-2 gap-6 items-start">
@@ -2239,7 +2267,7 @@ function MiniAppPageInner() {
               onClick={() => handleOpenLpClaimModal('moon_upside')}
               className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-colors"
             >
-              DEPLOY 1.2×–5× BAND
+              DEPLOY SKY LADDER
             </button>
             <button
               type="button"
@@ -2270,9 +2298,9 @@ function MiniAppPageInner() {
             </div>
             <div className="text-right">
               <p className="pixel-font text-sm tracking-[0.5em] text-[var(--moss-green)]">
-                SUPERFAN MODE
+                THE ONES WHO DOUBLED DOWN
               </p>
-              <p className="text-xs opacity-70">Keep walls thick below spot</p>
+              <p className="text-xs opacity-70">WMON crash band ~20% below tick</p>
             </div>
           </div>
           <div className="grid md:grid-cols-2 gap-6 items-start">
@@ -2310,44 +2338,32 @@ function MiniAppPageInner() {
   };
 
   const renderEmojiChatPortal = () => {
+    const chatDisabled = true;
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-3xl w-full space-y-6 scanline bg-black/50 border border-white/15 rounded-3xl px-8 py-10">
           <div className="text-center space-y-2">
             <p className="pixel-font text-2xl text-white">Heaven&apos;s Gate</p>
-            <p className="text-sm opacity-75">
-              Emoji-only uplink. Words short-circuit the cabal transceiver.
-            </p>
+            <p className="text-sm opacity-75">Chat coming soon — glyph array under construction.</p>
           </div>
-          <div className={`${PANEL_CLASS} h-72 overflow-y-auto space-y-3`}>
-            {emojiChatLog.map((entry) => (
-              <div
-                key={entry.id}
-                className={`flex ${entry.speaker === 'you' ? 'justify-end' : 'justify-start'}`}
-              >
-                <span
-                  className={`inline-block px-3 py-2 rounded-full text-lg ${
-                    entry.speaker === 'you'
-                      ? 'bg-[var(--monad-purple)] text-white'
-                      : 'bg-white/10 text-white'
-                  }`}
-                >
-                  {entry.text}
-                </span>
-              </div>
-            ))}
+          <div className={`${PANEL_CLASS} h-60 flex items-center justify-center`}>
+            <p className="text-center text-sm opacity-70">
+              The emoji uplink is calibrating ({emojiChatLog.length} cached glyphs). Tap the
+              launcher below to visit m00nlander in the meantime.
+            </p>
           </div>
           <div className="flex flex-col sm:flex-row gap-3">
             <input
               value={emojiInput}
               onChange={(event) => setEmojiInput(filterEmojiOnly(event.target.value))}
-              placeholder="emoji only — words jam the gate"
-              className="flex-1 rounded-xl border border-white/15 bg-black/40 px-4 py-3 font-mono text-sm text-white focus:border-[var(--monad-purple)] focus:outline-none"
+              placeholder="Chat coming soon"
+              disabled={chatDisabled}
+              className="flex-1 rounded-xl border border-white/15 bg-black/40 px-4 py-3 font-mono text-sm text-white focus:border-[var(--monad-purple)] focus:outline-none disabled:opacity-40"
             />
             <button
               type="button"
               onClick={handleEmojiSend}
-              disabled={!emojiInput.trim()}
+              disabled={chatDisabled || !emojiInput.trim()}
               className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-colors disabled:opacity-40"
             >
               SEND
@@ -2363,10 +2379,10 @@ function MiniAppPageInner() {
           <div className="flex flex-col sm:flex-row gap-4">
             <button
               type="button"
-              onClick={() => handleOpenLpClaimModal('moon_upside')}
-              className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
+              onClick={handleOpenMoonLander}
+              className="pixel-font px-6 py-3 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors"
             >
-              DEPLOY HOLDER BAND
+              LAUNCH m00nLANDER
             </button>
           </div>
         </div>
@@ -2537,7 +2553,7 @@ function MiniAppPageInner() {
             </p>
           )}
 
-          <div className="w-full">{renderContractCard()}</div>
+          <div className="w-full">{renderContractCard({ showClaimButton: false })}</div>
           <div className="flex justify-center">
             <button
               type="button"
@@ -2669,30 +2685,35 @@ function MiniAppPageInner() {
     </>
   );
 
-  const renderContractCard = () => (
-    <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-6 space-y-4 text-left backdrop-blur">
-      <div>
-        <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest mb-2">
-          m00n contract
-        </p>
-        <p className="font-mono text-sm break-all px-1">{TOKEN_ADDRESS}</p>
+  const renderContractCard = (options?: { showClaimButton?: boolean }) => {
+    const showClaimButton = options?.showClaimButton ?? true;
+    return (
+      <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-6 space-y-4 text-left backdrop-blur">
+        <div>
+          <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest mb-2">
+            m00n contract
+          </p>
+          <p className="font-mono text-sm break-all px-1">{TOKEN_ADDRESS}</p>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            onClick={handleCopyContract}
+            className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-all"
+          >
+            {copiedContract ? 'COPIED' : 'COPY CA'}
+          </button>
+          {showClaimButton && (
+            <button
+              onClick={handleOpenClaimSite}
+              className="pixel-font text-xs px-4 py-2 border border-[var(--moss-green)] rounded text-[var(--moss-green)] hover:bg-[var(--moss-green)] hover:text-black transition-all"
+            >
+              OPEN CLAIM SITE
+            </button>
+          )}
+        </div>
       </div>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <button
-          onClick={handleCopyContract}
-          className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-all"
-        >
-          {copiedContract ? 'COPIED' : 'COPY CA'}
-        </button>
-        <button
-          onClick={handleOpenClaimSite}
-          className="pixel-font text-xs px-4 py-2 border border-[var(--moss-green)] rounded text-[var(--moss-green)] hover:bg-[var(--moss-green)] hover:text-black transition-all"
-        >
-          OPEN CLAIM SITE
-        </button>
-      </div>
-    </div>
-  );
+    );
+  };
 
   const statusState = useMemo(() => {
     if (isMiniApp === false) {
