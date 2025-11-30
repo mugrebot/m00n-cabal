@@ -103,6 +103,63 @@ const describeBandTypeLabel = (bandType?: LpPosition['bandType']) => {
       return 'Band type unknown';
   }
 };
+
+const trimTrailingZeros = (val: string) => val.replace(/\.?0+$/, '') || '0';
+
+const formatWmonPrice = (value?: string) => {
+  if (!value) return '–';
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return value;
+  const fixed = numeric >= 1 ? numeric.toFixed(4) : numeric.toPrecision(4);
+  return `${trimTrailingZeros(fixed)} WMON`;
+};
+
+const formatUsdFromWmon = (value?: string, wmonUsdPrice?: number | null) => {
+  if (!value || !wmonUsdPrice || !Number.isFinite(wmonUsdPrice)) return '–';
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '–';
+  const usd = numeric * wmonUsdPrice;
+  if (usd >= 1) {
+    return `$${usd.toFixed(4)}`;
+  }
+  if (usd >= 0.01) {
+    return `$${usd.toFixed(4)}`;
+  }
+  return `$${usd.toPrecision(3)}`;
+};
+
+const abbreviateUsd = (value: number) => {
+  if (!Number.isFinite(value)) return '–';
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}b`;
+  if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}m`;
+  if (abs >= 1_000) return `$${(value / 1_000).toFixed(1)}k`;
+  return `$${value.toFixed(2)}`;
+};
+
+const formatMarketCapRange = (
+  priceLowerInToken1?: string,
+  priceUpperInToken1?: string,
+  supply?: number,
+  wmonUsdPrice?: number | null
+) => {
+  if (
+    !priceLowerInToken1 ||
+    !priceUpperInToken1 ||
+    !supply ||
+    !wmonUsdPrice ||
+    !Number.isFinite(supply) ||
+    !Number.isFinite(wmonUsdPrice)
+  ) {
+    return '–';
+  }
+  const lowerPrice = Number(priceLowerInToken1);
+  const upperPrice = Number(priceUpperInToken1);
+  if (!Number.isFinite(lowerPrice) || !Number.isFinite(upperPrice)) return '–';
+  const lowerUsd = lowerPrice * wmonUsdPrice * supply;
+  const upperUsd = upperPrice * wmonUsdPrice * supply;
+  return `${abbreviateUsd(lowerUsd)}–${abbreviateUsd(upperUsd)}`;
+};
 type UserPersona =
   | 'claimed_sold'
   | 'claimed_held'
@@ -138,6 +195,8 @@ interface LpPosition {
   bandType?: 'crash_band' | 'upside_band' | 'in_range';
   token0?: TokenBreakdown;
   token1?: TokenBreakdown;
+  priceLowerInToken1?: string;
+  priceUpperInToken1?: string;
 }
 
 interface LpGateState {
@@ -149,6 +208,9 @@ interface LpGateState {
   indexerPositionCount?: number;
   poolCurrentTick?: number;
   poolSqrtPriceX96?: string;
+  poolWmonUsdPrice?: number | null;
+  token0TotalSupply?: number;
+  token0CirculatingSupply?: number;
 }
 
 interface ReplyGlow {
@@ -411,6 +473,13 @@ function MiniAppPageInner() {
           indexerPositionCount?: number;
           currentTick?: number;
           sqrtPriceX96?: string;
+          wmonUsdPrice?: number | null;
+          token0?: {
+            symbol?: string;
+            decimals?: number;
+            totalSupply?: number;
+            circulatingSupply?: number;
+          };
         };
 
         if (data.error) {
@@ -435,7 +504,10 @@ function MiniAppPageInner() {
           hasLpFromSubgraph: data.hasLpFromSubgraph,
           indexerPositionCount: data.indexerPositionCount,
           poolCurrentTick: data.currentTick,
-          poolSqrtPriceX96: data.sqrtPriceX96
+          poolSqrtPriceX96: data.sqrtPriceX96,
+          poolWmonUsdPrice: data.wmonUsdPrice ?? null,
+          token0TotalSupply: data.token0?.totalSupply,
+          token0CirculatingSupply: data.token0?.circulatingSupply
         });
       } catch (err) {
         console.error('LP gate lookup failed', err);
@@ -1673,6 +1745,7 @@ function MiniAppPageInner() {
       indexerPositionCount: lpGateState.indexerPositionCount ?? null,
       poolCurrentTick: lpGateState.poolCurrentTick ?? null,
       poolSqrtPriceX96: lpGateState.poolSqrtPriceX96 ?? null,
+      wmonUsdPrice: lpGateState.poolWmonUsdPrice ?? null,
       lpPositionsLength: lpGateState.lpPositions?.length ?? 0,
       timestamp: new Date().toISOString()
     };
@@ -1705,29 +1778,65 @@ function MiniAppPageInner() {
 
     const positionsPreview =
       lpStatus === 'HAS_LP' && positionCount > 0 ? (
-        <div className={`${PANEL_CLASS} text-left space-y-2`}>
+        <div className={`${PANEL_CLASS} text-left space-y-3`}>
           <p className="uppercase text-[var(--moss-green)] text-[11px] tracking-[0.4em]">
             LP SIGILS
           </p>
-          {previewPositions.map((position) => (
-            <div key={position.tokenId} className="text-sm opacity-85 space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-semibold">Sigil #{position.tokenId}</p>
-                {position.bandType && (
-                  <span className="text-[10px] uppercase tracking-[0.3em] text-[var(--moss-green)]">
-                    {describeBandTypeLabel(position.bandType)}
-                  </span>
+          {previewPositions.map((position) => {
+            const wmonRange =
+              position.priceLowerInToken1 && position.priceUpperInToken1
+                ? `${formatWmonPrice(position.priceLowerInToken1)} → ${formatWmonPrice(
+                    position.priceUpperInToken1
+                  )}`
+                : null;
+            const usdRange =
+              wmonRange && lpGateState.poolWmonUsdPrice
+                ? `${formatUsdFromWmon(
+                    position.priceLowerInToken1,
+                    lpGateState.poolWmonUsdPrice
+                  )} → ${formatUsdFromWmon(
+                    position.priceUpperInToken1,
+                    lpGateState.poolWmonUsdPrice
+                  )}`
+                : null;
+            const fdvRange = formatMarketCapRange(
+              position.priceLowerInToken1,
+              position.priceUpperInToken1,
+              lpGateState.token0TotalSupply,
+              lpGateState.poolWmonUsdPrice
+            );
+            const circRange = formatMarketCapRange(
+              position.priceLowerInToken1,
+              position.priceUpperInToken1,
+              lpGateState.token0CirculatingSupply,
+              lpGateState.poolWmonUsdPrice
+            );
+            return (
+              <div key={position.tokenId} className="text-sm opacity-85 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold">Sigil #{position.tokenId}</p>
+                  {position.bandType && (
+                    <span className="text-[10px] uppercase tracking-[0.3em] text-[var(--moss-green)]">
+                      {describeBandTypeLabel(position.bandType)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs opacity-70">
+                  Tick band: {position.tickLower} → {position.tickUpper}
+                </p>
+                <div className="text-xs text-white/70 space-y-0.5 font-mono">
+                  <p>{formatTokenDisplay(position.token0)}</p>
+                  <p>{formatTokenDisplay(position.token1)}</p>
+                </div>
+                {wmonRange && <p className="text-[11px] text-white/70">Price band: {wmonRange}</p>}
+                {usdRange && <p className="text-[11px] text-white/70">USD band: {usdRange}</p>}
+                {fdvRange !== '–' && <p className="text-[11px] text-white/60">FDV: {fdvRange}</p>}
+                {circRange !== '–' && (
+                  <p className="text-[11px] text-white/60">Circulating: {circRange}</p>
                 )}
               </div>
-              <p className="text-xs opacity-70">
-                Tick band: {position.tickLower} → {position.tickUpper}
-              </p>
-              <div className="text-xs text-white/70 space-y-0.5 font-mono">
-                <p>{formatTokenDisplay(position.token0)}</p>
-                <p>{formatTokenDisplay(position.token1)}</p>
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {positionCount > 2 && (
             <p className="text-xs opacity-60">+{positionCount - 2} more sigils detected.</p>
           )}
@@ -1812,6 +1921,11 @@ function MiniAppPageInner() {
                     : null}
                 </p>
               )}
+              {lpGateState.poolWmonUsdPrice && (
+                <p className="text-[11px] opacity-60">
+                  1 WMON ≈ ${lpGateState.poolWmonUsdPrice.toFixed(4)}
+                </p>
+              )}
             </div>
           </div>
 
@@ -1823,33 +1937,78 @@ function MiniAppPageInner() {
                 type is based on where spot sits relative to your ticks.
               </p>
               <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-                {positions.map((pos) => (
-                  <div
-                    key={pos.tokenId}
-                    className="rounded-xl border border-white/15 bg-black/40 px-4 py-3 space-y-1"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-mono text-white/80">Sigil #{pos.tokenId}</span>
-                      <span className="text-[10px] uppercase tracking-[0.25em] text-[var(--moss-green)]">
-                        {describeBandTypeLabel(pos.bandType)}
-                      </span>
+                {positions.map((pos) => {
+                  const wmonRange =
+                    pos.priceLowerInToken1 && pos.priceUpperInToken1
+                      ? `${formatWmonPrice(pos.priceLowerInToken1)} → ${formatWmonPrice(
+                          pos.priceUpperInToken1
+                        )}`
+                      : null;
+                  const usdRange =
+                    wmonRange && lpGateState.poolWmonUsdPrice
+                      ? `${formatUsdFromWmon(
+                          pos.priceLowerInToken1,
+                          lpGateState.poolWmonUsdPrice
+                        )} → ${formatUsdFromWmon(
+                          pos.priceUpperInToken1,
+                          lpGateState.poolWmonUsdPrice
+                        )}`
+                      : null;
+                  const fdvRange = formatMarketCapRange(
+                    pos.priceLowerInToken1,
+                    pos.priceUpperInToken1,
+                    lpGateState.token0TotalSupply,
+                    lpGateState.poolWmonUsdPrice
+                  );
+                  const circRange = formatMarketCapRange(
+                    pos.priceLowerInToken1,
+                    pos.priceUpperInToken1,
+                    lpGateState.token0CirculatingSupply,
+                    lpGateState.poolWmonUsdPrice
+                  );
+
+                  return (
+                    <div
+                      key={pos.tokenId}
+                      className="rounded-xl border border-white/15 bg-black/40 px-4 py-3 space-y-1"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-mono text-white/80">
+                          Sigil #{pos.tokenId}
+                        </span>
+                        <span className="text-[10px] uppercase tracking-[0.25em] text-[var(--moss-green)]">
+                          {describeBandTypeLabel(pos.bandType)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-white/70">
+                        Range ticks: {pos.tickLower} → {pos.tickUpper}
+                      </p>
+                      <p className="text-xs text-white/70">
+                        Liquidity units:&nbsp;
+                        <span className="font-mono">{pos.liquidity}</span>
+                      </p>
+                      <div className="text-xs text-white/70 font-mono space-y-0.5">
+                        <p>{formatTokenDisplay(pos.token0)}</p>
+                        <p>{formatTokenDisplay(pos.token1)}</p>
+                      </div>
+                      {typeof pos.currentTick === 'number' && (
+                        <p className="text-[10px] text-white/50">Pool tick: {pos.currentTick}</p>
+                      )}
+                      {wmonRange && (
+                        <p className="text-[11px] text-white/70">WMON band: {wmonRange}</p>
+                      )}
+                      {usdRange && (
+                        <p className="text-[11px] text-white/70">USD band: {usdRange}</p>
+                      )}
+                      {fdvRange !== '–' && (
+                        <p className="text-[11px] text-white/60">FDV: {fdvRange}</p>
+                      )}
+                      {circRange !== '–' && (
+                        <p className="text-[11px] text-white/60">Circulating: {circRange}</p>
+                      )}
                     </div>
-                    <p className="text-xs text-white/70">
-                      Range ticks: {pos.tickLower} → {pos.tickUpper}
-                    </p>
-                    <p className="text-xs text-white/70">
-                      Liquidity units:&nbsp;
-                      <span className="font-mono">{pos.liquidity}</span>
-                    </p>
-                    <div className="text-xs text-white/70 font-mono space-y-0.5">
-                      <p>{formatTokenDisplay(pos.token0)}</p>
-                      <p>{formatTokenDisplay(pos.token1)}</p>
-                    </div>
-                    {typeof pos.currentTick === 'number' && (
-                      <p className="text-[10px] text-white/50">Pool tick: {pos.currentTick}</p>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

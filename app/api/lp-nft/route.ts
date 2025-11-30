@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { GraphQLClient, gql } from 'graphql-request';
 import { formatUnits, type Address } from 'viem';
 import {
   getUserPositionsSummary,
@@ -36,6 +37,8 @@ interface LpPositionApi {
   bandType: BandType;
   token0: TokenBreakdown;
   token1: TokenBreakdown;
+  priceLowerInToken1: string;
+  priceUpperInToken1: string;
 }
 
 const TOKEN_METADATA: Record<
@@ -81,6 +84,10 @@ const describeToken = (address: string): { symbol: string; label: string; decima
   return { symbol: 'token', label: 'Token', decimals: 18 };
 };
 
+const tickToPrice = (tick: number): number => {
+  return Math.pow(1.0001, tick);
+};
+
 const serializePosition = (position: PositionWithAmounts): LpPositionApi => {
   const token0Meta = describeToken(position.poolKey.currency0);
   const token1Meta = describeToken(position.poolKey.currency1);
@@ -103,6 +110,9 @@ const serializePosition = (position: PositionWithAmounts): LpPositionApi => {
     amountFormatted: formatTokenAmount(position.amount1, token1Meta.decimals)
   };
 
+  const priceLower = tickToPrice(position.tickLower);
+  const priceUpper = tickToPrice(position.tickUpper);
+
   return {
     tokenId: position.tokenId.toString(),
     liquidity: position.liquidity.toString(),
@@ -119,9 +129,84 @@ const serializePosition = (position: PositionWithAmounts): LpPositionApi => {
     rangeStatus: position.rangeStatus,
     bandType: mapRangeToBand(position.rangeStatus),
     token0,
-    token1
+    token1,
+    priceLowerInToken1: priceLower.toString(),
+    priceUpperInToken1: priceUpper.toString()
   };
 };
+
+const UNISWAP_V4_SUBGRAPH_ID = '3kaAG19ytkGfu8xD7YAAZ3qAQ3UDJRkmKH2kHUuyGHah';
+const THE_GRAPH_API_KEY =
+  (typeof process !== 'undefined' && process.env.THE_GRAPH_API_KEY) ||
+  (typeof process !== 'undefined' && process.env.THEGRAPH_API_KEY) ||
+  '';
+const UNISWAP_V4_SUBGRAPH_URL =
+  (typeof process !== 'undefined' && process.env.UNISWAP_V4_SUBGRAPH_URL?.trim()) ||
+  `https://gateway.thegraph.com/api/${THE_GRAPH_API_KEY}/subgraphs/id/${UNISWAP_V4_SUBGRAPH_ID}`;
+
+const graphClient =
+  THE_GRAPH_API_KEY || process.env.UNISWAP_V4_SUBGRAPH_URL
+    ? new GraphQLClient(UNISWAP_V4_SUBGRAPH_URL)
+    : null;
+
+const WMON_ADDRESS = '0x3bd359c1119da7da1d913d1c4d2b7c461115433a';
+const USDC_ADDRESS = '0x754704bc059f8c67012fed69bc8a327a5aafb603';
+const WMON_USDC_FEE = 500; // 0.05% fee tier
+
+const GET_WMON_USDC_POOL_QUERY = gql`
+  query GetWmonUsdcPool($feeTier: BigInt!, $tokenA: String!, $tokenB: String!) {
+    pools(
+      where: { feeTier: $feeTier, token0_in: [$tokenA, $tokenB], token1_in: [$tokenA, $tokenB] }
+      first: 1
+    ) {
+      id
+      token0Price
+      token1Price
+      token0 {
+        id
+      }
+      token1 {
+        id
+      }
+    }
+  }
+`;
+
+async function getWmonUsdPriceFromSubgraph(): Promise<number | null> {
+  if (!graphClient) return null;
+  try {
+    const data = (await graphClient.request(GET_WMON_USDC_POOL_QUERY, {
+      feeTier: WMON_USDC_FEE,
+      tokenA: WMON_ADDRESS.toLowerCase(),
+      tokenB: USDC_ADDRESS.toLowerCase()
+    })) as {
+      pools: Array<{
+        token0Price: string;
+        token1Price: string;
+        token0: { id: string };
+        token1: { id: string };
+      }>;
+    };
+
+    const pool = data.pools?.[0];
+    if (!pool) return null;
+    const token0Id = pool.token0.id.toLowerCase();
+    const token1Id = pool.token1.id.toLowerCase();
+
+    if (token0Id === WMON_ADDRESS.toLowerCase() && token1Id === USDC_ADDRESS.toLowerCase()) {
+      return Number(pool.token0Price);
+    }
+    if (token1Id === WMON_ADDRESS.toLowerCase() && token0Id === USDC_ADDRESS.toLowerCase()) {
+      const price = Number(pool.token1Price);
+      if (price === 0) return null;
+      return 1 / price;
+    }
+    return null;
+  } catch (error) {
+    console.warn('Failed to fetch WMON/USD price from subgraph', error);
+    return null;
+  }
+}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -146,6 +231,13 @@ export async function GET(request: NextRequest) {
         indexerPositionCount: summary.indexerPositionCount,
         currentTick: 0,
         sqrtPriceX96: '0',
+        wmonUsdPrice: null,
+        token0: {
+          symbol: 'm00n',
+          decimals: 18,
+          totalSupply: 100_000_000_000,
+          circulatingSupply: 95_000_000_000
+        },
         lpPositions: []
       };
       console.log('LP_NFT_ROUTE:summary', payload);
@@ -158,6 +250,13 @@ export async function GET(request: NextRequest) {
     const poolCurrentTick = responsePositions[0]?.currentTick ?? 0;
     const poolSqrtPriceX96 = responsePositions[0]?.sqrtPriceX96 ?? '0';
 
+    let wmonUsdPrice: number | null = null;
+    try {
+      wmonUsdPrice = await getWmonUsdPriceFromSubgraph();
+    } catch (error) {
+      console.warn('Unable to load WMON/USD price', error);
+    }
+
     const payload = {
       hasLpNft: summary.hasLpNft || responsePositions.length > 0,
       hasLpFromOnchain: summary.hasLpFromOnchain,
@@ -165,6 +264,13 @@ export async function GET(request: NextRequest) {
       indexerPositionCount: summary.indexerPositionCount,
       currentTick: poolCurrentTick,
       sqrtPriceX96: poolSqrtPriceX96,
+      wmonUsdPrice,
+      token0: {
+        symbol: 'm00n',
+        decimals: 18,
+        totalSupply: 100_000_000_000,
+        circulatingSupply: 95_000_000_000
+      },
       lpPositions: responsePositions
     };
 
