@@ -1603,6 +1603,34 @@ function MiniAppPageInner() {
     </div>
   );
 
+  const renderLpDiagnostics = () => {
+    if (!lpGateState.walletAddress) return null;
+
+    const diagnostics = {
+      wallet: lpGateState.walletAddress,
+      status: lpGateState.lpStatus,
+      hasLpFromOnchain: lpGateState.hasLpFromOnchain ?? null,
+      hasLpFromSubgraph: lpGateState.hasLpFromSubgraph ?? null,
+      indexerPositionCount: lpGateState.indexerPositionCount ?? null,
+      lpPositionsLength: lpGateState.lpPositions?.length ?? 0,
+      timestamp: new Date().toISOString()
+    };
+
+    return (
+      <div className={`${PANEL_CLASS} text-left text-[10px] font-mono space-y-1`}>
+        <p className="text-[var(--moss-green)] tracking-[0.3em] uppercase text-[9px]">
+          LP SOURCE DIAG
+        </p>
+        {Object.entries(diagnostics).map(([key, value]) => (
+          <div key={key} className="flex justify-between gap-4">
+            <span className="opacity-60">{key}</span>
+            <span>{String(value)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const renderLpGatePanel = () => {
     const { lpStatus, walletAddress, lpPositions } = lpGateState;
     const truncatedWallet = truncateAddress(walletAddress);
@@ -1671,6 +1699,7 @@ function MiniAppPageInner() {
               Read the LP primer
             </button>
           </div>
+          {renderLpDiagnostics()}
         </div>
       </div>
     );
@@ -1757,6 +1786,8 @@ function MiniAppPageInner() {
               position metadata yet. You&apos;re still through the gate.
             </div>
           )}
+
+          {renderLpDiagnostics()}
 
           <div className="flex justify-end">
             <button
