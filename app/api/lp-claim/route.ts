@@ -21,10 +21,6 @@ const TICK_SPACING = 200;
 const DEFAULT_MONAD_CHAIN_ID = 143;
 const DEFAULT_MONAD_RPC_URL = 'https://rpc.monad.xyz';
 const SLIPPAGE_BPS = 500; // 5%
-// Crash-band preset: place the band ~20% below the current price, fully below
-// the active tick, and fund it with token1 (WMON) only. As price nukes into
-// the band, WMON is converted into m00n.
-const CRASH_BAND_WIDTH_TICKS = 6 * TICK_SPACING;
 const DEADLINE_SECONDS = 10 * 60; // 10 minutes
 
 const envChainId = Number(process.env.MONAD_CHAIN_ID);
@@ -192,13 +188,13 @@ export async function POST(request: NextRequest) {
     let amount1Desired = '0';
 
     if (preset === 'backstop') {
-      const tenPercentDownTicks = Math.floor(Math.log(0.9) / Math.log(1.0001));
-      const rawUpperTick = currentTick + tenPercentDownTicks;
-      const snappedUpper = snapDownToSpacing(rawUpperTick);
-      tickUpper = snappedUpper;
-      tickLower = tickUpper - CRASH_BAND_WIDTH_TICKS;
+      const downTicks = ratioToTickDelta(0.9);
+      const rawUpperTick = currentTick;
+      const rawLowerTick = currentTick + downTicks;
+      tickUpper = snapDownToSpacing(rawUpperTick);
+      tickLower = snapDownToSpacing(rawLowerTick);
       if (tickUpper <= tickLower) {
-        throw new Error('invalid_tick_configuration');
+        tickLower = tickUpper - TICK_SPACING;
       }
       amount1Desired = amountWei.toString();
     } else {

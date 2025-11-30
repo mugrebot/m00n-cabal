@@ -12,7 +12,6 @@ export type PersonaActionId =
   | 'lp_open_docs'
   | 'lp_try_again'
   | 'lp_enter_lounge'
-  | 'lp_manage'
   | 'open_claim'
   | 'open_chat'
   | 'open_heaven_mode'
@@ -60,16 +59,15 @@ const LP_COPY: Record<LpStatus, PersonaCopy> = {
     title: '🚫 No LP. No Entry.',
     body: [
       "You've touched m00nad, but you're not in the m00n / W-MON pool.",
-      'Become an LP to join the inner cabal.'
+      'Spin up a sigil and the emoji gate unlocks automatically.'
     ],
     primaryCta: { label: 'CLAIM LP', actionId: 'lp_become_lp' },
     secondaryCta: { label: 'WHY LP MATTERS?', actionId: 'lp_open_docs' }
   },
   HAS_LP: {
     title: '✅ Welcome, LP Cabalist',
-    body: ['Your LP sigil checks out.', 'Step inside the lounge or manage liquidity directly.'],
-    primaryCta: { label: 'ENTER LP LOUNGE', actionId: 'lp_enter_lounge' },
-    secondaryCta: { label: 'MANAGE LP', actionId: 'lp_manage' }
+    body: ['Your LP sigil checks out.', 'LP lounge unlocked.'],
+    primaryCta: { label: 'ENTER LP LOUNGE', actionId: 'lp_enter_lounge' }
   },
   ERROR: {
     title: '⚠️ Ritual Jammed',
@@ -94,7 +92,7 @@ export function getPersonaCopy(input: PersonaStateInput): PersonaCopy {
           : 'We found active LP in the m00n / W-MON pool.';
       return {
         ...base,
-        body: [positionLine, 'Step inside the lounge or manage liquidity directly.']
+        body: [positionLine, 'LP lounge and emoji uplink are unlocked.']
       };
     }
     return base;

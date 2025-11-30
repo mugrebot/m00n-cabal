@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode
@@ -16,6 +17,7 @@ import { WagmiConfig, createConfig, http } from 'wagmi';
 import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector';
 import { getTierByReplyCount } from '@/app/lib/tiers';
 import { getPersonaCopy, type PersonaActionId, type LpStatus } from '@/app/copy/persona';
+import { Howl } from 'howler';
 
 interface UserData {
   fid: number;
@@ -75,6 +77,47 @@ const EMOJI_ORACLE_OPENING = [
   { speaker: 'you', text: '🙏' }
 ] as const;
 const EMOJI_AUTOREPLIES = ['🌖⚡', '🚪✨', '🛸💫', '🌊🌙', '🔮🧬', '☄️☁️', '🌀👁️'] as const;
+const MANIFESTO_LINES = [
+  'All that you touch',
+  'And all that you see',
+  'All that you taste',
+  'All you feel',
+  'And all that you love',
+  'And all that you hate',
+  'All you distrust',
+  'All you save',
+  'And all that you give',
+  'And all that you deal',
+  'And all that you buy',
+  'Beg, borrow or steal',
+  'And all you create',
+  'And all you destroy',
+  'And all that you do',
+  'And all that you say',
+  'And all that you eat',
+  'And everyone you meet',
+  'And all that you slight',
+  'And everyone you fight',
+  'And all that is now',
+  'And all that is gone',
+  "And all that's to come",
+  'And everything under the sun is in tune',
+  'But the sun is eclipsed by the moon'
+] as const;
+const HOLD_AUDIO_URL = '/audio/hold.wav';
+const EMOJI_SOUND_URL = '/audio/emoji-chat.mp3';
+type MoonPhase = {
+  label: string;
+  emoji: string;
+  threshold: number;
+};
+const MOON_PHASES: MoonPhase[] = [
+  { label: 'New Moon', emoji: '🌑', threshold: 0 },
+  { label: 'Waxing Crescent', emoji: '🌒', threshold: 0.15 },
+  { label: 'First Quarter', emoji: '🌓', threshold: 0.35 },
+  { label: 'Waxing Gibbous', emoji: '🌔', threshold: 0.6 },
+  { label: 'Full Moon', emoji: '🌕', threshold: 0.85 }
+];
 const truncateAddress = (value?: string | null) =>
   value ? `${value.slice(0, 6)}…${value.slice(-4)}` : null;
 
@@ -100,6 +143,17 @@ const formatTokenDisplay = (token?: TokenBreakdown) => {
   return `${amount} ${symbol}`;
 };
 
+const formatUsd = (value?: number | null) => {
+  if (!Number.isFinite(value ?? NaN)) return '$0';
+  const abs = Math.abs(value ?? 0);
+  const formatter = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: abs >= 1000 ? 0 : 2
+  });
+  return formatter.format(value ?? 0);
+};
+
 const filterEmojiOnly = (value: string) =>
   Array.from(value)
     .filter((char) => EMOJI_CHAR_REGEX.test(char))
@@ -119,10 +173,10 @@ const LP_PRESET_CONTENT: Record<
   backstop: {
     title: 'Crash Backstop',
     description:
-      'Deploy a WMON-only crash band roughly 10% under spot with six tick-spacing units of depth. If price nukes, it auto-buys m00n.',
+      'Deploy a WMON-only crash band that tracks current price down to roughly −10%. If price nukes, it auto-buys m00n.',
     amountLabel: 'Amount (WMON)',
     inputToken: 'WMON',
-    helper: 'Approx ticks: current −10% down to −10% − (6×spacing).',
+    helper: 'Approx ticks: current tick down to current tick −10%.',
     quickAmounts: ['69', '1000', '4200']
   },
   moon_upside: {
@@ -219,6 +273,23 @@ interface LpPosition {
   token1?: TokenBreakdown;
   priceLowerInToken1?: string;
   priceUpperInToken1?: string;
+}
+
+interface LeaderboardEntry {
+  tokenId: string;
+  owner: string;
+  valueUsd: number;
+  bandType: LpPosition['bandType'];
+}
+
+interface LeaderboardResponse {
+  updatedAt: string;
+  moonPriceUsd: number | null;
+  wmonPriceUsd: number | null;
+  crashBand: LeaderboardEntry[];
+  upsideBand: LeaderboardEntry[];
+  mixedBand: LeaderboardEntry[];
+  overall: LeaderboardEntry[];
 }
 
 interface LpGateState {
@@ -356,6 +427,7 @@ function MiniAppPageInner() {
     Math.max(CLAIM_UNLOCK_TIMESTAMP_MS - Date.now(), 0)
   );
   const [isLpClaimModalOpen, setIsLpClaimModalOpen] = useState(false);
+  const [isManifestoOpen, setIsManifestoOpen] = useState(false);
   const [lpClaimAmount, setLpClaimAmount] = useState('');
   const [lpClaimPreset, setLpClaimPreset] = useState<LpClaimPreset>('backstop');
   const [isSubmittingLpClaim, setIsSubmittingLpClaim] = useState(false);
@@ -394,8 +466,31 @@ function MiniAppPageInner() {
       text: entry.text
     }))
   );
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [emojiSoundEnabled, setEmojiSoundEnabled] = useState(false);
+  const [emojiHapticsEnabled, setEmojiHapticsEnabled] = useState(true);
+  const [hapticsSupported, setHapticsSupported] = useState(false);
+  const [leaderboardData, setLeaderboardData] = useState<LeaderboardResponse | null>(null);
+  const [leaderboardStatus, setLeaderboardStatus] = useState<
+    'idle' | 'loading' | 'error' | 'loaded'
+  >('idle');
+  const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
 
-  const hasLpNft = lpGateState.lpStatus === 'HAS_LP' || (lpGateState.lpPositions?.length ?? 0) > 0;
+  const hasUpsideBand = useMemo(
+    () => (lpGateState.lpPositions ?? []).some((pos) => pos.bandType === 'upside_band'),
+    [lpGateState.lpPositions]
+  );
+  const hasCrashBand = useMemo(
+    () => (lpGateState.lpPositions ?? []).some((pos) => pos.bandType === 'crash_band'),
+    [lpGateState.lpPositions]
+  );
+  const hasAnyLp = useMemo(
+    () => (lpGateState.lpPositions?.length ?? 0) > 0,
+    [lpGateState.lpPositions]
+  );
+  const hasLpNft = lpGateState.lpStatus === 'HAS_LP' || hasAnyLp;
+  const emojiSoundRef = useRef<Howl | null>(null);
+  const holdSoundRef = useRef<Howl | null>(null);
 
   const showToast = useCallback((kind: 'info' | 'success' | 'error', message: string) => {
     setToast({ kind, message });
@@ -406,6 +501,83 @@ function MiniAppPageInner() {
     const timer = window.setTimeout(() => setToast(null), 4000);
     return () => window.clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    holdSoundRef.current = new Howl({ src: [HOLD_AUDIO_URL], volume: 0.6 });
+    return () => {
+      holdSoundRef.current?.unload();
+      holdSoundRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!audioUnlocked || !emojiSoundEnabled) {
+      emojiSoundRef.current?.stop();
+      return;
+    }
+    if (!emojiSoundRef.current) {
+      emojiSoundRef.current = new Howl({
+        src: [EMOJI_SOUND_URL],
+        loop: true,
+        volume: 0.35,
+        html5: true
+      });
+    }
+    if (!emojiSoundRef.current.playing()) {
+      emojiSoundRef.current.play();
+    }
+    return () => {
+      emojiSoundRef.current?.stop();
+    };
+  }, [audioUnlocked, emojiSoundEnabled]);
+
+  useEffect(() => {
+    if (!isSdkReady || typeof sdk.getCapabilities !== 'function') return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const capabilities = await sdk.getCapabilities();
+        if (cancelled) return;
+        const hasHaptics = Array.isArray(capabilities)
+          ? capabilities.some((cap: string) => cap.startsWith('haptics'))
+          : false;
+        setHapticsSupported(hasHaptics);
+      } catch {
+        setHapticsSupported(false);
+      }
+    };
+    check();
+    return () => {
+      cancelled = true;
+    };
+  }, [isSdkReady]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadLeaderboard = async () => {
+      setLeaderboardStatus('loading');
+      try {
+        const response = await fetch('/api/lp-leaderboard');
+        if (!response.ok) {
+          throw new Error('leaderboard_failed');
+        }
+        const data = (await response.json()) as LeaderboardResponse;
+        if (!cancelled) {
+          setLeaderboardData(data);
+          setLeaderboardStatus('loaded');
+        }
+      } catch (err) {
+        console.error('Failed to load leaderboard', err);
+        if (!cancelled) {
+          setLeaderboardStatus('error');
+        }
+      }
+    };
+    loadLeaderboard();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!toast) return;
@@ -464,7 +636,11 @@ function MiniAppPageInner() {
     }
     const positions = lpGateState.lpPositions ?? [];
     if (positions.length === 0) {
-      return null;
+      return (
+        <div className={`${PANEL_CLASS} text-center text-sm opacity-70`}>
+          No matching LP sigils detected yet.
+        </div>
+      );
     }
     if (positions.some((pos) => pos.bandType === 'upside_band')) {
       return 'claimed_held';
@@ -514,6 +690,40 @@ function MiniAppPageInner() {
 
   const adminPersonaOverride = isAdmin && adminPortalView !== 'default' ? adminPortalView : null;
   const effectivePersona: UserPersona = adminPersonaOverride ?? derivedPersona;
+  const personaNeedsLpData = useMemo(
+    () =>
+      ['lp_gate', 'claimed_held', 'claimed_bought_more', 'emoji_chat'].includes(effectivePersona),
+    [effectivePersona]
+  );
+  const handleToggleEmojiSound = useCallback(() => {
+    setAudioUnlocked(true);
+    setEmojiSoundEnabled((prev) => !prev);
+  }, []);
+  const handleToggleEmojiHaptics = useCallback(() => {
+    setEmojiHapticsEnabled((prev) => !prev);
+  }, []);
+  const triggerEmojiFeedback = useCallback(async () => {
+    if (emojiHapticsEnabled && hapticsSupported && sdk?.haptics?.selectionChanged) {
+      try {
+        await sdk.haptics.selectionChanged();
+      } catch (err) {
+        console.warn('selectionChanged haptic failed', err);
+      }
+    }
+  }, [emojiHapticsEnabled, hapticsSupported]);
+  const triggerLpSuccessFeedback = useCallback(async () => {
+    if (audioUnlocked && holdSoundRef.current) {
+      holdSoundRef.current.play();
+    }
+    if (hapticsSupported && sdk?.haptics?.notificationOccurred) {
+      try {
+        await sdk.haptics.notificationOccurred('success');
+      } catch (err) {
+        console.warn('notificationOccurred haptic failed', err);
+      }
+    }
+  }, [audioUnlocked, hapticsSupported]);
+  const openManifesto = useCallback(() => setIsManifestoOpen(true), []);
 
   useEffect(() => {
     if (!isAdmin && adminPortalView !== 'default') {
@@ -575,8 +785,10 @@ function MiniAppPageInner() {
   }, []);
 
   useEffect(() => {
-    if (effectivePersona !== 'lp_gate') {
-      setIsLpLoungeOpen(false);
+    if (!personaNeedsLpData) {
+      if (effectivePersona !== 'lp_gate') {
+        setIsLpLoungeOpen(false);
+      }
       return;
     }
 
@@ -662,7 +874,7 @@ function MiniAppPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [effectivePersona, miniWalletAddress, lpRefreshNonce]);
+  }, [personaNeedsLpData, effectivePersona, miniWalletAddress, lpRefreshNonce]);
 
   useEffect(() => {
     const tick = () => {
@@ -1066,10 +1278,6 @@ function MiniAppPageInner() {
         }
       }
     }
-  };
-
-  const handleOpenLpSite = async () => {
-    await openExternalUrl(LP_MINT_URL);
   };
 
   const handleOpenLpDocs = async () => {
@@ -1480,6 +1688,7 @@ function MiniAppPageInner() {
       ];
     });
     setEmojiInput('');
+    void triggerEmojiFeedback();
   };
 
   const personaActionHandlers: Record<PersonaActionId, (() => void) | undefined> = {
@@ -1488,7 +1697,6 @@ function MiniAppPageInner() {
     lp_open_docs: handleOpenLpDocs,
     lp_try_again: handleRetryLpStatus,
     lp_enter_lounge: handleEnterLpLounge,
-    lp_manage: handleOpenLpSite,
     open_claim: handleOpenClaimSite,
     open_chat: handleOpenHolderChat,
     open_heaven_mode: handleOpenHeavenMode,
@@ -1912,6 +2120,229 @@ function MiniAppPageInner() {
     </div>
   );
 
+  const ManifestoHint = ({ align = 'right' }: { align?: 'left' | 'right' }) => (
+    <div className={`flex ${align === 'left' ? 'justify-start' : 'justify-end'}`}>
+      <button
+        type="button"
+        onClick={() => setIsManifestoOpen(true)}
+        className="pixel-font text-[10px] tracking-[0.4em] opacity-30 hover:opacity-90 transition-all"
+      >
+        VIEW MANIFESTO
+      </button>
+    </div>
+  );
+
+  const getMoonPhase = (fillPercent: number): MoonPhase => {
+    for (let i = MOON_PHASES.length - 1; i >= 0; i--) {
+      if (fillPercent >= MOON_PHASES[i].threshold) {
+        return MOON_PHASES[i];
+      }
+    }
+    return MOON_PHASES[0];
+  };
+
+  const parseTokenAmount = (value?: string) => {
+    if (!value) return 0;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const getMoonMeterStats = (position: LpPosition) => {
+    const price = Math.pow(1.0001, position.currentTick ?? 0);
+    const token0Amount = parseTokenAmount(position.token0?.amountFormatted);
+    const token1Amount = parseTokenAmount(position.token1?.amountFormatted);
+    const token0ValueInToken1 = token0Amount * price;
+    const totalValueInToken1 = token0ValueInToken1 + token1Amount;
+
+    let convertedValue = 0;
+    if (position.bandType === 'crash_band') {
+      convertedValue = token0ValueInToken1;
+    } else if (position.bandType === 'upside_band') {
+      convertedValue = token1Amount;
+    } else {
+      convertedValue = Math.min(token0ValueInToken1, token1Amount);
+    }
+
+    const fillPercent =
+      totalValueInToken1 > 0 ? Math.max(0, Math.min(1, convertedValue / totalValueInToken1)) : 0;
+
+    return {
+      fillPercent,
+      phase: getMoonPhase(fillPercent)
+    };
+  };
+
+  const renderMoonMeter = (position: LpPosition) => {
+    const { fillPercent, phase } = getMoonMeterStats(position);
+    const percentDisplay = Math.round(fillPercent * 100);
+    const fillDegrees = fillPercent * 360;
+    const accentColor =
+      position.bandType === 'crash_band'
+        ? '#ffd966'
+        : position.bandType === 'upside_band'
+          ? '#c7b5ff'
+          : 'rgba(255,255,255,0.8)';
+
+    return (
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+        <div
+          className="relative w-16 h-16 rounded-full border border-white/15 shadow-inner"
+          style={{
+            background: `conic-gradient(${accentColor} ${fillDegrees}deg, rgba(255,255,255,0.08) ${fillDegrees}deg)`
+          }}
+        >
+          <div className="absolute inset-1 rounded-full bg-black/80 border border-white/5" />
+        </div>
+        <div className="flex-1 space-y-1">
+          <p className="text-sm font-semibold flex items-center gap-2">
+            <span>{phase.emoji}</span>
+            {phase.label}
+          </p>
+          <p className="text-xs opacity-70">{percentDisplay}% synced</p>
+          <div className="text-lg leading-none">
+            {MOON_PHASES.map((moonPhase) => (
+              <span
+                key={moonPhase.label}
+                className={moonPhase.label === phase.label ? 'opacity-100' : 'opacity-25'}
+              >
+                {moonPhase.emoji}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderPositionManager = ({
+    title,
+    subtitle,
+    filter
+  }: {
+    title: string;
+    subtitle?: string;
+    filter?: 'crash_band' | 'upside_band';
+  }) => {
+    const positions = (lpGateState.lpPositions ?? []).filter((position) =>
+      filter ? position.bandType === filter : true
+    );
+    if (positions.length === 0) {
+      return null;
+    }
+    return (
+      <div className={`${PANEL_CLASS} space-y-4`}>
+        <div>
+          <p className="text-lg font-semibold">{title}</p>
+          {subtitle && <p className="text-sm opacity-70">{subtitle}</p>}
+        </div>
+        <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+          {positions.map((position) => (
+            <div
+              key={position.tokenId}
+              className="border border-white/10 rounded-2xl p-4 space-y-3 bg-black/30"
+            >
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="font-semibold">Sigil #{position.tokenId}</p>
+                  <p className="text-xs opacity-70">
+                    {describeBandTypeLabel(position.bandType)} · Tick {position.tickLower} →{' '}
+                    {position.tickUpper}
+                  </p>
+                </div>
+                <div className="text-right text-xs opacity-70 font-mono">
+                  <p>{formatTokenDisplay(position.token0)}</p>
+                  <p>{formatTokenDisplay(position.token1)}</p>
+                </div>
+              </div>
+              {renderMoonMeter(position)}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderLeaderboardVisualizer = (
+    entries: LeaderboardEntry[] | undefined,
+    { title, subtitle, emptyLabel }: { title: string; subtitle?: string; emptyLabel?: string }
+  ) => {
+    if (!entries) return null;
+    if (entries.length === 0) {
+      return (
+        <div className={`${PANEL_CLASS} text-center text-sm opacity-70`}>
+          {emptyLabel ?? 'No qualifying LP positions yet.'}
+        </div>
+      );
+    }
+
+    const maxValue = Math.max(...entries.map((entry) => entry.valueUsd));
+
+    return (
+      <div className={`${PANEL_CLASS} space-y-4 bg-black/60`}>
+        <div>
+          <p className="text-lg font-semibold">{title}</p>
+          {subtitle && <p className="text-sm opacity-70">{subtitle}</p>}
+        </div>
+        <div className="space-y-3">
+          {entries.map((entry, index) => {
+            const ratio = maxValue > 0 ? entry.valueUsd / maxValue : 0;
+            const iconSize = 28 + ratio * 60;
+            return (
+              <div
+                key={`${entry.tokenId}-${entry.owner}`}
+                className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/40 px-4 py-3"
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className="select-none"
+                    style={{ fontSize: `${iconSize}px`, lineHeight: 1 }}
+                    aria-hidden="true"
+                  >
+                    🌙
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold">
+                      #{index + 1}{' '}
+                      <span className="opacity-60">{truncateAddress(entry.owner) ?? '—'}</span>
+                    </p>
+                    <p className="text-xs opacity-60">{formatUsd(entry.valueUsd)}</p>
+                  </div>
+                </div>
+                <span className="text-[10px] uppercase tracking-[0.4em] text-[var(--moss-green)]">
+                  {entry.bandType?.replace('_', ' ') ?? ''}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderManifestoModal = () => (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur">
+      <div className="max-w-xl w-full bg-black/70 border border-[var(--monad-purple)] rounded-3xl p-8 space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="pixel-font text-[10px] tracking-[0.4em] text-[var(--moss-green)]">
+            MANIFESTO
+          </p>
+          <button
+            type="button"
+            onClick={() => setIsManifestoOpen(false)}
+            className="pixel-font text-xs border border-white/20 rounded-full px-3 py-1 hover:bg-white/10 transition-colors"
+          >
+            CLOSE
+          </button>
+        </div>
+        <div className="space-y-2 text-sm leading-relaxed text-white/80 max-h-[65vh] overflow-y-auto pr-2">
+          {MANIFESTO_LINES.map((line, idx) => (
+            <p key={`${line}-${idx}`}>{line}</p>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
   const renderLpDiagnostics = () => {
     if (!SHOW_LP_SOURCE_DIAGNOSTICS || !lpGateState.walletAddress) return null;
 
@@ -2007,7 +2438,7 @@ function MiniAppPageInner() {
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
         <div className="max-w-2xl w-full space-y-6 text-center scanline bg-black/45 border border-[var(--monad-purple)] rounded-3xl px-8 py-10">
           <div className="flex justify-center">
-            <NeonHaloLogo size={140} />
+            <NeonHaloLogo size={140} onActivate={openManifesto} />
           </div>
           <h1 className="pixel-font text-2xl glow-purple">{copy.title}</h1>
           {renderCopyBody(copy.body)}
@@ -2041,6 +2472,7 @@ function MiniAppPageInner() {
             </button>
           </div>
           {renderLpDiagnostics()}
+          <ManifestoHint align="left" />
         </div>
       </div>
     );
@@ -2048,7 +2480,6 @@ function MiniAppPageInner() {
 
   const renderLpLoungePanel = () => {
     const positionCount = lpGateState.lpPositions?.length ?? 0;
-    const positions = lpGateState.lpPositions ?? [];
     const hasLp = lpGateState.lpStatus === 'HAS_LP';
     const displayCount = positionCount > 0 ? positionCount : hasLp ? 1 : 0;
 
@@ -2065,7 +2496,7 @@ function MiniAppPageInner() {
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-4xl w-full space-y-8 scanline bg-black/50 border border-[var(--monad-purple)] rounded-3xl px-10 py-10">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <NeonHaloLogo size={150} />
+            <NeonHaloLogo size={150} onActivate={openManifesto} />
             <div className="text-right">
               <p className="pixel-font text-sm tracking-[0.5em] text-[var(--moss-green)]">
                 LP LOUNGE
@@ -2089,67 +2520,10 @@ function MiniAppPageInner() {
             </div>
           </div>
 
-          {positionCount > 0 && (
-            <div className={`${PANEL_CLASS} space-y-4 text-left`}>
-              <p className="text-lg font-semibold">Your cabal sigils</p>
-              <p className="text-sm opacity-80">
-                These are the Uniswap v4 LP NFTs we&apos;ve found for the m00n / WMON pool. Band
-                type is based on where spot sits relative to your ticks.
-              </p>
-              <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
-                {positions.map((pos) => {
-                  const fdvRange = formatMarketCapRange(
-                    pos.priceLowerInToken1,
-                    pos.priceUpperInToken1,
-                    lpGateState.token0TotalSupply,
-                    lpGateState.poolWmonUsdPrice
-                  );
-                  const circRange = formatMarketCapRange(
-                    pos.priceLowerInToken1,
-                    pos.priceUpperInToken1,
-                    lpGateState.token0CirculatingSupply,
-                    lpGateState.poolWmonUsdPrice
-                  );
-
-                  return (
-                    <div
-                      key={pos.tokenId}
-                      className="rounded-xl border border-white/15 bg-black/40 px-4 py-3 space-y-1"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-mono text-white/80">
-                          Sigil #{pos.tokenId}
-                        </span>
-                        <span className="text-[10px] uppercase tracking-[0.25em] text-[var(--moss-green)]">
-                          {describeBandTypeLabel(pos.bandType)}
-                        </span>
-                      </div>
-                      <p className="text-xs text-white/70">
-                        Range ticks: {pos.tickLower} → {pos.tickUpper}
-                      </p>
-                      <p className="text-xs text-white/70">
-                        Liquidity units:&nbsp;
-                        <span className="font-mono">{pos.liquidity}</span>
-                      </p>
-                      <div className="text-xs text-white/70 font-mono space-y-0.5">
-                        <p>{formatTokenDisplay(pos.token0)}</p>
-                        <p>{formatTokenDisplay(pos.token1)}</p>
-                      </div>
-                      {typeof pos.currentTick === 'number' && (
-                        <p className="text-[10px] text-white/50">Pool tick: {pos.currentTick}</p>
-                      )}
-                      {fdvRange !== '–' && (
-                        <p className="text-[11px] text-white/60">FDV: {fdvRange}</p>
-                      )}
-                      {circRange !== '–' && (
-                        <p className="text-[11px] text-white/60">Circulating: {circRange}</p>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          {renderPositionManager({
+            title: 'Your cabal sigils',
+            subtitle: 'Band type updates live as price moves through your ticks.'
+          })}
 
           {positionCount === 0 && hasLp && (
             <div className={`${PANEL_CLASS} text-left text-xs opacity-75`}>
@@ -2169,6 +2543,7 @@ function MiniAppPageInner() {
               Back to gate
             </button>
           </div>
+          <ManifestoHint />
         </div>
       </div>
     );
@@ -2180,11 +2555,12 @@ function MiniAppPageInner() {
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-2xl w-full text-center space-y-6 scanline bg-black/55 border border-red-600 rounded-3xl px-8 py-12">
           <div className="flex justify-center">
-            <NeonHaloLogo size={140} />
+            <NeonHaloLogo size={140} onActivate={openManifesto} />
           </div>
           <h1 className="pixel-font text-3xl text-red-500">{copy.title}</h1>
           {renderCopyBody(copy.body)}
           {renderPersonaCtas(copy)}
+          <ManifestoHint align="left" />
         </div>
       </div>
     );
@@ -2234,11 +2610,12 @@ function MiniAppPageInner() {
 
   const renderClaimedHeldPortal = () => {
     const preset = LP_PRESET_CONTENT.moon_upside;
+    const showManager = hasAnyLp;
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-4xl w-full space-y-8 scanline bg-black/45 border border-[var(--monad-purple)] rounded-3xl px-8 py-10">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <NeonHaloLogo size={140} />
+            <NeonHaloLogo size={140} onActivate={openManifesto} />
             <div className="text-right">
               <p className="pixel-font text-sm tracking-[0.5em] text-[var(--moss-green)]">
                 THE ONES WHO CAME ANYWAY
@@ -2261,23 +2638,45 @@ function MiniAppPageInner() {
             </div>
             {renderPersonaStatsCard()}
           </div>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <button
-              type="button"
-              onClick={() => handleOpenLpClaimModal('moon_upside')}
-              className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-colors"
-            >
-              DEPLOY SKY LADDER
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSwapMonToToken('moon')}
-              disabled={swapInFlight === 'moon'}
-              className="pixel-font px-6 py-3 border border-[var(--moss-green)] text-[var(--moss-green)] rounded-lg hover:bg-[var(--moss-green)] hover:text-black transition-colors disabled:opacity-40"
-            >
-              {swapInFlight === 'moon' ? 'SWAPPING…' : 'BUY MORE m00n'}
-            </button>
-          </div>
+          {showManager ? (
+            renderPositionManager({
+              title: 'Holder Band Manager',
+              subtitle: 'Monitor your single-sided ladder from 1.2× up to 5× spot.',
+              filter: 'upside_band'
+            })
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-4">
+              <button
+                type="button"
+                onClick={() => handleOpenLpClaimModal('moon_upside')}
+                className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-colors"
+              >
+                DEPLOY SKY LADDER
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwapMonToToken('moon')}
+                disabled={swapInFlight === 'moon'}
+                className="pixel-font px-6 py-3 border border-[var(--moss-green)] text-[var(--moss-green)] rounded-lg hover:bg-[var(--moss-green)] hover:text-black transition-colors disabled:opacity-40"
+              >
+                {swapInFlight === 'moon' ? 'SWAPPING…' : 'BUY MORE m00n'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsLpLoungeOpen(true)}
+                className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
+              >
+                OPEN LP LOUNGE
+              </button>
+            </div>
+          )}
+          {leaderboardStatus === 'loaded' && leaderboardData
+            ? renderLeaderboardVisualizer(leaderboardData.upsideBand, {
+                title: 'Sky Ladder Leaderboard',
+                subtitle: 'Top 10 single-sided m00n positions across all wallets.'
+              })
+            : null}
+          <ManifestoHint />
         </div>
       </div>
     );
@@ -2285,6 +2684,7 @@ function MiniAppPageInner() {
 
   const renderClaimedBoughtMorePortal = () => {
     const preset = LP_PRESET_CONTENT.backstop;
+    const showManager = hasAnyLp;
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-4xl w-full space-y-8 scanline bg-black/45 border border-white/20 rounded-3xl px-8 py-10">
@@ -2315,23 +2715,45 @@ function MiniAppPageInner() {
             </div>
             {renderPersonaStatsCard()}
           </div>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <button
-              type="button"
-              onClick={() => handleOpenLpClaimModal('backstop')}
-              className="pixel-font px-6 py-3 bg-white/15 text-white rounded-lg hover:bg-white/25 transition-colors"
-            >
-              DEPLOY CRASH BACKSTOP
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSwapMonToToken('wmon')}
-              disabled={swapInFlight === 'wmon'}
-              className="pixel-font px-6 py-3 border border-white/30 text-white rounded-lg hover:bg-white/10 transition-colors disabled:opacity-40"
-            >
-              {swapInFlight === 'wmon' ? 'SWAPPING…' : 'BUY MORE WMON'}
-            </button>
-          </div>
+          {showManager ? (
+            renderPositionManager({
+              title: 'Crash Band Manager',
+              subtitle: 'Scales WMON into m00n ~10% beneath the current tick.',
+              filter: 'crash_band'
+            })
+          ) : (
+            <div className="flex flex-col sm:flex-row gap-4">
+              <button
+                type="button"
+                onClick={() => handleOpenLpClaimModal('backstop')}
+                className="pixel-font px-6 py-3 bg-white/15 text-white rounded-lg hover:bg-white/25 transition-colors"
+              >
+                DEPLOY CRASH BACKSTOP
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwapMonToToken('wmon')}
+                disabled={swapInFlight === 'wmon'}
+                className="pixel-font px-6 py-3 border border-white/30 text-white rounded-lg hover:bg-white/10 transition-colors disabled:opacity-40"
+              >
+                {swapInFlight === 'wmon' ? 'SWAPPING…' : 'BUY MORE WMON'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsLpLoungeOpen(true)}
+                className="pixel-font px-6 py-3 border border-white/30 text-white rounded-lg hover:bg-white/10 transition-colors"
+              >
+                OPEN LP LOUNGE
+              </button>
+            </div>
+          )}
+          {leaderboardStatus === 'loaded' && leaderboardData
+            ? renderLeaderboardVisualizer(leaderboardData.crashBand, {
+                title: 'Crash Backstop Leaderboard',
+                subtitle: 'Top 10 WMON single-sided bands keeping the floor alive.'
+              })
+            : null}
+          <ManifestoHint align="left" />
         </div>
       </div>
     );
@@ -2339,6 +2761,7 @@ function MiniAppPageInner() {
 
   const renderEmojiChatPortal = () => {
     const chatDisabled = true;
+    const showManager = hasAnyLp;
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-3xl w-full space-y-6 scanline bg-black/50 border border-white/15 rounded-3xl px-8 py-10">
@@ -2376,6 +2799,14 @@ function MiniAppPageInner() {
           {personaLookupStatus === 'error' && (
             <p className="text-xs text-center text-red-300">CSV dossier temporarily unavailable.</p>
           )}
+          {showManager && (
+            <div className="pt-2">
+              {renderPositionManager({
+                title: 'Sigil Manager',
+                subtitle: 'LP sigils fueling this gate.'
+              })}
+            </div>
+          )}
           <div className="flex flex-col sm:flex-row gap-4">
             <button
               type="button"
@@ -2385,6 +2816,51 @@ function MiniAppPageInner() {
               LAUNCH m00nLANDER
             </button>
           </div>
+          <div className="flex flex-wrap justify-center gap-3 text-xs uppercase tracking-[0.3em]">
+            <button
+              type="button"
+              onClick={handleToggleEmojiSound}
+              className={`px-4 py-2 rounded-full border ${
+                emojiSoundEnabled
+                  ? 'border-[var(--monad-purple)] text-white'
+                  : 'border-white/20 text-white/60'
+              }`}
+            >
+              {emojiSoundEnabled ? 'SOUND ON' : 'SOUND OFF'}
+            </button>
+            <button
+              type="button"
+              onClick={handleToggleEmojiHaptics}
+              className={`px-4 py-2 rounded-full border ${
+                emojiHapticsEnabled
+                  ? 'border-[var(--monad-purple)] text-white'
+                  : 'border-white/20 text-white/60'
+              }`}
+            >
+              HAPTICS {emojiHapticsEnabled ? 'ON' : 'OFF'}
+            </button>
+            {hasAnyLp && (
+              <button
+                type="button"
+                onClick={() => setIsLpLoungeOpen(true)}
+                className="px-4 py-2 rounded-full border border-white/20 text-white hover:bg-white/10 transition-colors"
+              >
+                OPEN LP LOUNGE
+              </button>
+            )}
+          </div>
+          {leaderboardStatus === 'loaded' && leaderboardData ? (
+            <div className="space-y-4">
+              {renderLeaderboardVisualizer(leaderboardData.overall, {
+                title: 'Global LP Leaderboard',
+                subtitle: 'Top 10 LP sigils by USD value across the cabal.',
+                emptyLabel: 'No LP data available yet.'
+              })}
+            </div>
+          ) : leaderboardStatus === 'error' ? (
+            <p className="text-center text-xs text-red-400">Leaderboard unavailable right now.</p>
+          ) : null}
+          <ManifestoHint />
         </div>
       </div>
     );
@@ -2399,7 +2875,7 @@ function MiniAppPageInner() {
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-3xl w-full space-y-8 scanline p-10 bg-black/50 rounded-lg border-2 border-[var(--monad-purple)]">
           <div className="flex justify-center mb-2">
-            <NeonHaloLogo size={150} />
+            <NeonHaloLogo size={150} onActivate={openManifesto} />
           </div>
           <h1 className="pixel-font text-2xl text-center glow-purple">{copy.title}</h1>
           {renderCopyBody(copy.body)}
@@ -2504,6 +2980,7 @@ function MiniAppPageInner() {
           </div>
 
           {renderContractCard()}
+          <ManifestoHint />
         </div>
       </div>
     );
@@ -2515,7 +2992,7 @@ function MiniAppPageInner() {
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
         <div className="max-w-2xl w-full text-center space-y-6 scanline shake">
           <div className="flex justify-center">
-            <NeonHaloLogo size={160} />
+            <NeonHaloLogo size={160} onActivate={openManifesto} />
           </div>
 
           <h1 className="pixel-font text-2xl text-red-400">{copy.title}</h1>
@@ -2564,6 +3041,7 @@ function MiniAppPageInner() {
               {swapInFlight === 'moon' ? 'SWAPPING…' : 'BUY MORE m00n'}
             </button>
           </div>
+          <ManifestoHint />
         </div>
       </div>
     );
@@ -2591,8 +3069,22 @@ function MiniAppPageInner() {
     </div>
   );
 
-  const NeonHaloLogo = ({ size = 140 }: { size?: number }) => (
-    <div className="neon-logo-wrapper" style={{ width: size, height: size }}>
+  const NeonHaloLogo = ({ size = 140, onActivate }: { size?: number; onActivate?: () => void }) => (
+    <div
+      className={`neon-logo-wrapper ${onActivate ? 'cursor-pointer focus-visible:outline-none' : ''}`}
+      style={{ width: size, height: size }}
+      role={onActivate ? 'button' : undefined}
+      tabIndex={onActivate ? 0 : undefined}
+      aria-label={onActivate ? 'View manifesto' : undefined}
+      onClick={onActivate}
+      onKeyDown={(event) => {
+        if (!onActivate) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onActivate();
+        }
+      }}
+    >
       <span className="neon-halo" />
       <span className="neon-halo halo-sm" />
       <div className="neon-logo-core">
@@ -2674,6 +3166,7 @@ function MiniAppPageInner() {
       )}
       {content}
       {isLpClaimModalOpen && renderLpClaimModal()}
+      {isManifestoOpen && renderManifestoModal()}
     </div>
   );
 
