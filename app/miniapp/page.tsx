@@ -1667,6 +1667,8 @@ function MiniAppPageInner() {
   const renderLpLoungePanel = () => {
     const positionCount = lpGateState.lpPositions?.length ?? 0;
     const positions = lpGateState.lpPositions ?? [];
+    const hasLp = lpGateState.lpStatus === 'HAS_LP';
+    const displayCount = positionCount > 0 ? positionCount : hasLp ? 1 : 0;
 
     const describeBandType = (bandType?: LpPosition['bandType']) => {
       switch (bandType) {
@@ -1691,7 +1693,7 @@ function MiniAppPageInner() {
                 LP LOUNGE
               </p>
               <p className="text-xs opacity-70">
-                {positionCount} active {positionCount === 1 ? 'sigil' : 'sigils'}
+                {displayCount} active {displayCount === 1 ? 'sigil' : 'sigils'}
               </p>
             </div>
           </div>
@@ -1725,6 +1727,13 @@ function MiniAppPageInner() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {positionCount === 0 && hasLp && (
+            <div className={`${PANEL_CLASS} text-left text-xs opacity-75`}>
+              We detected at least one LP sigil on-chain, but the indexer hasn&apos;t returned full
+              position metadata yet. You&apos;re still through the gate.
             </div>
           )}
 
