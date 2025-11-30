@@ -344,6 +344,7 @@ function MiniAppPageInner() {
       setLpGateState({ lpStatus: 'CHECKING', walletAddress, lpPositions: [] });
 
       try {
+        console.log('LP_GATE_FETCH:start', { walletAddress });
         const response = await fetch(`/api/lp-nft?address=${walletAddress}`);
         if (!response.ok) {
           throw new Error(`LP check failed: ${response.status}`);
@@ -366,6 +367,8 @@ function MiniAppPageInner() {
           });
           return;
         }
+
+        console.log('LP_GATE_FETCH:result', data);
 
         setLpGateState({
           lpStatus: data.hasLpNft ? 'HAS_LP' : 'NO_LP',

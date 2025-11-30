@@ -232,7 +232,9 @@ export async function GET(request: NextRequest) {
 
   try {
     const owner = address as Address;
+    console.log('LP_NFT_ROUTE:start', { owner });
     const summary = await getUserPositionsSummary(owner);
+    console.log('LP_NFT_ROUTE:summary', summary);
     const basePositions = summary.lpPositions || [];
 
     if (basePositions.length === 0) {
