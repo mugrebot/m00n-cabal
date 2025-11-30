@@ -43,10 +43,15 @@ export const publicClient = createPublicClient({
 // Subgraph client (Monad Uniswap v4)
 // -----------------------------
 
+const UNISWAP_V4_SUBGRAPH_ID = '3kaAG19ytkGfu8xD7YAAZ3qAQ3UDJRkmKH2kHUuyGHah';
+const THEGRAPH_API_KEY = (typeof process !== 'undefined' && process.env.THEGRAPH_API_KEY) || '';
 const UNISWAP_V4_SUBGRAPH_URL =
-  'https://gateway.thegraph.com/api/subgraphs/id/3kaAG19ytkGfu8xD7YAAZ3qAQ3UDJRkmKH2kHUuyGHah';
+  (typeof process !== 'undefined' && process.env.UNISWAP_V4_SUBGRAPH_URL?.trim()) ||
+  `https://gateway.thegraph.com/api/subgraphs/id/${UNISWAP_V4_SUBGRAPH_ID}`;
 
-const graphClient = new GraphQLClient(UNISWAP_V4_SUBGRAPH_URL);
+const graphClient = new GraphQLClient(UNISWAP_V4_SUBGRAPH_URL, {
+  headers: THEGRAPH_API_KEY ? { Authorization: `Bearer ${THEGRAPH_API_KEY}` } : undefined
+});
 
 // -----------------------------
 // Types
