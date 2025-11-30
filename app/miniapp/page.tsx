@@ -91,6 +91,7 @@ interface LpPosition {
   };
   // Optional fields returned by the enriched /api/lp-nft endpoint.
   bandType?: 'crash_band' | 'upside_band' | 'in_range' | 'unknown';
+  hasSubscriber?: boolean;
 }
 
 interface LpGateState {

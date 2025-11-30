@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Token } from '@uniswap/sdk-core';
 import { Pool } from '@uniswap/v4-sdk';
-import { createPublicClient, defineChain, erc721Abi, http } from 'viem';
+import { createPublicClient, defineChain, erc721Abi, http, type Address } from 'viem';
 
 const LP_API_URL = process.env.NEYNAR_LP_API_URL;
 const LP_API_KEY = process.env.NEYNAR_LP_API_KEY || process.env.NEYNAR_API_KEY || '';
@@ -23,6 +23,7 @@ interface RawLpPosition {
 
 interface EnrichedLpPosition extends RawLpPosition {
   bandType: 'crash_band' | 'upside_band' | 'in_range' | 'unknown';
+  hasSubscriber?: boolean;
 }
 
 interface LpApiResponse {
@@ -90,6 +91,124 @@ const stateViewAbi = [
     outputs: [{ name: 'liquidity', type: 'uint128' }]
   }
 ] as const;
+
+// Position manager ABI fragment for packed info & liquidity
+const positionManagerAbi = [
+  {
+    name: 'getPoolAndPositionInfo',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [
+      {
+        name: 'poolKey',
+        type: 'tuple',
+        components: [
+          { name: 'currency0', type: 'address' },
+          { name: 'currency1', type: 'address' },
+          { name: 'fee', type: 'uint24' },
+          { name: 'tickSpacing', type: 'int24' },
+          { name: 'hooks', type: 'address' }
+        ]
+      },
+      { name: 'info', type: 'uint256' }
+    ]
+  },
+  {
+    name: 'getPositionLiquidity',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [{ name: 'liquidity', type: 'uint128' }]
+  }
+] as const;
+
+interface PositionDetails {
+  tokenId: bigint;
+  tickLower: number;
+  tickUpper: number;
+  liquidity: bigint;
+  poolKey: {
+    currency0: Address;
+    currency1: Address;
+    fee: number;
+    tickSpacing: number;
+    hooks: Address;
+  };
+  hasSubscriber: boolean;
+}
+
+interface PackedPositionInfo {
+  getTickUpper(): number;
+  getTickLower(): number;
+  hasSubscriber(): boolean;
+}
+
+// Official Uniswap v4 packed position decoder from docs
+function decodePositionInfo(value: bigint): PackedPositionInfo {
+  return {
+    getTickUpper: () => {
+      const shift = BigInt(32);
+      const mask = BigInt(0xffffff);
+      const raw = Number((value >> shift) & mask);
+      const signedThreshold = 0x800000;
+      const signedOffset = 0x1000000;
+      return raw >= signedThreshold ? raw - signedOffset : raw;
+    },
+
+    getTickLower: () => {
+      const shift = BigInt(8);
+      const mask = BigInt(0xffffff);
+      const raw = Number((value >> shift) & mask);
+      const signedThreshold = 0x800000;
+      const signedOffset = 0x1000000;
+      return raw >= signedThreshold ? raw - signedOffset : raw;
+    },
+
+    hasSubscriber: () => {
+      const mask = BigInt(0xff);
+      return (value & mask) !== BigInt(0);
+    }
+  };
+}
+
+async function getPositionDetails(tokenId: string): Promise<PositionDetails> {
+  const id = BigInt(tokenId);
+
+  const [poolKey, infoValue] = (await publicClient.readContract({
+    address: POSITION_MANAGER_ADDRESS,
+    abi: positionManagerAbi,
+    functionName: 'getPoolAndPositionInfo',
+    args: [id]
+  })) as readonly [
+    {
+      currency0: Address;
+      currency1: Address;
+      fee: number;
+      tickSpacing: number;
+      hooks: Address;
+    },
+    bigint
+  ];
+
+  const liquidity = (await publicClient.readContract({
+    address: POSITION_MANAGER_ADDRESS,
+    abi: positionManagerAbi,
+    functionName: 'getPositionLiquidity',
+    args: [id]
+  })) as bigint;
+
+  const packed = decodePositionInfo(infoValue);
+
+  return {
+    tokenId: id,
+    tickLower: packed.getTickLower(),
+    tickUpper: packed.getTickUpper(),
+    liquidity,
+    poolKey,
+    hasSubscriber: packed.hasSubscriber()
+  };
+}
 
 const normalizeAddress = (value: string) => value.toLowerCase();
 
@@ -194,21 +313,54 @@ async function enrichPositions(positions: RawLpPosition[]): Promise<{
     currentTick
   );
 
-  const enriched: EnrichedLpPosition[] = positions.map((position) => {
-    let bandType: EnrichedLpPosition['bandType'] = 'unknown';
-    if (currentTick < position.tickLower) {
-      bandType = 'upside_band';
-    } else if (currentTick > position.tickUpper) {
-      bandType = 'crash_band';
-    } else if (currentTick >= position.tickLower && currentTick <= position.tickUpper) {
-      bandType = 'in_range';
-    }
+  const enriched: EnrichedLpPosition[] = [];
 
-    return {
-      ...position,
-      bandType
-    };
-  });
+  for (const position of positions) {
+    try {
+      const details = await getPositionDetails(position.tokenId);
+
+      let bandType: EnrichedLpPosition['bandType'] = 'unknown';
+      if (currentTick < details.tickLower) {
+        bandType = 'upside_band';
+      } else if (currentTick > details.tickUpper) {
+        bandType = 'crash_band';
+      } else if (currentTick >= details.tickLower && currentTick <= details.tickUpper) {
+        bandType = 'in_range';
+      }
+
+      enriched.push({
+        tokenId: position.tokenId,
+        liquidity: details.liquidity.toString(),
+        tickLower: details.tickLower,
+        tickUpper: details.tickUpper,
+        poolKey: {
+          currency0: details.poolKey.currency0,
+          currency1: details.poolKey.currency1,
+          fee: details.poolKey.fee,
+          hooks: details.poolKey.hooks
+        },
+        bandType,
+        hasSubscriber: details.hasSubscriber
+      });
+    } catch (err) {
+      console.error('Failed to enrich LP position from on-chain data', position.tokenId, err);
+
+      // Fallback to the raw Neynar-provided values if on-chain decoding fails
+      let bandType: EnrichedLpPosition['bandType'] = 'unknown';
+      if (currentTick < position.tickLower) {
+        bandType = 'upside_band';
+      } else if (currentTick > position.tickUpper) {
+        bandType = 'crash_band';
+      } else if (currentTick >= position.tickLower && currentTick <= position.tickUpper) {
+        bandType = 'in_range';
+      }
+
+      enriched.push({
+        ...position,
+        bandType
+      });
+    }
+  }
 
   return {
     currentTick,
