@@ -410,18 +410,19 @@ function MiniAppPageInner() {
       try {
         console.log('LP_GATE_FETCH:start', { walletAddress });
 
-        const [onchainResponse, hypersyncResponse] = await Promise.all([
-          fetch(`/api/lp-nft?address=${walletAddress}`, { cache: 'no-store' }),
-          fetch('/api/lp-hypersync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ address: walletAddress }),
-            cache: 'no-store'
-          }).catch((error) => {
-            console.error('LP hypersync request failed to dispatch', error);
-            return null;
-          })
-        ]);
+        const onchainResponse = await fetch(`/api/lp-nft?address=${walletAddress}`, {
+          cache: 'no-store'
+        });
+
+        const hypersyncResponsePromise = fetch('/api/lp-hypersync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address: walletAddress }),
+          cache: 'no-store'
+        }).catch((error) => {
+          console.error('LP hypersync request failed to dispatch', error);
+          return null;
+        });
 
         if (!onchainResponse.ok) {
           throw new Error(`LP on-chain check failed: ${onchainResponse.status}`);
@@ -443,11 +444,25 @@ function MiniAppPageInner() {
         if (cancelled) return;
 
         let hypersyncData: HypersyncApiResponse | null = null;
-        if (hypersyncResponse) {
-          if (hypersyncResponse.ok) {
-            hypersyncData = (await hypersyncResponse.json()) as HypersyncApiResponse;
-          } else {
-            console.error('LP hypersync route responded with error', hypersyncResponse.status);
+        if (hypersyncResponsePromise) {
+          try {
+            const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
+            const hypersyncResponse = (await Promise.race([
+              hypersyncResponsePromise,
+              timeout
+            ])) as Response | null;
+
+            if (hypersyncResponse) {
+              if (hypersyncResponse.ok) {
+                hypersyncData = (await hypersyncResponse.json()) as HypersyncApiResponse;
+              } else {
+                console.error('LP hypersync route responded with error', hypersyncResponse.status);
+              }
+            } else {
+              console.warn('LP hypersync request timed out (>8s)');
+            }
+          } catch (hypersyncError) {
+            console.error('LP hypersync request failed mid-flight', hypersyncError);
           }
         }
 
