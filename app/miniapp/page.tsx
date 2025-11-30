@@ -66,6 +66,7 @@ const CHAIN_CAIP = 'eip155:143';
 const MON_NATIVE_CAIP = `${CHAIN_CAIP}/native`;
 const WMON_CAIP = `${CHAIN_CAIP}/erc20:${WMON_ADDRESS.toLowerCase()}`;
 const MOON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_ADDRESS.toLowerCase()}`;
+const HYPERSYNC_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_LP_HYPERSYNC_TIMEOUT_MS ?? '15000');
 const truncateAddress = (value?: string | null) =>
   value ? `${value.slice(0, 6)}…${value.slice(-4)}` : null;
 const deriveBandType = (
@@ -93,6 +94,13 @@ type UserPersona =
   | 'eligible_holder'
   | 'locked_out';
 type AdminPortalView = 'default' | UserPersona;
+
+type LpPositionsSource =
+  | 'hypersync'
+  | 'onchain'
+  | 'pending'
+  | 'hypersync_timeout'
+  | 'hypersync_error';
 
 interface LpPosition {
   tokenId: string;
@@ -135,7 +143,7 @@ interface LpGateState {
   hasLpFromHypersync?: boolean;
   hypersyncNote?: string;
   hypersyncPositionsLength?: number;
-  lpPositionsSource?: 'hypersync' | 'onchain' | 'mixed';
+  lpPositionsSource?: LpPositionsSource;
 }
 
 interface HypersyncApiPosition {
@@ -446,9 +454,14 @@ function MiniAppPageInner() {
         if (cancelled) return;
 
         let hypersyncData: HypersyncApiResponse | null = null;
+        let hypersyncNote: string | undefined;
+        let hypersyncResultState: 'pending' | 'success' | 'timeout' | 'failed' = 'pending';
+
         if (hypersyncResponsePromise) {
           try {
-            const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
+            const timeout = new Promise<null>((resolve) =>
+              setTimeout(() => resolve(null), HYPERSYNC_TIMEOUT_MS)
+            );
             const hypersyncResponse = (await Promise.race([
               hypersyncResponsePromise,
               timeout
@@ -457,14 +470,26 @@ function MiniAppPageInner() {
             if (hypersyncResponse) {
               if (hypersyncResponse.ok) {
                 hypersyncData = (await hypersyncResponse.json()) as HypersyncApiResponse;
+                hypersyncNote = hypersyncData.note;
+                hypersyncResultState = 'success';
               } else {
                 console.error('LP hypersync route responded with error', hypersyncResponse.status);
+                hypersyncNote = `Hypersync error ${hypersyncResponse.status}`;
+                hypersyncResultState = 'failed';
               }
             } else {
-              console.warn('LP hypersync request timed out (>8s)');
+              console.warn(
+                `LP hypersync request timed out (> ${Math.round(HYPERSYNC_TIMEOUT_MS / 1000)}s)`
+              );
+              hypersyncNote = `Hypersync scan timed out (> ${Math.round(
+                HYPERSYNC_TIMEOUT_MS / 1000
+              )}s)`;
+              hypersyncResultState = 'timeout';
             }
           } catch (hypersyncError) {
             console.error('LP hypersync request failed mid-flight', hypersyncError);
+            hypersyncNote = 'Hypersync scan failed to complete';
+            hypersyncResultState = 'failed';
           }
         }
 
@@ -483,15 +508,22 @@ function MiniAppPageInner() {
           bandType: deriveBandType(pos.currentTick, pos.tickLower, pos.tickUpper)
         }));
 
+        const fallbackPositionsCount = onchainData.lpPositions?.length ?? 0;
         const lpPositions =
           hypersyncPositions.length > 0 ? hypersyncPositions : (onchainData.lpPositions ?? []);
 
-        const lpPositionsSource: LpGateState['lpPositionsSource'] =
-          hypersyncPositions.length > 0
-            ? 'hypersync'
-            : (onchainData.lpPositions?.length ?? 0) > 0
-              ? 'onchain'
-              : undefined;
+        let lpPositionsSource: LpGateState['lpPositionsSource'];
+        if (hypersyncPositions.length > 0) {
+          lpPositionsSource = 'hypersync';
+        } else if (fallbackPositionsCount > 0) {
+          lpPositionsSource = 'onchain';
+        } else if (hypersyncResultState === 'timeout') {
+          lpPositionsSource = 'hypersync_timeout';
+        } else if (hypersyncResultState === 'failed') {
+          lpPositionsSource = 'hypersync_error';
+        } else {
+          lpPositionsSource = 'pending';
+        }
 
         const hasLpSignal = lpPositions.length > 0 || onchainData.hasLpNft;
 
@@ -508,8 +540,11 @@ function MiniAppPageInner() {
           hasLpFromOnchain: onchainData.hasLpFromOnchain,
           hasLpFromSubgraph: onchainData.hasLpFromSubgraph,
           indexerPositionCount: onchainData.indexerPositionCount,
-          hasLpFromHypersync: hypersyncData?.hasLpFromHypersync,
-          hypersyncNote: hypersyncData?.note,
+          hasLpFromHypersync:
+            hypersyncResultState === 'pending'
+              ? undefined
+              : (hypersyncData?.hasLpFromHypersync ?? false),
+          hypersyncNote,
           hypersyncPositionsLength: hypersyncPositions.length,
           lpPositionsSource
         });
@@ -1941,8 +1976,19 @@ function MiniAppPageInner() {
 
           {positionCount === 0 && hasLp && (
             <div className={`${PANEL_CLASS} text-left text-xs opacity-75`}>
-              We detected at least one LP sigil on-chain, but HyperSync hasn&apos;t returned full
-              position metadata yet. You&apos;re still through the gate.
+              {lpGateState.lpPositionsSource === 'hypersync_timeout' &&
+                `HyperSync scan timed out after ~${Math.round(
+                  HYPERSYNC_TIMEOUT_MS / 1000
+                )}s. Tap "Rescan LP sigils" to try again — you're still through the gate.`}
+              {lpGateState.lpPositionsSource === 'hypersync_error' &&
+                "HyperSync couldn’t fetch your sigil metadata just now. Rescan to retry — you're still through the gate."}
+              {lpGateState.lpPositionsSource === 'pending' &&
+                "We detected at least one LP sigil on-chain, but HyperSync hasn't returned full position metadata yet. You're still through the gate."}
+              {!lpGateState.lpPositionsSource ||
+                (lpGateState.lpPositionsSource !== 'hypersync_timeout' &&
+                  lpGateState.lpPositionsSource !== 'hypersync_error' &&
+                  lpGateState.lpPositionsSource !== 'pending' &&
+                  "We detected at least one LP sigil on-chain, but it hasn't been decoded yet. You're through the gate — rescan if you just minted.")}
             </div>
           )}
 
