@@ -66,26 +66,8 @@ const CHAIN_CAIP = 'eip155:143';
 const MON_NATIVE_CAIP = `${CHAIN_CAIP}/native`;
 const WMON_CAIP = `${CHAIN_CAIP}/erc20:${WMON_ADDRESS.toLowerCase()}`;
 const MOON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_ADDRESS.toLowerCase()}`;
-const HYPERSYNC_TIMEOUT_MS = Number(process.env.NEXT_PUBLIC_LP_HYPERSYNC_TIMEOUT_MS ?? '15000');
 const truncateAddress = (value?: string | null) =>
   value ? `${value.slice(0, 6)}…${value.slice(-4)}` : null;
-const deriveBandType = (
-  currentTick?: number,
-  tickLower?: number,
-  tickUpper?: number
-): LpPosition['bandType'] => {
-  if (
-    typeof currentTick !== 'number' ||
-    typeof tickLower !== 'number' ||
-    typeof tickUpper !== 'number'
-  ) {
-    return 'unknown';
-  }
-  if (currentTick < tickLower) return 'upside_band';
-  if (currentTick > tickUpper) return 'crash_band';
-  return 'in_range';
-};
-
 type UserPersona =
   | 'claimed_sold'
   | 'claimed_held'
@@ -94,13 +76,6 @@ type UserPersona =
   | 'eligible_holder'
   | 'locked_out';
 type AdminPortalView = 'default' | UserPersona;
-
-type LpPositionsSource =
-  | 'hypersync'
-  | 'onchain'
-  | 'pending'
-  | 'hypersync_timeout'
-  | 'hypersync_error';
 
 interface LpPosition {
   tokenId: string;
@@ -140,41 +115,6 @@ interface LpGateState {
   hasLpFromOnchain?: boolean;
   hasLpFromSubgraph?: boolean;
   indexerPositionCount?: number;
-  hasLpFromHypersync?: boolean;
-  hypersyncNote?: string;
-  hypersyncPositionsLength?: number;
-  lpPositionsSource?: LpPositionsSource;
-}
-
-interface HypersyncApiPosition {
-  tokenId: string;
-  poolAddress?: string;
-  token0?: {
-    address: string;
-    symbol?: string;
-    decimals?: number;
-  };
-  token1?: {
-    address: string;
-    symbol?: string;
-    decimals?: number;
-  };
-  fee?: number;
-  tickSpacing?: number;
-  tickLower?: number;
-  tickUpper?: number;
-  currentTick?: number;
-  liquidity: string;
-  amount0?: string;
-  amount1?: string;
-  inRange?: boolean;
-}
-
-interface HypersyncApiResponse {
-  hasLpFromHypersync: boolean;
-  owner: string;
-  positions: HypersyncApiPosition[];
-  note?: string;
 }
 
 interface ReplyGlow {
@@ -420,25 +360,15 @@ function MiniAppPageInner() {
       try {
         console.log('LP_GATE_FETCH:start', { walletAddress });
 
-        const onchainResponse = await fetch(`/api/lp-nft?address=${walletAddress}`, {
+        const response = await fetch(`/api/lp-nft?address=${walletAddress}`, {
           cache: 'no-store'
         });
 
-        const hypersyncResponsePromise = fetch('/api/lp-hypersync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ address: walletAddress }),
-          cache: 'no-store'
-        }).catch((error) => {
-          console.error('LP hypersync request failed to dispatch', error);
-          return null;
-        });
-
-        if (!onchainResponse.ok) {
-          throw new Error(`LP on-chain check failed: ${onchainResponse.status}`);
+        if (!response.ok) {
+          throw new Error(`LP on-chain check failed: ${response.status}`);
         }
 
-        const onchainData = (await onchainResponse.json()) as {
+        const data = (await response.json()) as {
           hasLpNft: boolean;
           lpPositions: LpPosition[];
           error?: string;
@@ -447,89 +377,17 @@ function MiniAppPageInner() {
           indexerPositionCount?: number;
         };
 
-        if (onchainData.error) {
-          throw new Error(onchainData.error);
+        if (data.error) {
+          throw new Error(data.error);
         }
 
         if (cancelled) return;
 
-        let hypersyncData: HypersyncApiResponse | null = null;
-        let hypersyncNote: string | undefined;
-        let hypersyncResultState: 'pending' | 'success' | 'timeout' | 'failed' = 'pending';
-
-        if (hypersyncResponsePromise) {
-          try {
-            const timeout = new Promise<null>((resolve) =>
-              setTimeout(() => resolve(null), HYPERSYNC_TIMEOUT_MS)
-            );
-            const hypersyncResponse = (await Promise.race([
-              hypersyncResponsePromise,
-              timeout
-            ])) as Response | null;
-
-            if (hypersyncResponse) {
-              if (hypersyncResponse.ok) {
-                hypersyncData = (await hypersyncResponse.json()) as HypersyncApiResponse;
-                hypersyncNote = hypersyncData.note;
-                hypersyncResultState = 'success';
-              } else {
-                console.error('LP hypersync route responded with error', hypersyncResponse.status);
-                hypersyncNote = `Hypersync error ${hypersyncResponse.status}`;
-                hypersyncResultState = 'failed';
-              }
-            } else {
-              console.warn(
-                `LP hypersync request timed out (> ${Math.round(HYPERSYNC_TIMEOUT_MS / 1000)}s)`
-              );
-              hypersyncNote = `Hypersync scan timed out (> ${Math.round(
-                HYPERSYNC_TIMEOUT_MS / 1000
-              )}s)`;
-              hypersyncResultState = 'timeout';
-            }
-          } catch (hypersyncError) {
-            console.error('LP hypersync request failed mid-flight', hypersyncError);
-            hypersyncNote = 'Hypersync scan failed to complete';
-            hypersyncResultState = 'failed';
-          }
-        }
-
-        const hypersyncPositions = (hypersyncData?.positions ?? []).map((pos) => ({
-          tokenId: pos.tokenId,
-          liquidity: pos.liquidity ?? '0',
-          tickLower: pos.tickLower ?? 0,
-          tickUpper: pos.tickUpper ?? 0,
-          poolAddress: pos.poolAddress,
-          token0: pos.token0,
-          token1: pos.token1,
-          currentTick: pos.currentTick,
-          amount0: pos.amount0,
-          amount1: pos.amount1,
-          inRange: pos.inRange,
-          bandType: deriveBandType(pos.currentTick, pos.tickLower, pos.tickUpper)
-        }));
-
-        const fallbackPositionsCount = onchainData.lpPositions?.length ?? 0;
-        const lpPositions =
-          hypersyncPositions.length > 0 ? hypersyncPositions : (onchainData.lpPositions ?? []);
-
-        let lpPositionsSource: LpGateState['lpPositionsSource'];
-        if (hypersyncPositions.length > 0) {
-          lpPositionsSource = 'hypersync';
-        } else if (fallbackPositionsCount > 0) {
-          lpPositionsSource = 'onchain';
-        } else if (hypersyncResultState === 'timeout') {
-          lpPositionsSource = 'hypersync_timeout';
-        } else if (hypersyncResultState === 'failed') {
-          lpPositionsSource = 'hypersync_error';
-        } else {
-          lpPositionsSource = 'pending';
-        }
-
-        const hasLpSignal = lpPositions.length > 0 || onchainData.hasLpNft;
+        const lpPositions = data.lpPositions ?? [];
+        const hasLpSignal = lpPositions.length > 0 || data.hasLpNft;
 
         console.log('LP_GATE_FETCH:result', {
-          onchainData,
-          hypersyncData,
+          lpData: data,
           lpPositions
         });
 
@@ -537,16 +395,9 @@ function MiniAppPageInner() {
           lpStatus: hasLpSignal ? 'HAS_LP' : 'NO_LP',
           walletAddress,
           lpPositions,
-          hasLpFromOnchain: onchainData.hasLpFromOnchain,
-          hasLpFromSubgraph: onchainData.hasLpFromSubgraph,
-          indexerPositionCount: onchainData.indexerPositionCount,
-          hasLpFromHypersync:
-            hypersyncResultState === 'pending'
-              ? undefined
-              : (hypersyncData?.hasLpFromHypersync ?? false),
-          hypersyncNote,
-          hypersyncPositionsLength: hypersyncPositions.length,
-          lpPositionsSource
+          hasLpFromOnchain: data.hasLpFromOnchain,
+          hasLpFromSubgraph: data.hasLpFromSubgraph,
+          indexerPositionCount: data.indexerPositionCount
         });
       } catch (err) {
         console.error('LP gate lookup failed', err);
@@ -1782,9 +1633,6 @@ function MiniAppPageInner() {
       hasLpFromOnchain: lpGateState.hasLpFromOnchain ?? null,
       hasLpFromSubgraph: lpGateState.hasLpFromSubgraph ?? null,
       indexerPositionCount: lpGateState.indexerPositionCount ?? null,
-      hasLpFromHypersync: lpGateState.hasLpFromHypersync ?? null,
-      hypersyncPositionsLength: lpGateState.hypersyncPositionsLength ?? 0,
-      lpPositionsSource: lpGateState.lpPositionsSource ?? 'pending',
       lpPositionsLength: lpGateState.lpPositions?.length ?? 0,
       timestamp: new Date().toISOString()
     };
@@ -1800,11 +1648,6 @@ function MiniAppPageInner() {
             <span>{String(value)}</span>
           </div>
         ))}
-        {lpGateState.hypersyncNote && (
-          <div className="pt-2 text-[9px] leading-relaxed">
-            <span className="opacity-60">note:</span> {lpGateState.hypersyncNote}
-          </div>
-        )}
       </div>
     );
   };
@@ -1976,19 +1819,9 @@ function MiniAppPageInner() {
 
           {positionCount === 0 && hasLp && (
             <div className={`${PANEL_CLASS} text-left text-xs opacity-75`}>
-              {lpGateState.lpPositionsSource === 'hypersync_timeout' &&
-                `HyperSync scan timed out after ~${Math.round(
-                  HYPERSYNC_TIMEOUT_MS / 1000
-                )}s. Tap "Rescan LP sigils" to try again — you're still through the gate.`}
-              {lpGateState.lpPositionsSource === 'hypersync_error' &&
-                "HyperSync couldn’t fetch your sigil metadata just now. Rescan to retry — you're still through the gate."}
-              {lpGateState.lpPositionsSource === 'pending' &&
-                "We detected at least one LP sigil on-chain, but HyperSync hasn't returned full position metadata yet. You're still through the gate."}
-              {!lpGateState.lpPositionsSource ||
-                (lpGateState.lpPositionsSource !== 'hypersync_timeout' &&
-                  lpGateState.lpPositionsSource !== 'hypersync_error' &&
-                  lpGateState.lpPositionsSource !== 'pending' &&
-                  "We detected at least one LP sigil on-chain, but it hasn't been decoded yet. You're through the gate — rescan if you just minted.")}
+              {lpGateState.hasLpFromSubgraph
+                ? "We detected at least one LP sigil on-chain, but metadata hasn't loaded yet. You're through the gate—tap “Rescan LP sigils” if you just minted."
+                : "Indexer lag: on-chain proves you have a sigil, but the subgraph hasn't caught up yet. You're still through the gate—rescan in a moment."}
             </div>
           )}
 

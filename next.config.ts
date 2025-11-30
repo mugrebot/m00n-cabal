@@ -1,7 +1,5 @@
 import type { NextConfig } from 'next';
 
-const nextConfig: NextConfig = {
-  serverExternalPackages: ['@envio-dev/hypersync-client']
-};
+const nextConfig: NextConfig = {};
 
 export default nextConfig;
