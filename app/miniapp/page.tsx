@@ -636,11 +636,7 @@ function MiniAppPageInner() {
     }
     const positions = lpGateState.lpPositions ?? [];
     if (positions.length === 0) {
-      return (
-        <div className={`${PANEL_CLASS} text-center text-sm opacity-70`}>
-          No matching LP sigils detected yet.
-        </div>
-      );
+      return null;
     }
     if (positions.some((pos) => pos.bandType === 'upside_band')) {
       return 'claimed_held';
