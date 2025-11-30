@@ -194,12 +194,12 @@ async function getWmonUsdPriceFromSubgraph(): Promise<number | null> {
     const token1Id = pool.token1.id.toLowerCase();
 
     if (token0Id === MON_NATIVE_SENTINEL.toLowerCase() && token1Id === USDC_ADDRESS.toLowerCase()) {
-      return Number(pool.token0Price);
+      return Number(pool.token1Price);
     }
     if (token1Id === MON_NATIVE_SENTINEL.toLowerCase() && token0Id === USDC_ADDRESS.toLowerCase()) {
-      const price = Number(pool.token1Price);
+      const price = Number(pool.token0Price);
       if (price === 0) return null;
-      return 1 / price;
+      return price;
     }
 
     if (
