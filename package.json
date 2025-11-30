@@ -15,6 +15,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@envio-dev/hypersync-client": "^0.7.0",
     "@farcaster/frame-sdk": "^0.1.12",
     "@farcaster/miniapp-sdk": "^0.2.1",
     "@farcaster/miniapp-wagmi-connector": "^1.1.0",
@@ -22,9 +23,9 @@
     "@uniswap/sdk-core": "^7.9.0",
     "@uniswap/v4-periphery": "^1.0.3",
     "@uniswap/v4-sdk": "^1.23.0",
-    "graphql-request": "^7.1.0",
     "csv-parse": "^6.1.0",
     "ethers": "5",
+    "graphql-request": "^7.1.0",
     "html-to-image": "^1.11.13",
     "next": "16.0.5",
     "react": "19.2.0",

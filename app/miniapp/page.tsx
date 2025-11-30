@@ -68,6 +68,22 @@ const WMON_CAIP = `${CHAIN_CAIP}/erc20:${WMON_ADDRESS.toLowerCase()}`;
 const MOON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_ADDRESS.toLowerCase()}`;
 const truncateAddress = (value?: string | null) =>
   value ? `${value.slice(0, 6)}…${value.slice(-4)}` : null;
+const deriveBandType = (
+  currentTick?: number,
+  tickLower?: number,
+  tickUpper?: number
+): LpPosition['bandType'] => {
+  if (
+    typeof currentTick !== 'number' ||
+    typeof tickLower !== 'number' ||
+    typeof tickUpper !== 'number'
+  ) {
+    return 'unknown';
+  }
+  if (currentTick < tickLower) return 'upside_band';
+  if (currentTick > tickUpper) return 'crash_band';
+  return 'in_range';
+};
 
 type UserPersona =
   | 'claimed_sold'
@@ -83,12 +99,27 @@ interface LpPosition {
   liquidity: string;
   tickLower: number;
   tickUpper: number;
-  poolKey: {
+  poolKey?: {
     currency0: string;
     currency1: string;
     fee: number;
     hooks: string;
   };
+  poolAddress?: string;
+  token0?: {
+    address: string;
+    symbol?: string;
+    decimals?: number;
+  };
+  token1?: {
+    address: string;
+    symbol?: string;
+    decimals?: number;
+  };
+  currentTick?: number;
+  amount0?: string;
+  amount1?: string;
+  inRange?: boolean;
   // Optional fields returned by the enriched /api/lp-nft endpoint.
   bandType?: 'crash_band' | 'upside_band' | 'in_range' | 'unknown';
   hasSubscriber?: boolean;
@@ -101,6 +132,39 @@ interface LpGateState {
   hasLpFromOnchain?: boolean;
   hasLpFromSubgraph?: boolean;
   indexerPositionCount?: number;
+  hasLpFromHypersync?: boolean;
+  hypersyncNote?: string;
+}
+
+interface HypersyncApiPosition {
+  tokenId: string;
+  poolAddress?: string;
+  token0?: {
+    address: string;
+    symbol?: string;
+    decimals?: number;
+  };
+  token1?: {
+    address: string;
+    symbol?: string;
+    decimals?: number;
+  };
+  fee?: number;
+  tickSpacing?: number;
+  tickLower?: number;
+  tickUpper?: number;
+  currentTick?: number;
+  liquidity: string;
+  amount0?: string;
+  amount1?: string;
+  inRange?: boolean;
+}
+
+interface HypersyncApiResponse {
+  hasLpFromHypersync: boolean;
+  owner: string;
+  positions: HypersyncApiPosition[];
+  note?: string;
 }
 
 interface ReplyGlow {
@@ -345,11 +409,25 @@ function MiniAppPageInner() {
 
       try {
         console.log('LP_GATE_FETCH:start', { walletAddress });
-        const response = await fetch(`/api/lp-nft?address=${walletAddress}`);
-        if (!response.ok) {
-          throw new Error(`LP check failed: ${response.status}`);
+
+        const [onchainResponse, hypersyncResponse] = await Promise.all([
+          fetch(`/api/lp-nft?address=${walletAddress}`, { cache: 'no-store' }),
+          fetch('/api/lp-hypersync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address: walletAddress }),
+            cache: 'no-store'
+          }).catch((error) => {
+            console.error('LP hypersync request failed to dispatch', error);
+            return null;
+          })
+        ]);
+
+        if (!onchainResponse.ok) {
+          throw new Error(`LP on-chain check failed: ${onchainResponse.status}`);
         }
-        const data = (await response.json()) as {
+
+        const onchainData = (await onchainResponse.json()) as {
           hasLpNft: boolean;
           lpPositions: LpPosition[];
           error?: string;
@@ -357,26 +435,57 @@ function MiniAppPageInner() {
           hasLpFromSubgraph?: boolean;
           indexerPositionCount?: number;
         };
-        if (cancelled) return;
 
-        if (data.error) {
-          setLpGateState({
-            lpStatus: 'ERROR',
-            walletAddress,
-            lpPositions: []
-          });
-          return;
+        if (onchainData.error) {
+          throw new Error(onchainData.error);
         }
 
-        console.log('LP_GATE_FETCH:result', data);
+        if (cancelled) return;
+
+        let hypersyncData: HypersyncApiResponse | null = null;
+        if (hypersyncResponse) {
+          if (hypersyncResponse.ok) {
+            hypersyncData = (await hypersyncResponse.json()) as HypersyncApiResponse;
+          } else {
+            console.error('LP hypersync route responded with error', hypersyncResponse.status);
+          }
+        }
+
+        const hypersyncPositions = (hypersyncData?.positions ?? []).map((pos) => ({
+          tokenId: pos.tokenId,
+          liquidity: pos.liquidity ?? '0',
+          tickLower: pos.tickLower ?? 0,
+          tickUpper: pos.tickUpper ?? 0,
+          poolAddress: pos.poolAddress,
+          token0: pos.token0,
+          token1: pos.token1,
+          currentTick: pos.currentTick,
+          amount0: pos.amount0,
+          amount1: pos.amount1,
+          inRange: pos.inRange,
+          bandType: deriveBandType(pos.currentTick, pos.tickLower, pos.tickUpper)
+        }));
+
+        const lpPositions =
+          hypersyncPositions.length > 0 ? hypersyncPositions : (onchainData.lpPositions ?? []);
+
+        const hasLpSignal = lpPositions.length > 0 || onchainData.hasLpNft;
+
+        console.log('LP_GATE_FETCH:result', {
+          onchainData,
+          hypersyncData,
+          lpPositions
+        });
 
         setLpGateState({
-          lpStatus: data.hasLpNft ? 'HAS_LP' : 'NO_LP',
+          lpStatus: hasLpSignal ? 'HAS_LP' : 'NO_LP',
           walletAddress,
-          lpPositions: data.lpPositions ?? [],
-          hasLpFromOnchain: data.hasLpFromOnchain,
-          hasLpFromSubgraph: data.hasLpFromSubgraph,
-          indexerPositionCount: data.indexerPositionCount
+          lpPositions,
+          hasLpFromOnchain: onchainData.hasLpFromOnchain,
+          hasLpFromSubgraph: onchainData.hasLpFromSubgraph,
+          indexerPositionCount: onchainData.indexerPositionCount,
+          hasLpFromHypersync: hypersyncData?.hasLpFromHypersync,
+          hypersyncNote: hypersyncData?.note
         });
       } catch (err) {
         console.error('LP gate lookup failed', err);
@@ -1612,6 +1721,7 @@ function MiniAppPageInner() {
       hasLpFromOnchain: lpGateState.hasLpFromOnchain ?? null,
       hasLpFromSubgraph: lpGateState.hasLpFromSubgraph ?? null,
       indexerPositionCount: lpGateState.indexerPositionCount ?? null,
+      hasLpFromHypersync: lpGateState.hasLpFromHypersync ?? null,
       lpPositionsLength: lpGateState.lpPositions?.length ?? 0,
       timestamp: new Date().toISOString()
     };
@@ -1627,6 +1737,11 @@ function MiniAppPageInner() {
             <span>{String(value)}</span>
           </div>
         ))}
+        {lpGateState.hypersyncNote && (
+          <div className="pt-2 text-[9px] leading-relaxed">
+            <span className="opacity-60">note:</span> {lpGateState.hypersyncNote}
+          </div>
+        )}
       </div>
     );
   };
@@ -1654,6 +1769,13 @@ function MiniAppPageInner() {
               <p className="text-xs opacity-70">
                 Tick band: {position.tickLower} → {position.tickUpper}
               </p>
+              {(position.amount0 || position.amount1) && (
+                <p className="text-xs opacity-70">
+                  {position.amount0 ? `m00nad: ${position.amount0}` : null}
+                  {position.amount0 && position.amount1 ? ' · ' : ''}
+                  {position.amount1 ? `WMON: ${position.amount1}` : null}
+                </p>
+              )}
             </div>
           ))}
           {positionCount > 2 && (
@@ -1774,6 +1896,15 @@ function MiniAppPageInner() {
                       Liquidity units:&nbsp;
                       <span className="font-mono">{pos.liquidity}</span>
                     </p>
+                    {(pos.amount0 || pos.amount1) && (
+                      <p className="text-xs text-white/70">
+                        Holdings: {pos.amount0 ? `${pos.amount0} m00nad` : '—'} /{' '}
+                        {pos.amount1 ? `${pos.amount1} WMON` : '—'}
+                      </p>
+                    )}
+                    {typeof pos.currentTick === 'number' && (
+                      <p className="text-[10px] text-white/50">Current tick: {pos.currentTick}</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1782,7 +1913,7 @@ function MiniAppPageInner() {
 
           {positionCount === 0 && hasLp && (
             <div className={`${PANEL_CLASS} text-left text-xs opacity-75`}>
-              We detected at least one LP sigil on-chain, but the indexer hasn&apos;t returned full
+              We detected at least one LP sigil on-chain, but HyperSync hasn&apos;t returned full
               position metadata yet. You&apos;re still through the gate.
             </div>
           )}
