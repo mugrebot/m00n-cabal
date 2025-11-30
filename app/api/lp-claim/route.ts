@@ -87,7 +87,9 @@ function buildError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
-const snapToSpacing = (tick: number) => Math.floor(tick / TICK_SPACING) * TICK_SPACING;
+const snapDownToSpacing = (tick: number) => Math.floor(tick / TICK_SPACING) * TICK_SPACING;
+const snapUpToSpacing = (tick: number) => Math.ceil(tick / TICK_SPACING) * TICK_SPACING;
+const ratioToTickDelta = (ratio: number) => Math.floor(Math.log(ratio) / Math.log(1.0001));
 
 export async function POST(request: NextRequest) {
   let body: { address?: string; amount?: string; preset?: string };
@@ -107,7 +109,7 @@ export async function POST(request: NextRequest) {
     return buildError('missing_amount');
   }
 
-  if (preset !== 'backstop') {
+  if (preset !== 'backstop' && preset !== 'moon_upside') {
     return buildError('unsupported_preset');
   }
 
@@ -170,15 +172,6 @@ export async function POST(request: NextRequest) {
     // current price, and whose lower bound extends a fixed width further down.
     // Price in Uniswap ticks is P = 1.0001^tick, so a 10% decrease corresponds
     // to adding log(0.9) / log(1.0001) ticks (a negative number).
-    const tenPercentDownTicks = Math.floor(Math.log(0.9) / Math.log(1.0001));
-    const rawUpperTick = currentTick + tenPercentDownTicks;
-    const tickUpper = snapToSpacing(rawUpperTick);
-    const tickLower = tickUpper - CRASH_BAND_WIDTH_TICKS;
-
-    if (tickUpper <= tickLower) {
-      throw new Error('invalid_tick_configuration');
-    }
-
     const pool = new Pool(
       moonToken,
       wmonToken,
@@ -190,16 +183,39 @@ export async function POST(request: NextRequest) {
       currentTick
     );
 
-    // Crash-band semantics: treat the user's input as pure token1 (WMON)
-    // liquidity. At current prices (above this band), the position is 100%
-    // WMON; if price nukes down into the band, it buys m00n with that WMON.
-    const amount1Desired = amountWei.toString(); // WMON input
+    let tickLower: number;
+    let tickUpper: number;
+    let amount0Desired = '0';
+    let amount1Desired = '0';
+
+    if (preset === 'backstop') {
+      const tenPercentDownTicks = Math.floor(Math.log(0.9) / Math.log(1.0001));
+      const rawUpperTick = currentTick + tenPercentDownTicks;
+      const snappedUpper = snapDownToSpacing(rawUpperTick);
+      tickUpper = snappedUpper;
+      tickLower = tickUpper - CRASH_BAND_WIDTH_TICKS;
+      if (tickUpper <= tickLower) {
+        throw new Error('invalid_tick_configuration');
+      }
+      amount1Desired = amountWei.toString();
+    } else {
+      const lowerDelta = ratioToTickDelta(1.2);
+      const upperDelta = ratioToTickDelta(5);
+      const rawLower = currentTick + lowerDelta;
+      const rawUpper = currentTick + upperDelta;
+      tickLower = snapDownToSpacing(rawLower);
+      tickUpper = snapUpToSpacing(rawUpper);
+      if (tickUpper <= tickLower) {
+        tickUpper = tickLower + TICK_SPACING;
+      }
+      amount0Desired = amountWei.toString();
+    }
 
     const position = Position.fromAmounts({
       pool,
       tickLower,
       tickUpper,
-      amount0: '0',
+      amount0: amount0Desired,
       amount1: amount1Desired,
       useFullPrecision: true
     });
@@ -208,10 +224,7 @@ export async function POST(request: NextRequest) {
     const currentTimestamp = Number(currentBlock.timestamp);
     const deadlineSeconds = currentTimestamp + DEADLINE_SECONDS;
 
-    // Build MintOptions exactly as in the Uniswap v4 docs, but with 0% on-chain
-    // slippage to avoid the SDK's internal underflow bug in edge bands. The user
-    // input is already treated as the hard WMON cap.
-    const slippagePct = new Percent(0, 10_000);
+    const slippagePct = new Percent(500, 10_000);
     const deadline = deadlineSeconds.toString();
 
     const { calldata: innerCalldata, value } = V4PositionManager.addCallParameters(position, {

@@ -112,6 +112,7 @@ const LP_PRESET_CONTENT: Record<
     amountLabel: string;
     inputToken: 'WMON' | 'm00n';
     helper: string;
+    quickAmounts: string[];
   }
 > = {
   backstop: {
@@ -120,7 +121,8 @@ const LP_PRESET_CONTENT: Record<
       'Deploy a WMON-only crash band roughly 10% under spot with six tick-spacing units of depth. If price nukes, it auto-buys m00n.',
     amountLabel: 'Amount (WMON)',
     inputToken: 'WMON',
-    helper: 'Approx ticks: current −10% down to −10% − (6×spacing).'
+    helper: 'Approx ticks: current −10% down to −10% − (6×spacing).',
+    quickAmounts: ['69', '1000', '4200']
   },
   moon_upside: {
     title: 'Sky Ladder',
@@ -128,7 +130,8 @@ const LP_PRESET_CONTENT: Record<
       'Deploy a holder-only, single-sided m00n band starting ~1.2× spot and stretching to ~5×. Pumps recycle m00n into WMON.',
     amountLabel: 'Amount (m00n)',
     inputToken: 'm00n',
-    helper: 'Approx ticks: current +20% up to +400% (snapped to spacing).'
+    helper: 'Approx ticks: current +20% up to +400% (snapped to spacing).',
+    quickAmounts: ['50000', '1000000', '500000000']
   }
 };
 
@@ -1535,7 +1538,8 @@ function MiniAppPageInner() {
     const hasWmonAllowance =
       walletReady && wmonAllowanceWei !== null && wmonAllowanceWei > BigInt(0);
     const needsWmonApproval = lpClaimPreset === 'backstop';
-    const amountPlaceholder = lpClaimPreset === 'moon_upside' ? '25000' : '1.0';
+    const amountPlaceholder =
+      presetConfig.quickAmounts[0] ?? (lpClaimPreset === 'moon_upside' ? '50000' : '1.0');
     const fundingWarning = !walletReady
       ? 'Connect your Warpcast wallet to fund the LP ritual.'
       : !hasAmountInput
@@ -1770,6 +1774,33 @@ function MiniAppPageInner() {
               className="w-full rounded-xl border border-white/15 bg-black/40 px-4 py-3 font-mono text-sm text-white focus:border-[var(--monad-purple)] focus:outline-none disabled:opacity-40"
               disabled={!walletReady || isSubmittingLpClaim}
             />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {presetConfig.quickAmounts.map((choice) => {
+              const isActive = lpClaimAmount.trim() === choice;
+              const formattedChoice = Number(choice).toLocaleString();
+              return (
+                <button
+                  key={`${lpClaimPreset}-quick-${choice}`}
+                  type="button"
+                  onClick={() => setLpClaimAmount(choice)}
+                  className={`pixel-font text-[10px] px-3 py-1 rounded-full border ${
+                    isActive
+                      ? 'border-[var(--monad-purple)] bg-[var(--monad-purple)] text-white'
+                      : 'border-white/20 text-white/80 hover:bg-white/10'
+                  }`}
+                >
+                  {formattedChoice} {presetConfig.inputToken}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setLpClaimAmount('')}
+              className="pixel-font text-[10px] px-3 py-1 rounded-full border border-white/20 text-white/80 hover:bg-white/10"
+            >
+              CUSTOM
+            </button>
           </div>
           {fundingWarning && (
             <div className="rounded-lg border border-red-400/50 bg-red-500/10 px-3 py-2 text-xs text-red-200">
@@ -2424,14 +2455,6 @@ function MiniAppPageInner() {
           <div className="flex flex-col sm:flex-row gap-4">
             <button
               type="button"
-              onClick={() => handleSwapMonToToken('moon')}
-              disabled={swapInFlight === 'moon'}
-              className="pixel-font px-6 py-3 border border-[var(--moss-green)] text-[var(--moss-green)] rounded-lg hover:bg-[var(--moss-green)] hover:text-black transition-colors disabled:opacity-40"
-            >
-              {swapInFlight === 'moon' ? 'SWAPPING…' : 'BUY MORE m00n'}
-            </button>
-            <button
-              type="button"
               onClick={() => handleOpenLpClaimModal('moon_upside')}
               className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
             >
@@ -2607,6 +2630,16 @@ function MiniAppPageInner() {
           )}
 
           <div className="w-full">{renderContractCard()}</div>
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={() => handleSwapMonToToken('moon')}
+              disabled={swapInFlight === 'moon'}
+              className="pixel-font px-6 py-3 border border-[var(--moss-green)] text-[var(--moss-green)] rounded-lg hover:bg-[var(--moss-green)] hover:text-black transition-colors disabled:opacity-40"
+            >
+              {swapInFlight === 'moon' ? 'SWAPPING…' : 'BUY MORE m00n'}
+            </button>
+          </div>
         </div>
       </div>
     );
