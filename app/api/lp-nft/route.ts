@@ -379,7 +379,6 @@ export async function GET(request: NextRequest) {
 
   try {
     const lpResponse = await fetchLpPositions(address);
-
     const allPositions = lpResponse.lpPositions || [];
 
     // Fallback: check on-chain PositionManager balance so we still unlock the cabal
@@ -398,6 +397,7 @@ export async function GET(request: NextRequest) {
     }
 
     const hasOnchainLp = onchainBalance !== null && onchainBalance > BigInt(0);
+    const hasIndexerLp = !!lpResponse.hasLpNft;
     const filteredPositions = allPositions.filter((position) =>
       position.poolKey ? isTargetPool(position.poolKey) : false
     );
@@ -410,7 +410,11 @@ export async function GET(request: NextRequest) {
     const { currentTick, sqrtPriceX96, lpPositions } = await enrichPositions(positionsForUser);
 
     return NextResponse.json({
-      hasLpNft: lpResponse.hasLpNft || hasOnchainLp || lpPositions.length > 0,
+      hasLpNft: hasIndexerLp || hasOnchainLp || lpPositions.length > 0,
+      hasLpFromIndexer: hasIndexerLp,
+      hasLpFromOnchain: hasOnchainLp,
+      indexerPositionCount: allPositions.length,
+      filteredPositionCount: filteredPositions.length,
       currentTick,
       sqrtPriceX96: sqrtPriceX96.toString(),
       lpPositions

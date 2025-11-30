@@ -98,6 +98,10 @@ interface LpGateState {
   lpStatus: LpStatus;
   walletAddress?: string | null;
   lpPositions?: LpPosition[];
+  hasLpFromIndexer?: boolean;
+  hasLpFromOnchain?: boolean;
+  indexerPositionCount?: number;
+  filteredPositionCount?: number;
 }
 
 interface ReplyGlow {
@@ -349,6 +353,10 @@ function MiniAppPageInner() {
           hasLpNft: boolean;
           lpPositions: LpPosition[];
           error?: string;
+          hasLpFromIndexer?: boolean;
+          hasLpFromOnchain?: boolean;
+          indexerPositionCount?: number;
+          filteredPositionCount?: number;
         };
         if (cancelled) return;
 
@@ -364,7 +372,11 @@ function MiniAppPageInner() {
         setLpGateState({
           lpStatus: data.hasLpNft ? 'HAS_LP' : 'NO_LP',
           walletAddress,
-          lpPositions: data.lpPositions ?? []
+          lpPositions: data.lpPositions ?? [],
+          hasLpFromIndexer: data.hasLpFromIndexer,
+          hasLpFromOnchain: data.hasLpFromOnchain,
+          indexerPositionCount: data.indexerPositionCount,
+          filteredPositionCount: data.filteredPositionCount
         });
       } catch (err) {
         console.error('LP gate lookup failed', err);
@@ -1669,6 +1681,16 @@ function MiniAppPageInner() {
     const positions = lpGateState.lpPositions ?? [];
     const hasLp = lpGateState.lpStatus === 'HAS_LP';
     const displayCount = positionCount > 0 ? positionCount : hasLp ? 1 : 0;
+
+    // Debug signal separation for LP source mismatch (indexer vs on-chain)
+    console.log('LP_LOUNGE_DEBUG', {
+      lpStatus: lpGateState.lpStatus,
+      hasLpFromIndexer: lpGateState.hasLpFromIndexer,
+      hasLpFromOnchain: lpGateState.hasLpFromOnchain,
+      indexerPositionCount: lpGateState.indexerPositionCount,
+      filteredPositionCount: lpGateState.filteredPositionCount,
+      lpPositionCount: positionCount
+    });
 
     const describeBandType = (bandType?: LpPosition['bandType']) => {
       switch (bandType) {
