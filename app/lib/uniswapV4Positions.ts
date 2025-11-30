@@ -5,8 +5,10 @@ import {
   type Address,
   keccak256,
   encodeAbiParameters,
-  formatUnits
+  formatUnits,
+  erc721Abi
 } from 'viem';
+import { GraphQLClient, gql } from 'graphql-request';
 
 // -----------------------------
 // Chain & client configuration
@@ -38,6 +40,15 @@ export const publicClient = createPublicClient({
 });
 
 // -----------------------------
+// Subgraph client (Monad Uniswap v4)
+// -----------------------------
+
+const UNISWAP_V4_SUBGRAPH_URL =
+  'https://gateway.thegraph.com/api/subgraphs/id/3kaAG19ytkGfu8xD7YAAZ3qAQ3UDJRkmKH2kHUuyGHah';
+
+const graphClient = new GraphQLClient(UNISWAP_V4_SUBGRAPH_URL);
+
+// -----------------------------
 // Types
 // -----------------------------
 
@@ -62,10 +73,24 @@ export interface PositionWithAmounts extends PositionDetails {
   valueUsd?: number;
 }
 
+export interface UserPositionsSummary {
+  hasLpNft: boolean;
+  hasLpFromOnchain: boolean;
+  hasLpFromSubgraph: boolean;
+  indexerPositionCount: number;
+  lpPositions: PositionDetails[];
+}
+
 interface PackedPositionInfo {
   getTickUpper(): number;
   getTickLower(): number;
   hasSubscriber(): boolean;
+}
+
+interface SubgraphPosition {
+  tokenId: string;
+  id: string;
+  owner: string;
 }
 
 // -----------------------------
@@ -116,6 +141,53 @@ const STATE_VIEW_ABI = [
     ]
   }
 ] as const;
+
+// -----------------------------
+// Subgraph: position IDs on Monad
+// -----------------------------
+
+const GET_POSITIONS_QUERY = gql`
+  query GetPositions($owner: String!) {
+    positions(where: { owner: $owner }) {
+      tokenId
+      id
+      owner
+    }
+  }
+`;
+
+/**
+ * Fetch v4 LP position tokenIds for an owner from the official
+ * Monad Uniswap v4 subgraph.
+ *
+ * This completely replaces any Unichain/Neynar indexer usage.
+ */
+export async function getPositionIds(owner: Address): Promise<bigint[]> {
+  const ownerLower = owner.toLowerCase();
+
+  try {
+    const data = await graphClient.request<{ positions: SubgraphPosition[] }>(GET_POSITIONS_QUERY, {
+      owner: ownerLower
+    });
+
+    const positions = data.positions ?? [];
+    const ids: bigint[] = [];
+
+    for (const p of positions) {
+      try {
+        if (!p.tokenId) continue;
+        ids.push(BigInt(p.tokenId));
+      } catch {
+        // Skip malformed tokenIds
+      }
+    }
+
+    return ids;
+  } catch (error) {
+    console.error('Failed to fetch positions from Monad Uniswap v4 subgraph', error);
+    return [];
+  }
+}
 
 // -----------------------------
 // Packed position decoder
@@ -205,6 +277,49 @@ export async function getPositionDetails(tokenId: bigint): Promise<PositionDetai
 export async function getManyPositionDetails(tokenIds: bigint[]): Promise<PositionDetails[]> {
   if (tokenIds.length === 0) return [];
   return Promise.all(tokenIds.map((id) => getPositionDetails(id)));
+}
+
+// -----------------------------
+// High-level user summary
+// -----------------------------
+
+/**
+ * Combined view for a user's v4 LP positions on Monad.
+ *
+ * - hasLpFromOnchain: derived from PositionManager.balanceOf(owner)
+ * - hasLpFromSubgraph: true if the Monad subgraph returns any positions(owner)
+ * - indexerPositionCount: raw count from the subgraph
+ * - lpPositions: fully decoded on-chain positions for the tokenIds returned
+ *
+ * If the subgraph returns 0 positions but on-chain balanceOf(owner) > 0,
+ * hasLpFromSubgraph will be false — this represents an indexer lag/mismatch.
+ */
+export async function getUserPositionsSummary(owner: Address): Promise<UserPositionsSummary> {
+  // 1) On-chain truth: balanceOf on the Monad v4 PositionManager
+  const balance = (await publicClient.readContract({
+    address: POSITION_MANAGER_ADDRESS,
+    abi: erc721Abi,
+    functionName: 'balanceOf',
+    args: [owner]
+  })) as bigint;
+  const hasLpFromOnchain = balance > BigInt(0);
+
+  // 2) Subgraph: position tokenIds for this owner on Monad
+  const tokenIds = await getPositionIds(owner);
+  const indexerPositionCount = tokenIds.length;
+  const hasLpFromSubgraph = indexerPositionCount > 0;
+
+  // 3) Decode full on-chain details for the discovered tokenIds
+  const lpPositions = await getManyPositionDetails(tokenIds);
+
+  // 4) Aggregate diagnostics
+  return {
+    hasLpNft: hasLpFromOnchain || hasLpFromSubgraph || lpPositions.length > 0,
+    hasLpFromOnchain,
+    hasLpFromSubgraph,
+    indexerPositionCount,
+    lpPositions
+  };
 }
 
 // -----------------------------
