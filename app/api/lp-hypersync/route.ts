@@ -35,7 +35,7 @@ const TOKEN_METADATA: Record<string, { symbol: string; decimals: number }> = {
   [TARGET_TOKEN1]: { symbol: 'WMON', decimals: 18 }
 };
 
-const hypersyncClient = HypersyncClient.new({
+const hypersyncClient = new HypersyncClient({
   url: MONAD_HYPERSYNC_URL,
   ...(HYPERSYNC_API_KEY ? { bearerToken: HYPERSYNC_API_KEY } : {})
 });
