@@ -245,8 +245,8 @@ export async function POST(request: NextRequest) {
       args: [[innerCalldata as Hex]]
     });
 
-    const requiredMoonWei = position.amount0.quotient;
-    const requiredWmonWei = position.amount1.quotient;
+    const requiredMoonWei = BigInt(position.amount0.quotient.toString());
+    const requiredWmonWei = BigInt(position.amount1.quotient.toString());
     const maxRequiredMoonWei = withSlippageBuffer(requiredMoonWei);
     const maxRequiredWmonWei = withSlippageBuffer(requiredWmonWei);
 
