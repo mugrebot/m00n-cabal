@@ -37,7 +37,7 @@ const TOKEN_METADATA: Record<string, { symbol: string; decimals: number }> = {
 
 const hypersyncClient = new HypersyncClient({
   url: MONAD_HYPERSYNC_URL,
-  ...(HYPERSYNC_API_KEY ? { bearerToken: HYPERSYNC_API_KEY } : {})
+  apiToken: HYPERSYNC_API_KEY
 });
 
 interface HypersyncPositionPayload {
