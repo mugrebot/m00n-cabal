@@ -285,7 +285,7 @@ export async function GET(request: NextRequest) {
         symbol: 'm00n',
         decimals: 18,
         totalSupply: 100_000_000_000,
-        circulatingSupply: 95_000_000_000
+        circulatingSupply: 70_000_000_000
       },
       lpPositions: responsePositions
     };

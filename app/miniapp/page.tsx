@@ -104,30 +104,6 @@ const describeBandTypeLabel = (bandType?: LpPosition['bandType']) => {
   }
 };
 
-const trimTrailingZeros = (val: string) => val.replace(/\.?0+$/, '') || '0';
-
-const formatWmonPrice = (value?: string) => {
-  if (!value) return '–';
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return value;
-  const fixed = numeric >= 1 ? numeric.toFixed(4) : numeric.toPrecision(4);
-  return `${trimTrailingZeros(fixed)} WMON`;
-};
-
-const formatUsdFromWmon = (value?: string, wmonUsdPrice?: number | null) => {
-  if (!value || !wmonUsdPrice || !Number.isFinite(wmonUsdPrice)) return '–';
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return '–';
-  const usd = numeric * wmonUsdPrice;
-  if (usd >= 1) {
-    return `$${usd.toFixed(4)}`;
-  }
-  if (usd >= 0.01) {
-    return `$${usd.toFixed(4)}`;
-  }
-  return `$${usd.toPrecision(3)}`;
-};
-
 const abbreviateUsd = (value: number) => {
   if (!Number.isFinite(value)) return '–';
   const abs = Math.abs(value);
@@ -1783,22 +1759,6 @@ function MiniAppPageInner() {
             LP SIGILS
           </p>
           {previewPositions.map((position) => {
-            const wmonRange =
-              position.priceLowerInToken1 && position.priceUpperInToken1
-                ? `${formatWmonPrice(position.priceLowerInToken1)} → ${formatWmonPrice(
-                    position.priceUpperInToken1
-                  )}`
-                : null;
-            const usdRange =
-              wmonRange && lpGateState.poolWmonUsdPrice
-                ? `${formatUsdFromWmon(
-                    position.priceLowerInToken1,
-                    lpGateState.poolWmonUsdPrice
-                  )} → ${formatUsdFromWmon(
-                    position.priceUpperInToken1,
-                    lpGateState.poolWmonUsdPrice
-                  )}`
-                : null;
             const fdvRange = formatMarketCapRange(
               position.priceLowerInToken1,
               position.priceUpperInToken1,
@@ -1828,8 +1788,6 @@ function MiniAppPageInner() {
                   <p>{formatTokenDisplay(position.token0)}</p>
                   <p>{formatTokenDisplay(position.token1)}</p>
                 </div>
-                {wmonRange && <p className="text-[11px] text-white/70">Price band: {wmonRange}</p>}
-                {usdRange && <p className="text-[11px] text-white/70">USD band: {usdRange}</p>}
                 {fdvRange !== '–' && <p className="text-[11px] text-white/60">FDV: {fdvRange}</p>}
                 {circRange !== '–' && (
                   <p className="text-[11px] text-white/60">Circulating: {circRange}</p>
@@ -1938,22 +1896,6 @@ function MiniAppPageInner() {
               </p>
               <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
                 {positions.map((pos) => {
-                  const wmonRange =
-                    pos.priceLowerInToken1 && pos.priceUpperInToken1
-                      ? `${formatWmonPrice(pos.priceLowerInToken1)} → ${formatWmonPrice(
-                          pos.priceUpperInToken1
-                        )}`
-                      : null;
-                  const usdRange =
-                    wmonRange && lpGateState.poolWmonUsdPrice
-                      ? `${formatUsdFromWmon(
-                          pos.priceLowerInToken1,
-                          lpGateState.poolWmonUsdPrice
-                        )} → ${formatUsdFromWmon(
-                          pos.priceUpperInToken1,
-                          lpGateState.poolWmonUsdPrice
-                        )}`
-                      : null;
                   const fdvRange = formatMarketCapRange(
                     pos.priceLowerInToken1,
                     pos.priceUpperInToken1,
@@ -1993,12 +1935,6 @@ function MiniAppPageInner() {
                       </div>
                       {typeof pos.currentTick === 'number' && (
                         <p className="text-[10px] text-white/50">Pool tick: {pos.currentTick}</p>
-                      )}
-                      {wmonRange && (
-                        <p className="text-[11px] text-white/70">WMON band: {wmonRange}</p>
-                      )}
-                      {usdRange && (
-                        <p className="text-[11px] text-white/70">USD band: {usdRange}</p>
                       )}
                       {fdvRange !== '–' && (
                         <p className="text-[11px] text-white/60">FDV: {fdvRange}</p>
