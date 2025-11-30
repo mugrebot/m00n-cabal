@@ -404,6 +404,12 @@ function MiniAppPageInner() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
   const formatAmount = (amount?: string | number) => {
     if (amount === undefined || amount === null) return '0';
     const numeric = typeof amount === 'string' ? parseInt(amount, 10) : amount;
@@ -1266,8 +1272,12 @@ function MiniAppPageInner() {
         return;
       }
 
-      const needsWmonApproval = wmonAllowanceWei === null || wmonAllowanceWei < requiredWmonWei;
-      const needsMoonApproval = moonAllowanceWei === null || moonAllowanceWei < requiredMoonWei;
+      const needsWmonApproval =
+        requiredWmonWei > BigInt(0) &&
+        (wmonAllowanceWei === null || wmonAllowanceWei < requiredWmonWei);
+      const needsMoonApproval =
+        requiredMoonWei > BigInt(0) &&
+        (moonAllowanceWei === null || moonAllowanceWei < requiredMoonWei);
 
       if (needsWmonApproval) {
         await approveTokenForLp('wmon', requiredWmonWei);
@@ -1412,6 +1422,11 @@ function MiniAppPageInner() {
       setLpDebugLog((prev) =>
         [prev, `✅ ${label} Permit2 approval complete.`].filter(Boolean).join('\n')
       );
+      if (token === 'moon') {
+        setMoonAllowanceWei(amountWei);
+      } else {
+        setWmonAllowanceWei(amountWei);
+      }
       setFundingRefreshNonce((prev) => prev + 1);
       showToast('success', `Approved ${label} for LP.`);
     },
