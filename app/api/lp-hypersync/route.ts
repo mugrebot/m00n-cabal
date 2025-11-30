@@ -123,17 +123,20 @@ async function getOwnedLpTokenIds(owner: Address): Promise<bigint[]> {
     const logs = response?.data?.logs ?? [];
 
     for (const log of logs) {
-      const topics: string[] = log.topics ?? [];
+      const topics = (log.topics ?? []) as (string | null | undefined)[];
       if (topics.length < 4) continue;
-      const [, topicFrom, topicTo, topicTokenId] = topics;
-      if (!topicTokenId) continue;
+      const [, topicFromRaw, topicToRaw, topicTokenIdRaw] = topics;
+      if (!topicTokenIdRaw) continue;
+
+      const topicFrom = topicFromRaw?.toLowerCase() ?? null;
+      const topicTo = topicToRaw?.toLowerCase() ?? null;
 
       let delta = 0;
-      if (topicTo?.toLowerCase() === ownerTopic) delta += 1;
-      if (topicFrom?.toLowerCase() === ownerTopic) delta -= 1;
+      if (topicTo === ownerTopic) delta += 1;
+      if (topicFrom === ownerTopic) delta -= 1;
 
       if (delta !== 0) {
-        const tokenIdKey = BigInt(topicTokenId).toString();
+        const tokenIdKey = BigInt(topicTokenIdRaw).toString();
         const current = ownership.get(tokenIdKey) ?? 0;
         ownership.set(tokenIdKey, current + delta);
       }
