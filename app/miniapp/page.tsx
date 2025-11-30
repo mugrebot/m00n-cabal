@@ -98,12 +98,9 @@ interface LpGateState {
   lpStatus: LpStatus;
   walletAddress?: string | null;
   lpPositions?: LpPosition[];
-  hasLpFromIndexer?: boolean;
   hasLpFromOnchain?: boolean;
+  hasLpFromSubgraph?: boolean;
   indexerPositionCount?: number;
-  filteredPositionCount?: number;
-  hasLpFromLogsFallback?: boolean;
-  fallbackPositionCount?: number;
 }
 
 interface ReplyGlow {
@@ -355,12 +352,9 @@ function MiniAppPageInner() {
           hasLpNft: boolean;
           lpPositions: LpPosition[];
           error?: string;
-          hasLpFromIndexer?: boolean;
           hasLpFromOnchain?: boolean;
+          hasLpFromSubgraph?: boolean;
           indexerPositionCount?: number;
-          filteredPositionCount?: number;
-          hasLpFromLogsFallback?: boolean;
-          fallbackPositionCount?: number;
         };
         if (cancelled) return;
 
@@ -377,12 +371,9 @@ function MiniAppPageInner() {
           lpStatus: data.hasLpNft ? 'HAS_LP' : 'NO_LP',
           walletAddress,
           lpPositions: data.lpPositions ?? [],
-          hasLpFromIndexer: data.hasLpFromIndexer,
           hasLpFromOnchain: data.hasLpFromOnchain,
-          indexerPositionCount: data.indexerPositionCount,
-          filteredPositionCount: data.filteredPositionCount,
-          hasLpFromLogsFallback: data.hasLpFromLogsFallback,
-          fallbackPositionCount: data.fallbackPositionCount
+          hasLpFromSubgraph: data.hasLpFromSubgraph,
+          indexerPositionCount: data.indexerPositionCount
         });
       } catch (err) {
         console.error('LP gate lookup failed', err);
@@ -1691,12 +1682,9 @@ function MiniAppPageInner() {
     // Debug signal separation for LP source mismatch (indexer vs on-chain)
     console.log('LP_LOUNGE_DEBUG', {
       lpStatus: lpGateState.lpStatus,
-      hasLpFromIndexer: lpGateState.hasLpFromIndexer,
       hasLpFromOnchain: lpGateState.hasLpFromOnchain,
+      hasLpFromSubgraph: lpGateState.hasLpFromSubgraph,
       indexerPositionCount: lpGateState.indexerPositionCount,
-      filteredPositionCount: lpGateState.filteredPositionCount,
-      hasLpFromLogsFallback: lpGateState.hasLpFromLogsFallback,
-      fallbackPositionCount: lpGateState.fallbackPositionCount,
       lpPositionCount: positionCount
     });
 

@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Token } from '@uniswap/sdk-core';
 import { Pool } from '@uniswap/v4-sdk';
-import { createPublicClient, defineChain, erc721Abi, http, parseAbiItem, type Address } from 'viem';
-
-const LP_API_URL = process.env.NEYNAR_LP_API_URL;
-const LP_API_KEY = process.env.NEYNAR_LP_API_KEY || process.env.NEYNAR_API_KEY || '';
+import { createPublicClient, defineChain, http, type Address } from 'viem';
+import { getUserPositionsSummary } from '../../lib/uniswapV4Positions';
 
 interface LpPoolKey {
   currency0: string;
@@ -70,14 +68,6 @@ const publicClient = createPublicClient({
   transport: http(monadRpcUrl)
 });
 
-// Best-effort deployment block for the v4 PositionManager on Monad.
-// This can be tightened later to reduce log scan range.
-const POSITION_MANAGER_DEPLOYMENT_BLOCK = BigInt(0);
-
-const transferEventAbi = parseAbiItem(
-  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'
-);
-
 const stateViewAbi = [
   {
     type: 'function',
@@ -131,135 +121,6 @@ const positionManagerAbi = [
   }
 ] as const;
 
-interface PositionDetails {
-  tokenId: bigint;
-  tickLower: number;
-  tickUpper: number;
-  liquidity: bigint;
-  poolKey: {
-    currency0: Address;
-    currency1: Address;
-    fee: number;
-    tickSpacing: number;
-    hooks: Address;
-  };
-  hasSubscriber: boolean;
-}
-
-interface PackedPositionInfo {
-  getTickUpper(): number;
-  getTickLower(): number;
-  hasSubscriber(): boolean;
-}
-
-// Official Uniswap v4 packed position decoder from docs
-function decodePositionInfo(value: bigint): PackedPositionInfo {
-  return {
-    getTickUpper: () => {
-      const shift = BigInt(32);
-      const mask = BigInt(0xffffff);
-      const raw = Number((value >> shift) & mask);
-      const signedThreshold = 0x800000;
-      const signedOffset = 0x1000000;
-      return raw >= signedThreshold ? raw - signedOffset : raw;
-    },
-
-    getTickLower: () => {
-      const shift = BigInt(8);
-      const mask = BigInt(0xffffff);
-      const raw = Number((value >> shift) & mask);
-      const signedThreshold = 0x800000;
-      const signedOffset = 0x1000000;
-      return raw >= signedThreshold ? raw - signedOffset : raw;
-    },
-
-    hasSubscriber: () => {
-      const mask = BigInt(0xff);
-      return (value & mask) !== BigInt(0);
-    }
-  };
-}
-
-async function getPositionDetails(tokenId: string): Promise<PositionDetails> {
-  const id = BigInt(tokenId);
-
-  const [poolKey, infoValue] = (await publicClient.readContract({
-    address: POSITION_MANAGER_ADDRESS,
-    abi: positionManagerAbi,
-    functionName: 'getPoolAndPositionInfo',
-    args: [id]
-  })) as readonly [
-    {
-      currency0: Address;
-      currency1: Address;
-      fee: number;
-      tickSpacing: number;
-      hooks: Address;
-    },
-    bigint
-  ];
-
-  const liquidity = (await publicClient.readContract({
-    address: POSITION_MANAGER_ADDRESS,
-    abi: positionManagerAbi,
-    functionName: 'getPositionLiquidity',
-    args: [id]
-  })) as bigint;
-
-  const packed = decodePositionInfo(infoValue);
-
-  return {
-    tokenId: id,
-    tickLower: packed.getTickLower(),
-    tickUpper: packed.getTickUpper(),
-    liquidity,
-    poolKey,
-    hasSubscriber: packed.hasSubscriber()
-  };
-}
-
-/**
- * Fallback: reconstruct current LP NFT ownership for an address by scanning
- * on-chain Transfer events for the v4 PositionManager.
- */
-async function getOwnedTokenIdsFromLogs(owner: Address): Promise<string[]> {
-  const owned = new Set<string>();
-
-  // Transfers *to* the owner add tokenIds.
-  const toLogs = await publicClient.getLogs({
-    address: POSITION_MANAGER_ADDRESS as Address,
-    event: transferEventAbi,
-    args: { to: owner },
-    fromBlock: POSITION_MANAGER_DEPLOYMENT_BLOCK,
-    toBlock: 'latest'
-  });
-
-  for (const log of toLogs) {
-    const tokenId = log.args?.tokenId as bigint | undefined;
-    if (tokenId !== undefined) {
-      owned.add(tokenId.toString());
-    }
-  }
-
-  // Transfers *from* the owner remove tokenIds.
-  const fromLogs = await publicClient.getLogs({
-    address: POSITION_MANAGER_ADDRESS as Address,
-    event: transferEventAbi,
-    args: { from: owner },
-    fromBlock: POSITION_MANAGER_DEPLOYMENT_BLOCK,
-    toBlock: 'latest'
-  });
-
-  for (const log of fromLogs) {
-    const tokenId = log.args?.tokenId as bigint | undefined;
-    if (tokenId !== undefined) {
-      owned.delete(tokenId.toString());
-    }
-  }
-
-  return Array.from(owned);
-}
-
 const normalizeAddress = (value: string) => value.toLowerCase();
 
 const isTargetPool = (poolKey: LpPoolKey) => {
@@ -277,31 +138,6 @@ const isTargetPool = (poolKey: LpPoolKey) => {
     normalizeAddress(poolKey.hooks || '') === normalizeAddress(TARGET_POOL_KEY.hooks)
   );
 };
-
-async function fetchLpPositions(address: string) {
-  if (LP_API_URL && LP_API_KEY) {
-    const response = await fetch(`${LP_API_URL}?address=${address}`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': LP_API_KEY
-      },
-      cache: 'no-store'
-    });
-
-    if (!response.ok) {
-      throw new Error(`LP API error: ${response.status}`);
-    }
-
-    const result = (await response.json()) as LpApiResponse;
-    return result;
-  }
-
-  // Placeholder: fall back to no positions until onchain client is wired.
-  return {
-    hasLpNft: false,
-    lpPositions: []
-  } satisfies LpApiResponse;
-}
 
 async function enrichPositions(positions: RawLpPosition[]): Promise<{
   currentTick: number;
@@ -363,54 +199,21 @@ async function enrichPositions(positions: RawLpPosition[]): Promise<{
     currentTick
   );
 
-  const enriched: EnrichedLpPosition[] = [];
-
-  for (const position of positions) {
-    try {
-      const details = await getPositionDetails(position.tokenId);
-
-      let bandType: EnrichedLpPosition['bandType'] = 'unknown';
-      if (currentTick < details.tickLower) {
-        bandType = 'upside_band';
-      } else if (currentTick > details.tickUpper) {
-        bandType = 'crash_band';
-      } else if (currentTick >= details.tickLower && currentTick <= details.tickUpper) {
-        bandType = 'in_range';
-      }
-
-      enriched.push({
-        tokenId: position.tokenId,
-        liquidity: details.liquidity.toString(),
-        tickLower: details.tickLower,
-        tickUpper: details.tickUpper,
-        poolKey: {
-          currency0: details.poolKey.currency0,
-          currency1: details.poolKey.currency1,
-          fee: details.poolKey.fee,
-          hooks: details.poolKey.hooks
-        },
-        bandType,
-        hasSubscriber: details.hasSubscriber
-      });
-    } catch (err) {
-      console.error('Failed to enrich LP position from on-chain data', position.tokenId, err);
-
-      // Fallback to the raw Neynar-provided values if on-chain decoding fails
-      let bandType: EnrichedLpPosition['bandType'] = 'unknown';
-      if (currentTick < position.tickLower) {
-        bandType = 'upside_band';
-      } else if (currentTick > position.tickUpper) {
-        bandType = 'crash_band';
-      } else if (currentTick >= position.tickLower && currentTick <= position.tickUpper) {
-        bandType = 'in_range';
-      }
-
-      enriched.push({
-        ...position,
-        bandType
-      });
+  const enriched: EnrichedLpPosition[] = positions.map((position) => {
+    let bandType: EnrichedLpPosition['bandType'] = 'unknown';
+    if (currentTick < position.tickLower) {
+      bandType = 'upside_band';
+    } else if (currentTick > position.tickUpper) {
+      bandType = 'crash_band';
+    } else if (currentTick >= position.tickLower && currentTick <= position.tickUpper) {
+      bandType = 'in_range';
     }
-  }
+
+    return {
+      ...position,
+      bandType
+    };
+  });
 
   return {
     currentTick,
@@ -428,89 +231,44 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const lpResponse = await fetchLpPositions(address);
-    const allPositions = lpResponse.lpPositions || [];
+    const owner = address as Address;
+    const summary = await getUserPositionsSummary(owner);
+    const basePositions = summary.lpPositions || [];
 
-    // Fallback: check on-chain PositionManager balance so we still unlock the cabal
-    // even if the Neynar LP API doesn't yet index this network/pool.
-    let onchainBalance: bigint | null = null;
-    try {
-      const balance = (await publicClient.readContract({
-        address: POSITION_MANAGER_ADDRESS,
-        abi: erc721Abi,
-        functionName: 'balanceOf',
-        args: [address as `0x${string}`]
-      })) as bigint;
-      onchainBalance = balance;
-    } catch (err) {
-      console.error('LP NFT on-chain balanceOf check failed', err);
+    if (basePositions.length === 0) {
+      return NextResponse.json({
+        hasLpNft: summary.hasLpNft,
+        hasLpFromOnchain: summary.hasLpFromOnchain,
+        hasLpFromSubgraph: summary.hasLpFromSubgraph,
+        indexerPositionCount: summary.indexerPositionCount,
+        currentTick: 0,
+        sqrtPriceX96: '0',
+        lpPositions: []
+      });
     }
 
-    const hasOnchainLp = onchainBalance !== null && onchainBalance > BigInt(0);
-    const hasIndexerLp = !!lpResponse.hasLpNft;
-    const filteredPositions = allPositions.filter((position) =>
-      position.poolKey ? isTargetPool(position.poolKey) : false
-    );
-
-    // If the strict pool filter finds nothing but Neynar says the user has LP,
-    // fall back to returning all positions so the cabal gate still unlocks.
-    let positionsForUser: RawLpPosition[] =
-      filteredPositions.length > 0 || !lpResponse.hasLpNft ? filteredPositions : allPositions;
-
-    let usedLogsFallback = false;
-    let fallbackPositionCount = 0;
-
-    // On-chain says the user owns at least one LP NFT, but the indexer
-    // returned no positions. Reconstruct tokenIds from Transfer logs.
-    if (positionsForUser.length === 0 && hasOnchainLp) {
-      try {
-        const tokenIds = await getOwnedTokenIdsFromLogs(address as Address);
-        if (tokenIds.length > 0) {
-          usedLogsFallback = true;
-          const fallbackPositions: RawLpPosition[] = [];
-
-          for (const tokenId of tokenIds) {
-            try {
-              const details = await getPositionDetails(tokenId);
-              fallbackPositions.push({
-                tokenId,
-                liquidity: details.liquidity.toString(),
-                tickLower: details.tickLower,
-                tickUpper: details.tickUpper,
-                poolKey: {
-                  currency0: details.poolKey.currency0,
-                  currency1: details.poolKey.currency1,
-                  fee: details.poolKey.fee,
-                  hooks: details.poolKey.hooks
-                }
-              });
-            } catch (detailErr) {
-              console.error(
-                'Failed to reconstruct LP position details from logs tokenId=',
-                tokenId,
-                detailErr
-              );
-            }
-          }
-
-          positionsForUser = fallbackPositions;
-          fallbackPositionCount = fallbackPositions.length;
-        }
-      } catch (logsErr) {
-        console.error('Log-based LP NFT tokenId reconstruction failed', logsErr);
+    // Enrich positions with bandType using on-chain pool state for the
+    // canonical m00nad/WMON crash-band pool on Monad.
+    const rawPositions: RawLpPosition[] = basePositions.map((p) => ({
+      tokenId: p.tokenId.toString(),
+      liquidity: p.liquidity.toString(),
+      tickLower: p.tickLower,
+      tickUpper: p.tickUpper,
+      poolKey: {
+        currency0: p.poolKey.currency0,
+        currency1: p.poolKey.currency1,
+        fee: p.poolKey.fee,
+        hooks: p.poolKey.hooks
       }
-    }
+    }));
 
-    const { currentTick, sqrtPriceX96, lpPositions } = await enrichPositions(positionsForUser);
+    const { currentTick, sqrtPriceX96, lpPositions } = await enrichPositions(rawPositions);
 
     return NextResponse.json({
-      hasLpNft: hasIndexerLp || hasOnchainLp || lpPositions.length > 0,
-      hasLpFromIndexer: hasIndexerLp,
-      hasLpFromOnchain: hasOnchainLp,
-      hasLpFromLogsFallback: usedLogsFallback,
-      indexerPositionCount: allPositions.length,
-      filteredPositionCount: filteredPositions.length,
-      fallbackPositionCount,
+      hasLpNft: summary.hasLpNft || lpPositions.length > 0,
+      hasLpFromOnchain: summary.hasLpFromOnchain,
+      hasLpFromSubgraph: summary.hasLpFromSubgraph,
+      indexerPositionCount: summary.indexerPositionCount,
       currentTick,
       sqrtPriceX96: sqrtPriceX96.toString(),
       lpPositions
