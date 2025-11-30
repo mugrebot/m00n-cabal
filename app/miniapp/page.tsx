@@ -102,6 +102,8 @@ interface LpGateState {
   hasLpFromOnchain?: boolean;
   indexerPositionCount?: number;
   filteredPositionCount?: number;
+  hasLpFromLogsFallback?: boolean;
+  fallbackPositionCount?: number;
 }
 
 interface ReplyGlow {
@@ -357,6 +359,8 @@ function MiniAppPageInner() {
           hasLpFromOnchain?: boolean;
           indexerPositionCount?: number;
           filteredPositionCount?: number;
+          hasLpFromLogsFallback?: boolean;
+          fallbackPositionCount?: number;
         };
         if (cancelled) return;
 
@@ -376,7 +380,9 @@ function MiniAppPageInner() {
           hasLpFromIndexer: data.hasLpFromIndexer,
           hasLpFromOnchain: data.hasLpFromOnchain,
           indexerPositionCount: data.indexerPositionCount,
-          filteredPositionCount: data.filteredPositionCount
+          filteredPositionCount: data.filteredPositionCount,
+          hasLpFromLogsFallback: data.hasLpFromLogsFallback,
+          fallbackPositionCount: data.fallbackPositionCount
         });
       } catch (err) {
         console.error('LP gate lookup failed', err);
@@ -1689,6 +1695,8 @@ function MiniAppPageInner() {
       hasLpFromOnchain: lpGateState.hasLpFromOnchain,
       indexerPositionCount: lpGateState.indexerPositionCount,
       filteredPositionCount: lpGateState.filteredPositionCount,
+      hasLpFromLogsFallback: lpGateState.hasLpFromLogsFallback,
+      fallbackPositionCount: lpGateState.fallbackPositionCount,
       lpPositionCount: positionCount
     });
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Token } from '@uniswap/sdk-core';
 import { Pool } from '@uniswap/v4-sdk';
-import { createPublicClient, defineChain, erc721Abi, http, type Address } from 'viem';
+import { createPublicClient, defineChain, erc721Abi, http, parseAbiItem, type Address } from 'viem';
 
 const LP_API_URL = process.env.NEYNAR_LP_API_URL;
 const LP_API_KEY = process.env.NEYNAR_LP_API_KEY || process.env.NEYNAR_API_KEY || '';
@@ -69,6 +69,14 @@ const publicClient = createPublicClient({
   chain: monadChain,
   transport: http(monadRpcUrl)
 });
+
+// Best-effort deployment block for the v4 PositionManager on Monad.
+// This can be tightened later to reduce log scan range.
+const POSITION_MANAGER_DEPLOYMENT_BLOCK = BigInt(0);
+
+const transferEventAbi = parseAbiItem(
+  'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'
+);
 
 const stateViewAbi = [
   {
@@ -208,6 +216,48 @@ async function getPositionDetails(tokenId: string): Promise<PositionDetails> {
     poolKey,
     hasSubscriber: packed.hasSubscriber()
   };
+}
+
+/**
+ * Fallback: reconstruct current LP NFT ownership for an address by scanning
+ * on-chain Transfer events for the v4 PositionManager.
+ */
+async function getOwnedTokenIdsFromLogs(owner: Address): Promise<string[]> {
+  const owned = new Set<string>();
+
+  // Transfers *to* the owner add tokenIds.
+  const toLogs = await publicClient.getLogs({
+    address: POSITION_MANAGER_ADDRESS as Address,
+    event: transferEventAbi,
+    args: { to: owner },
+    fromBlock: POSITION_MANAGER_DEPLOYMENT_BLOCK,
+    toBlock: 'latest'
+  });
+
+  for (const log of toLogs) {
+    const tokenId = log.args?.tokenId as bigint | undefined;
+    if (tokenId !== undefined) {
+      owned.add(tokenId.toString());
+    }
+  }
+
+  // Transfers *from* the owner remove tokenIds.
+  const fromLogs = await publicClient.getLogs({
+    address: POSITION_MANAGER_ADDRESS as Address,
+    event: transferEventAbi,
+    args: { from: owner },
+    fromBlock: POSITION_MANAGER_DEPLOYMENT_BLOCK,
+    toBlock: 'latest'
+  });
+
+  for (const log of fromLogs) {
+    const tokenId = log.args?.tokenId as bigint | undefined;
+    if (tokenId !== undefined) {
+      owned.delete(tokenId.toString());
+    }
+  }
+
+  return Array.from(owned);
 }
 
 const normalizeAddress = (value: string) => value.toLowerCase();
@@ -404,8 +454,52 @@ export async function GET(request: NextRequest) {
 
     // If the strict pool filter finds nothing but Neynar says the user has LP,
     // fall back to returning all positions so the cabal gate still unlocks.
-    const positionsForUser =
+    let positionsForUser: RawLpPosition[] =
       filteredPositions.length > 0 || !lpResponse.hasLpNft ? filteredPositions : allPositions;
+
+    let usedLogsFallback = false;
+    let fallbackPositionCount = 0;
+
+    // On-chain says the user owns at least one LP NFT, but the indexer
+    // returned no positions. Reconstruct tokenIds from Transfer logs.
+    if (positionsForUser.length === 0 && hasOnchainLp) {
+      try {
+        const tokenIds = await getOwnedTokenIdsFromLogs(address as Address);
+        if (tokenIds.length > 0) {
+          usedLogsFallback = true;
+          const fallbackPositions: RawLpPosition[] = [];
+
+          for (const tokenId of tokenIds) {
+            try {
+              const details = await getPositionDetails(tokenId);
+              fallbackPositions.push({
+                tokenId,
+                liquidity: details.liquidity.toString(),
+                tickLower: details.tickLower,
+                tickUpper: details.tickUpper,
+                poolKey: {
+                  currency0: details.poolKey.currency0,
+                  currency1: details.poolKey.currency1,
+                  fee: details.poolKey.fee,
+                  hooks: details.poolKey.hooks
+                }
+              });
+            } catch (detailErr) {
+              console.error(
+                'Failed to reconstruct LP position details from logs tokenId=',
+                tokenId,
+                detailErr
+              );
+            }
+          }
+
+          positionsForUser = fallbackPositions;
+          fallbackPositionCount = fallbackPositions.length;
+        }
+      } catch (logsErr) {
+        console.error('Log-based LP NFT tokenId reconstruction failed', logsErr);
+      }
+    }
 
     const { currentTick, sqrtPriceX96, lpPositions } = await enrichPositions(positionsForUser);
 
@@ -413,8 +507,10 @@ export async function GET(request: NextRequest) {
       hasLpNft: hasIndexerLp || hasOnchainLp || lpPositions.length > 0,
       hasLpFromIndexer: hasIndexerLp,
       hasLpFromOnchain: hasOnchainLp,
+      hasLpFromLogsFallback: usedLogsFallback,
       indexerPositionCount: allPositions.length,
       filteredPositionCount: filteredPositions.length,
+      fallbackPositionCount,
       currentTick,
       sqrtPriceX96: sqrtPriceX96.toString(),
       lpPositions
