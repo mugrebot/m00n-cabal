@@ -463,6 +463,7 @@ function MiniAppPageInner() {
   const [primaryAddressMoonBalanceWei, setPrimaryAddressMoonBalanceWei] = useState<bigint | null>(
     null
   );
+  const [balanceProbeAddress, setBalanceProbeAddress] = useState<string | null>(null);
   const [primaryBalanceStatus, setPrimaryBalanceStatus] = useState<
     'idle' | 'loading' | 'error' | 'loaded'
   >('idle');
@@ -711,11 +712,12 @@ function MiniAppPageInner() {
       return;
     }
     if (!observationDeckEligible) {
-      showToast('error', 'Observation deck entry requires you to hold 1 million m00nad.');
+      const suffix = balanceProbeAddress ? ` on ${truncateAddress(balanceProbeAddress)}` : '';
+      showToast('error', `Observation deck needs ≥ 1M m00n${suffix}.`);
       return;
     }
     setIsObservationDeckOpen(true);
-  }, [observationDeckEligible, primaryBalanceStatus, showToast]);
+  }, [observationDeckEligible, primaryBalanceStatus, showToast, balanceProbeAddress]);
 
   const handleCloseObservationDeck = useCallback(() => {
     setIsObservationDeckOpen(false);
@@ -957,19 +959,23 @@ function MiniAppPageInner() {
   }, []);
 
   useEffect(() => {
-    if (!primaryAddress) {
+    const targetAddress = miniWalletAddress ?? primaryAddress;
+    setBalanceProbeAddress(targetAddress);
+
+    if (!targetAddress) {
       setPrimaryAddressMoonBalanceWei(null);
       setPrimaryBalanceStatus('idle');
       return;
     }
 
     let cancelled = false;
-    const address = primaryAddress;
 
     const fetchBalance = async () => {
       setPrimaryBalanceStatus('loading');
       try {
-        const response = await fetch(`/api/lp-funding?address=${address}`);
+        const response = await fetch(
+          `/api/lp-funding?address=${encodeURIComponent(targetAddress)}`
+        );
         if (!response.ok) {
           throw new Error('funding_lookup_failed');
         }
@@ -979,7 +985,7 @@ function MiniAppPageInner() {
         setPrimaryBalanceStatus('loaded');
       } catch (err) {
         if (cancelled) return;
-        console.error('Failed to fetch primary wallet m00n balance', err);
+        console.error('Failed to fetch wallet m00n balance', err);
         setPrimaryAddressMoonBalanceWei(null);
         setPrimaryBalanceStatus('error');
       }
@@ -990,7 +996,7 @@ function MiniAppPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [primaryAddress]);
+  }, [miniWalletAddress, primaryAddress]);
 
   useEffect(() => {
     if (!viewerContext?.fid) {
@@ -3484,7 +3490,7 @@ function MiniAppPageInner() {
               <span className="text-[10px] opacity-75">
                 {observationDeckEligible
                   ? 'Tap to view live LP telemetry'
-                  : 'Hold ≥ 1M m00n to unlock'}
+                  : 'Hold ≥ 1M m00n on connected wallet'}
               </span>
             </button>
             {!observationDeckEligible && renderBalanceButtons({ layout: 'row' })}
