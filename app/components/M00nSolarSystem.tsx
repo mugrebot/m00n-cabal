@@ -113,11 +113,22 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
       const centerPlanet = preparedPlanets[0];
       const satellitePlanets = preparedPlanets.slice(1);
       const baseDimension = Math.min(width, height);
-      const orbitBase =
+      const maxOrbitRadius = Math.max(
+        (centerPlanet?.radius ?? baseDimension * 0.12) + 12,
+        baseDimension * 0.18
+      );
+      const orbitBoundary = Math.max(baseDimension * 0.25, baseDimension / 2 - 18);
+      const safeOrbitLimit = Math.min(maxOrbitRadius, orbitBoundary);
+      const minOrbitBase =
         centerPlanet !== undefined
-          ? centerPlanet.radius + Math.max(28, baseDimension * 0.05)
-          : baseDimension * 0.18;
-      const orbitStep = baseDimension * 0.09;
+          ? centerPlanet.radius + Math.max(12, baseDimension * 0.04)
+          : baseDimension * 0.16;
+      const orbitBase = Math.min(minOrbitBase, safeOrbitLimit);
+      const availableBand = Math.max(0, safeOrbitLimit - orbitBase);
+      const orbitStep =
+        satellitePlanets.length > 0
+          ? availableBand / Math.max(satellitePlanets.length, 1)
+          : baseDimension * 0.08;
       const texture = textureRef.current;
       const renderStates: PlanetRenderState[] = [];
 
