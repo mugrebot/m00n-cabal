@@ -31,6 +31,7 @@ const HOOK_ADDRESS = '0x94f802a9efe4dd542fdbd77a25d9e69a6dc828cc';
 const FEE = 8_388_608;
 const TICK_SPACING = 200;
 const WMON_USDC_POOL_ID = '0x18a9fc874581f3ba12b7898f80a683c66fd5877fd74b26a85ba9a3a79c549954';
+const POOL_SAMPLE_SIZE = Number(process.env.M00N_SOLAR_POOL_SAMPLE_SIZE ?? 120);
 const SPECIAL_CLANKER_ID = '6914';
 
 const MONAD_CHAIN_ID = Number(process.env.MONAD_CHAIN_ID ?? 143);
@@ -57,9 +58,38 @@ const GET_WMON_PRICE = gql`
   }
 `;
 
+const GET_POOL_POSITIONS = gql`
+  query GetPoolPositions($poolId: String!, $first: Int!) {
+    positions(
+      where: { pool_: { id: $poolId } }
+      orderBy: tokenId
+      orderDirection: desc
+      first: $first
+    ) {
+      tokenId
+      owner
+    }
+  }
+`;
+
 const LOWER_MOON_ADDRESS = TOKEN_MOON_ADDRESS.toLowerCase();
 const LOWER_WMON_ADDRESS = TOKEN_WMON_ADDRESS.toLowerCase();
 const LOWER_HOOK_ADDRESS = HOOK_ADDRESS.toLowerCase();
+
+async function fetchPoolTokenIds(limit: number) {
+  try {
+    const data = (await graphClient.request(GET_POOL_POSITIONS, {
+      poolId: M00N_POOL_ID,
+      first: limit
+    })) as {
+      positions: Array<{ tokenId: string; owner: string }>;
+    };
+    return data.positions ?? [];
+  } catch (error) {
+    console.error('[m00nSolarSystem] Failed to fetch pool tokenIds', error);
+    return [];
+  }
+}
 
 async function getWmonUsdPrice(): Promise<number | null> {
   try {
@@ -105,6 +135,20 @@ export async function getTopM00nLpPositions(limit = 8): Promise<LpPosition[]> {
       });
     } catch (error) {
       console.warn('[m00nSolarSystem] Failed to load position ids for', address, error);
+    }
+  }
+
+  const poolPositions = await fetchPoolTokenIds(POOL_SAMPLE_SIZE);
+  for (const entry of poolPositions) {
+    if (!entry.tokenId) continue;
+    try {
+      const id = BigInt(entry.tokenId);
+      tokenIdSet.add(id);
+      if (entry.owner) {
+        ownerMap.set(entry.tokenId, entry.owner);
+      }
+    } catch {
+      // ignore malformed ids
     }
   }
 

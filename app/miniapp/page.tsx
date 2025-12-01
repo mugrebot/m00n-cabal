@@ -462,6 +462,7 @@ function MiniAppPageInner() {
   >('idle');
   const [solarCanvasSize, setSolarCanvasSize] = useState(420);
   const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
+  const [isEmojiManagerVisible, setIsEmojiManagerVisible] = useState(false);
 
   const hasAnyLp = useMemo(
     () => (lpGateState.lpPositions?.length ?? 0) > 0,
@@ -680,6 +681,12 @@ function MiniAppPageInner() {
       setAdminPortalView('default');
     }
   }, [isAdmin, adminPortalView]);
+
+  useEffect(() => {
+    if (!hasAnyLp && isEmojiManagerVisible) {
+      setIsEmojiManagerVisible(false);
+    }
+  }, [hasAnyLp, isEmojiManagerVisible]);
 
   const fallingStickers = useMemo(
     () =>
@@ -2231,6 +2238,95 @@ function MiniAppPageInner() {
     );
   };
 
+  const renderSigilPreview = ({
+    title = 'LP Sigils',
+    subtitle,
+    filter,
+    limit = 2,
+    emptyLabel
+  }: {
+    title?: string;
+    subtitle?: string;
+    filter?: 'crash_band' | 'upside_band';
+    limit?: number;
+    emptyLabel?: string;
+  }) => {
+    const { token0TotalSupply, token0CirculatingSupply, poolWmonUsdPrice } = lpGateState;
+    const allPositions = (lpGateState.lpPositions ?? []).filter((position) =>
+      filter ? position.bandType === filter : true
+    );
+
+    if (allPositions.length === 0) {
+      if (emptyLabel) {
+        return <div className={`${PANEL_CLASS} text-sm opacity-70 text-center`}>{emptyLabel}</div>;
+      }
+      return null;
+    }
+
+    const positions = allPositions.slice(0, limit);
+    const extraCount = allPositions.length - positions.length;
+
+    return (
+      <div className={`${PANEL_CLASS} text-left space-y-3`}>
+        <div>
+          <p className="text-lg font-semibold">{title}</p>
+          {subtitle && <p className="text-xs opacity-70">{subtitle}</p>}
+        </div>
+        {positions.map((position) => {
+          const fdvRange = formatMarketCapRange(
+            position.priceLowerInToken1,
+            position.priceUpperInToken1,
+            token0TotalSupply,
+            poolWmonUsdPrice
+          );
+          const circRange = formatMarketCapRange(
+            position.priceLowerInToken1,
+            position.priceUpperInToken1,
+            token0CirculatingSupply,
+            poolWmonUsdPrice
+          );
+          return (
+            <div key={position.tokenId} className="space-y-2 border border-white/5 rounded-2xl p-3">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <div>
+                  <p className="font-semibold">Sigil #{position.tokenId}</p>
+                  <p className="text-[11px] opacity-65">
+                    Tick {position.tickLower} → {position.tickUpper}
+                  </p>
+                </div>
+                <div className="text-right text-[11px] font-mono opacity-70">
+                  <p>{formatTokenDisplay(position.token0)}</p>
+                  <p>{formatTokenDisplay(position.token1)}</p>
+                </div>
+              </div>
+              {(fdvRange !== '–' || circRange !== '–') && (
+                <div className="text-[10px] uppercase tracking-[0.35em] text-white/70 space-y-1">
+                  {fdvRange !== '–' && (
+                    <p className="flex justify-between">
+                      <span className="opacity-55">FDV</span>
+                      <span>{fdvRange}</span>
+                    </p>
+                  )}
+                  {circRange !== '–' && (
+                    <p className="flex justify-between">
+                      <span className="opacity-55">CIRC</span>
+                      <span>{circRange}</span>
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {extraCount > 0 && (
+          <p className="text-[11px] uppercase tracking-[0.35em] opacity-60">
+            +{extraCount} more sigils detected.
+          </p>
+        )}
+      </div>
+    );
+  };
+
   const renderLeaderboardVisualizer = (
     entries: LeaderboardEntry[] | undefined,
     { title, subtitle, emptyLabel }: { title: string; subtitle?: string; emptyLabel?: string }
@@ -2352,56 +2448,6 @@ function MiniAppPageInner() {
       lpState: { status: lpStatus, positionCount }
     });
     const showLoader = lpStatus === 'CHECKING';
-    const previewPositions = (lpPositions ?? []).slice(0, 2);
-
-    const positionsPreview =
-      lpStatus === 'HAS_LP' && positionCount > 0 ? (
-        <div className={`${PANEL_CLASS} text-left space-y-3`}>
-          <p className="uppercase text-[var(--moss-green)] text-[11px] tracking-[0.4em]">
-            LP SIGILS
-          </p>
-          {previewPositions.map((position) => {
-            const fdvRange = formatMarketCapRange(
-              position.priceLowerInToken1,
-              position.priceUpperInToken1,
-              lpGateState.token0TotalSupply,
-              lpGateState.poolWmonUsdPrice
-            );
-            const circRange = formatMarketCapRange(
-              position.priceLowerInToken1,
-              position.priceUpperInToken1,
-              lpGateState.token0CirculatingSupply,
-              lpGateState.poolWmonUsdPrice
-            );
-            return (
-              <div key={position.tokenId} className="text-sm opacity-85 space-y-1">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-semibold">Sigil #{position.tokenId}</p>
-                  {position.bandType && (
-                    <span className="text-[10px] uppercase tracking-[0.3em] text-[var(--moss-green)]">
-                      {describeBandTypeLabel(position.bandType)}
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs opacity-70">
-                  Tick band: {position.tickLower} → {position.tickUpper}
-                </p>
-                <div className="text-xs text-white/70 space-y-0.5 font-mono">
-                  <p>{formatTokenDisplay(position.token0)}</p>
-                  <p>{formatTokenDisplay(position.token1)}</p>
-                </div>
-                {fdvRange !== '–' && <p className="text-[11px] text-white/60">FDV: {fdvRange}</p>}
-                {circRange !== '–' && (
-                  <p className="text-[11px] text-white/60">Circulating: {circRange}</p>
-                )}
-              </div>
-            );
-          })}
-          {positionCount > 2 && (
-            <p className="text-xs opacity-60">+{positionCount - 2} more sigils detected.</p>
-          )}
-        </div>
-      ) : null;
 
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
@@ -2433,7 +2479,11 @@ function MiniAppPageInner() {
             </button>
           </div>
           {renderPersonaCtas(copy, { disablePrimary: lpStatus === 'CHECKING' })}
-          {positionsPreview}
+          {renderSigilPreview({
+            title: 'LP Sigils',
+            subtitle: 'Sigils currently gating this portal.',
+            limit: 2
+          })}
           <div className="text-xs opacity-60">
             Need help?{' '}
             <button onClick={handleOpenLpDocs} className="underline hover:text-white transition">
@@ -2606,6 +2656,13 @@ function MiniAppPageInner() {
             </div>
             {renderPersonaStatsCard()}
           </div>
+          {renderSigilPreview({
+            title: 'Sky Ladder Sigils',
+            subtitle: 'Single-sided upside bands already on-chain.',
+            filter: 'upside_band',
+            limit: 3,
+            emptyLabel: 'No upside sigils yet — deploy one to unlock this panel.'
+          })}
           {showManager ? (
             renderPositionManager({
               title: 'Holder Band Manager',
@@ -2683,6 +2740,13 @@ function MiniAppPageInner() {
             </div>
             {renderPersonaStatsCard()}
           </div>
+          {renderSigilPreview({
+            title: 'Crash Backstop Sigils',
+            subtitle: 'WMON single-sided bands staged beneath spot.',
+            filter: 'crash_band',
+            limit: 3,
+            emptyLabel: 'No crash bands yet — deploy one to anchor the downside.'
+          })}
           {showManager ? (
             renderPositionManager({
               title: 'Crash Band Manager',
@@ -2728,7 +2792,6 @@ function MiniAppPageInner() {
   };
 
   const renderEmojiChatPortal = () => {
-    const showManager = hasAnyLp;
     const updatedStamp =
       solarSystemStatus === 'loaded' && solarSystemData?.updatedAt
         ? new Date(solarSystemData.updatedAt).toLocaleTimeString([], {
@@ -2738,14 +2801,21 @@ function MiniAppPageInner() {
         : null;
 
     const renderSolarSystem = () => {
-      if (solarSystemStatus === 'loaded' && solarSystemData?.positions?.length) {
+      if (solarSystemStatus === 'loaded') {
+        if (solarSystemData?.positions?.length) {
+          return (
+            <div className="flex w-full justify-center">
+              <M00nSolarSystem
+                positions={solarSystemData.positions}
+                width={solarCanvasSize}
+                height={solarCanvasSize}
+              />
+            </div>
+          );
+        }
         return (
-          <div className="flex w-full justify-center">
-            <M00nSolarSystem
-              positions={solarSystemData.positions}
-              width={solarCanvasSize}
-              height={solarCanvasSize}
-            />
+          <div className={`${PANEL_CLASS} text-center text-sm text-white/70`}>
+            Solar telemetry synced, but no sigils were returned. Try again shortly.
           </div>
         );
       }
@@ -2784,6 +2854,12 @@ function MiniAppPageInner() {
             )}
           </div>
           {renderSolarSystem()}
+          {hasAnyLp &&
+            renderSigilPreview({
+              title: 'Your LP Sigils',
+              subtitle: 'Hold tight — heaven’s gate recognizes your sigils.',
+              limit: 2
+            })}
           {personaLookupStatus === 'loading' && (
             <p className="text-center text-xs text-yellow-300">Syncing cabal dossier…</p>
           )}
@@ -2799,13 +2875,22 @@ function MiniAppPageInner() {
               LAUNCH m00nLANDER
             </button>
             {hasAnyLp ? (
-              <button
-                type="button"
-                onClick={() => setIsLpLoungeOpen(true)}
-                className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
-              >
-                ENTER LP LOUNGE
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsEmojiManagerVisible((prev) => !prev)}
+                  className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  {isEmojiManagerVisible ? 'HIDE SIGIL MANAGER' : 'SHOW SIGIL MANAGER'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsLpLoungeOpen(true)}
+                  className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  ENTER LP LOUNGE
+                </button>
+              </>
             ) : (
               <button
                 type="button"
@@ -2816,11 +2901,11 @@ function MiniAppPageInner() {
               </button>
             )}
           </div>
-          {showManager && (
+          {hasAnyLp && isEmojiManagerVisible && (
             <div className="pt-2">
               {renderPositionManager({
                 title: 'Sigil Manager',
-                subtitle: 'Your LP sigils that currently grant access.'
+                subtitle: 'Manage the sigils currently granting access.'
               })}
             </div>
           )}
