@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { buildSolarSystemPayload, type SolarSystemPayload } from '@/app/lib/lpTelemetry';
 import { readSolarSystemSnapshot, writeSolarSystemSnapshot } from '@/app/lib/lpTelemetryStore';
 
-const FALLBACK_REBUILD_ENABLED = process.env.NODE_ENV !== 'production';
+const FALLBACK_REBUILD_ENABLED =
+  process.env.LP_SOLAR_SYSTEM_DISABLE_ON_DEMAND === '1' ? false : true;
 const DEFAULT_LIMIT = 8;
 const MAX_LIMIT = 12;
 
@@ -21,13 +22,19 @@ export async function GET(request: NextRequest) {
   try {
     let payload = await readSolarSystemSnapshot();
 
-    if (!payload && FALLBACK_REBUILD_ENABLED) {
-      payload = await buildSolarSystemPayload(MAX_LIMIT);
-      await writeSolarSystemSnapshot(payload);
-    }
-
     if (!payload) {
-      return NextResponse.json({ error: 'lp_solar_system_unavailable' }, { status: 503 });
+      if (FALLBACK_REBUILD_ENABLED) {
+        try {
+          payload = await buildSolarSystemPayload(MAX_LIMIT);
+          await writeSolarSystemSnapshot(payload);
+        } catch (error) {
+          console.error('[lp-solar-system] on-demand rebuild failed', error);
+        }
+      }
+
+      if (!payload) {
+        return NextResponse.json({ error: 'lp_solar_system_unavailable' }, { status: 503 });
+      }
     }
 
     return NextResponse.json(formatResponse(payload, limit));

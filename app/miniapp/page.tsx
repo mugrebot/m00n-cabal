@@ -2158,6 +2158,7 @@ function MiniAppPageInner() {
     subtitle?: string;
     filter?: 'crash_band' | 'upside_band';
   }) => {
+    const { token0TotalSupply, token0CirculatingSupply, poolWmonUsdPrice } = lpGateState;
     const positions = (lpGateState.lpPositions ?? []).filter((position) =>
       filter ? position.bandType === filter : true
     );
@@ -2190,6 +2191,39 @@ function MiniAppPageInner() {
                 </div>
               </div>
               {renderMoonMeter(position)}
+              {(() => {
+                const fdvRange = formatMarketCapRange(
+                  position.priceLowerInToken1,
+                  position.priceUpperInToken1,
+                  token0TotalSupply,
+                  poolWmonUsdPrice
+                );
+                const circRange = formatMarketCapRange(
+                  position.priceLowerInToken1,
+                  position.priceUpperInToken1,
+                  token0CirculatingSupply,
+                  poolWmonUsdPrice
+                );
+                if (fdvRange === '–' && circRange === '–') {
+                  return null;
+                }
+                return (
+                  <div className="text-[11px] uppercase tracking-[0.35em] text-white/70 space-y-1">
+                    {fdvRange !== '–' && (
+                      <p className="flex justify-between text-[10px] tracking-[0.25em]">
+                        <span className="opacity-60">FDV</span>
+                        <span>{fdvRange}</span>
+                      </p>
+                    )}
+                    {circRange !== '–' && (
+                      <p className="flex justify-between text-[10px] tracking-[0.25em]">
+                        <span className="opacity-60">CIRC</span>
+                        <span>{circRange}</span>
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           ))}
         </div>
