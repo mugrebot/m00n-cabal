@@ -1,6 +1,6 @@
 import { getTopM00nLpPositions } from '@/app/lib/m00nSolarSystem.server';
 import type { LpPosition } from '@/app/lib/m00nSolarSystem.types';
-import { loadAddressLabelMap } from '@/app/lib/addressLabels';
+import { getAddressLabel } from '@/app/lib/addressLabels';
 import { getWmonUsdPriceFromSubgraph } from '@/app/lib/pricing/monadPrices';
 
 // -----------------------------
@@ -26,16 +26,6 @@ export async function buildSolarSystemPayload(limit = 12): Promise<SolarSystemPa
 // -----------------------------
 // Leaderboard payload builder
 // -----------------------------
-
-const getAddressLabel = (address: string): string | null => {
-  if (!address) return null;
-  const labels = loadAddressLabelMap();
-  const record = labels.get(address.toLowerCase());
-  if (!record) return null;
-  if (record.username) return record.username;
-  if (record.fid) return `FID ${record.fid}`;
-  return null;
-};
 
 type BandType = 'crash_band' | 'upside_band' | 'in_range';
 

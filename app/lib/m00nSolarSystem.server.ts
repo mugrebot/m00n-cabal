@@ -7,7 +7,7 @@ import { Pool } from '@uniswap/v4-sdk';
 import { Token } from '@uniswap/sdk-core';
 import { formatUnits, type Address } from 'viem';
 
-import { loadAddressLabelMap } from '@/app/lib/addressLabels';
+import { getAddressLabel, loadAddressLabelMap } from '@/app/lib/addressLabels';
 import {
   computePositionValueUsd,
   enrichManyPositionsWithAmounts,
@@ -407,14 +407,7 @@ export async function getTopM00nLpPositions(limit = 8): Promise<LpPosition[]> {
       ? Math.pow(1.0001, enriched[0].currentTick) * wmonPriceUsd
       : null;
 
-  const resolveOwnerLabel = (owner: string): string | null => {
-    if (!owner) return null;
-    const record = labels.get(owner.toLowerCase());
-    if (!record) return null;
-    if (record.username) return record.username;
-    if (record.fid) return `FID ${record.fid}`;
-    return null;
-  };
+  const resolveOwnerLabel = (owner: string): string | null => getAddressLabel(owner);
 
   const entries: LpPosition[] = enriched.map((position) => {
     const tokenId = position.tokenId.toString();

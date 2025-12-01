@@ -1,5 +1,4 @@
 if (typeof process !== 'undefined' && process.env.NEXT_RUNTIME) {
-   
   import('server-only');
 }
 
@@ -72,4 +71,14 @@ export const loadAddressLabelMap = (): Map<string, AddressLabelRecord> => {
   }
 
   return cache!;
+};
+
+export const getAddressLabel = (address: string): string | null => {
+  if (!address) return null;
+  const labels = loadAddressLabelMap();
+  const record = labels.get(address.toLowerCase());
+  if (!record) return null;
+  if (record.username) return record.username;
+  if (record.fid) return `FID ${record.fid}`;
+  return null;
 };
