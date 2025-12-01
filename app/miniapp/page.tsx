@@ -458,7 +458,7 @@ function MiniAppPageInner() {
     updatedAt: string;
   } | null>(null);
   const [solarSystemStatus, setSolarSystemStatus] = useState<
-    'idle' | 'loading' | 'error' | 'loaded'
+    'idle' | 'loading' | 'error' | 'loaded' | 'empty'
   >('idle');
   const [solarCanvasSize, setSolarCanvasSize] = useState(420);
   const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
@@ -521,8 +521,13 @@ function MiniAppPageInner() {
           updatedAt: string;
         };
         if (!cancelled) {
-          setSolarSystemData(data);
-          setSolarSystemStatus('loaded');
+          const hasPositions = Array.isArray(data.positions) && data.positions.length > 0;
+          if (hasPositions) {
+            setSolarSystemData(data);
+            setSolarSystemStatus('loaded');
+          } else {
+            setSolarSystemStatus('empty');
+          }
         }
       } catch (error) {
         console.error('Solar system fetch failed', error);
@@ -2801,21 +2806,22 @@ function MiniAppPageInner() {
         : null;
 
     const renderSolarSystem = () => {
-      if (solarSystemStatus === 'loaded') {
-        if (solarSystemData?.positions?.length) {
-          return (
-            <div className="flex w-full justify-center">
-              <M00nSolarSystem
-                positions={solarSystemData.positions}
-                width={solarCanvasSize}
-                height={solarCanvasSize}
-              />
-            </div>
-          );
-        }
+      if (solarSystemStatus === 'loaded' && solarSystemData?.positions?.length) {
+        return (
+          <div className="flex w-full justify-center">
+            <M00nSolarSystem
+              positions={solarSystemData.positions}
+              width={solarCanvasSize}
+              height={solarCanvasSize}
+            />
+          </div>
+        );
+      }
+      if (solarSystemStatus === 'empty') {
         return (
           <div className={`${PANEL_CLASS} text-center text-sm text-white/70`}>
-            Solar telemetry synced, but no sigils were returned. Try again shortly.
+            Solar telemetry snapshot came back empty. Control is rebuilding the sigil index — try
+            again shortly.
           </div>
         );
       }

@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GraphQLClient, gql } from 'graphql-request';
 import { formatUnits, type Address } from 'viem';
 import {
   getUserPositionsSummary,
   enrichManyPositionsWithAmounts,
   type PositionWithAmounts
 } from '../../lib/uniswapV4Positions';
+import { getWmonUsdPriceFromSubgraph } from '@/app/lib/pricing/monadPrices';
 
 interface LpPoolKey {
   currency0: string;
@@ -134,95 +134,6 @@ const serializePosition = (position: PositionWithAmounts): LpPositionApi => {
     priceUpperInToken1: priceUpper.toString()
   };
 };
-
-const UNISWAP_V4_SUBGRAPH_ID = '3kaAG19ytkGfu8xD7YAAZ3qAQ3UDJRkmKH2kHUuyGHah';
-const THE_GRAPH_API_KEY =
-  (typeof process !== 'undefined' && process.env.THE_GRAPH_API_KEY) ||
-  (typeof process !== 'undefined' && process.env.THEGRAPH_API_KEY) ||
-  '';
-const UNISWAP_V4_SUBGRAPH_URL =
-  (typeof process !== 'undefined' && process.env.UNISWAP_V4_SUBGRAPH_URL?.trim()) ||
-  `https://gateway.thegraph.com/api/${THE_GRAPH_API_KEY}/subgraphs/id/${UNISWAP_V4_SUBGRAPH_ID}`;
-
-const graphClient =
-  THE_GRAPH_API_KEY || process.env.UNISWAP_V4_SUBGRAPH_URL
-    ? new GraphQLClient(UNISWAP_V4_SUBGRAPH_URL)
-    : null;
-
-const WMON_WRAPPED_ADDRESS = '0x3bd359c1119da7da1d913d1c4d2b7c461115433a';
-const MON_NATIVE_SENTINEL = '0x0000000000000000000000000000000000000000';
-const USDC_ADDRESS = '0x754704bc059f8c67012fed69bc8a327a5aafb603';
-const WMON_USDC_POOL_ID = '0x18a9fc874581f3ba12b7898f80a683c66fd5877fd74b26a85ba9a3a79c549954';
-
-const GET_WMON_USDC_POOL = gql`
-  query GetWmonUsdcPool($id: ID!) {
-    pool(id: $id) {
-      id
-      feeTier
-      token0Price
-      token1Price
-      token0 {
-        id
-        symbol
-      }
-      token1 {
-        id
-        symbol
-      }
-    }
-  }
-`;
-
-async function getWmonUsdPriceFromSubgraph(): Promise<number | null> {
-  if (!graphClient) return null;
-  try {
-    const data = (await graphClient.request(GET_WMON_USDC_POOL, {
-      id: WMON_USDC_POOL_ID.toLowerCase()
-    })) as {
-      pool?: {
-        token0Price: string;
-        token1Price: string;
-        token0: { id: string };
-        token1: { id: string };
-      };
-    };
-
-    const pool = data.pool;
-    if (!pool) return null;
-
-    const token0Id = pool.token0.id.toLowerCase();
-    const token1Id = pool.token1.id.toLowerCase();
-
-    if (token0Id === MON_NATIVE_SENTINEL.toLowerCase() && token1Id === USDC_ADDRESS.toLowerCase()) {
-      return Number(pool.token1Price);
-    }
-    if (token1Id === MON_NATIVE_SENTINEL.toLowerCase() && token0Id === USDC_ADDRESS.toLowerCase()) {
-      const price = Number(pool.token0Price);
-      if (price === 0) return null;
-      return price;
-    }
-
-    if (
-      token0Id === WMON_WRAPPED_ADDRESS.toLowerCase() &&
-      token1Id === USDC_ADDRESS.toLowerCase()
-    ) {
-      return Number(pool.token0Price);
-    }
-    if (
-      token1Id === WMON_WRAPPED_ADDRESS.toLowerCase() &&
-      token0Id === USDC_ADDRESS.toLowerCase()
-    ) {
-      const price = Number(pool.token1Price);
-      if (price === 0) return null;
-      return 1 / price;
-    }
-
-    return null;
-  } catch (error) {
-    console.warn('Failed to fetch WMON/USD price from subgraph', error);
-    return null;
-  }
-}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;

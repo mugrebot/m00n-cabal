@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { buildSolarSystemPayload, type SolarSystemPayload } from '@/app/lib/lpTelemetry';
 import { readSolarSystemSnapshot, writeSolarSystemSnapshot } from '@/app/lib/lpTelemetryStore';
 
-const FALLBACK_REBUILD_ENABLED =
-  process.env.LP_SOLAR_SYSTEM_DISABLE_ON_DEMAND === '1' ? false : true;
+const FALLBACK_REBUILD_ENABLED = process.env.LP_SOLAR_SYSTEM_ON_DEMAND === '1';
 const DEFAULT_LIMIT = 8;
 const MAX_LIMIT = 12;
 
@@ -37,7 +36,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(formatResponse(payload, limit));
+    return NextResponse.json(formatResponse(payload, limit), {
+      headers: {
+        'Cache-Control': 's-maxage=60, stale-while-revalidate=300'
+      }
+    });
   } catch (error) {
     console.error('[lp-solar-system] failed to serve snapshot', error);
     return NextResponse.json({ error: 'lp_solar_system_failed' }, { status: 500 });
