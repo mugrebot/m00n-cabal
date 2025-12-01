@@ -407,8 +407,20 @@ export async function getTopM00nLpPositions(limit = 8): Promise<LpPosition[]> {
       ? Math.pow(1.0001, enriched[0].currentTick) * wmonPriceUsd
       : null;
 
+  const resolveOwnerLabel = (owner: string): string | null => {
+    if (!owner) return null;
+    const record = labels.get(owner.toLowerCase());
+    if (!record) return null;
+    if (record.username) return record.username;
+    if (record.fid) return `FID ${record.fid}`;
+    return null;
+  };
+
   const entries: LpPosition[] = enriched.map((position) => {
-    const owner = ownerMap.get(position.tokenId.toString()) ?? '0x0';
+    const tokenId = position.tokenId.toString();
+    const isClankerPool = tokenId === SPECIAL_CLANKER_ID;
+    const owner = ownerMap.get(tokenId) ?? '0x0';
+    const label = isClankerPool ? 'Clanker Pool' : resolveOwnerLabel(owner);
 
     let notionalUsd = 0;
     if (moonPriceUsd !== null && wmonPriceUsd !== null) {
@@ -423,11 +435,12 @@ export async function getTopM00nLpPositions(limit = 8): Promise<LpPosition[]> {
 
     return {
       owner,
-      tokenId: position.tokenId.toString(),
+      label,
+      tokenId,
       notionalUsd,
       notionalToken0: Number(formatUnits(position.amount0, 18)),
       notionalToken1: Number(formatUnits(position.amount1, 18)),
-      isClankerPool: position.tokenId.toString() === SPECIAL_CLANKER_ID,
+      isClankerPool,
       tickLower: position.tickLower,
       tickUpper: position.tickUpper,
       rangeStatus: position.rangeStatus,

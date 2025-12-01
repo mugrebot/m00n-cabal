@@ -2,6 +2,7 @@ export type RangeStatus = 'below-range' | 'in-range' | 'above-range';
 
 export interface LpPosition {
   owner: string;
+  label?: string | null;
   tokenId: string;
   notionalUsd: number;
   notionalToken0?: number;

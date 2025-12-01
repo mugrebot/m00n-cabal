@@ -99,7 +99,7 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
 
     const draw = (time: number) => {
       if (cancelled || !textureRef.current) return;
-      ctx.fillStyle = '#03030b';
+      ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, width, height);
       stars.forEach((star) => {
         ctx.fillStyle = `rgba(255,255,255,${star.alpha})`;
@@ -116,7 +116,7 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
       const texture = textureRef.current;
       const renderStates: PlanetRenderState[] = [];
 
-      const drawPlanet = (planet: PreparedPlanet, x: number, y: number, glow = false) => {
+      const drawPlanet = (planet: PreparedPlanet, x: number, y: number) => {
         const planetRadius = planet.radius;
         const diameter = planetRadius * 2;
         ctx.save();
@@ -125,17 +125,11 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
         ctx.clip();
         ctx.drawImage(texture, x - planetRadius, y - planetRadius, diameter, diameter);
         ctx.restore();
-
-        ctx.strokeStyle = glow ? 'rgba(174, 117, 255, 0.65)' : 'rgba(255,255,255,0.35)';
-        ctx.lineWidth = glow ? 3 : 1;
-        ctx.beginPath();
-        ctx.arc(x, y, planetRadius, 0, Math.PI * 2);
-        ctx.stroke();
       };
 
       // Center planet
       const centerPlanet = preparedPlanets[0];
-      drawPlanet(centerPlanet, centerX, centerY, true);
+      drawPlanet(centerPlanet, centerX, centerY);
       renderStates.push({ idx: 0, x: centerX, y: centerY, radius: centerPlanet.radius });
 
       satellitePlanets.forEach((planet, satelliteIdx) => {
@@ -148,7 +142,7 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
           rotationSpeed: 0.00012
         });
 
-        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.arc(centerX, centerY, orbitRadius, 0, Math.PI * 2);
@@ -200,6 +194,12 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
     };
   }, [preparedPlanets, width, height, stars]);
 
+  const getDisplayName = useCallback(
+    (entry: PreparedPlanet) =>
+      entry.isClankerPool ? 'Clanker Pool' : (entry.label ?? truncateAddress(entry.owner)),
+    []
+  );
+
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
       if (!canvasRef.current || preparedPlanets.length === 0) return;
@@ -233,7 +233,7 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
 
   if (preparedPlanets.length === 0) {
     return (
-      <div className="relative w-full rounded-3xl border border-white/10 bg-black/60 p-6 text-center text-sm text-white/70">
+      <div className="relative w-full rounded-3xl bg-black/80 p-6 text-center text-sm text-white/70 shadow-[0_0_30px_rgba(0,0,0,0.45)]">
         LP telemetry unavailable. Waiting for sigils to report in…
       </div>
     );
@@ -247,9 +247,7 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
         top: Math.max(tooltip.y - 100, 8)
       }}
     >
-      <p className="font-semibold text-[var(--monad-purple)]">
-        {tooltip.entry.isClankerPool ? 'Clanker Pool' : truncateAddress(tooltip.entry.owner)}
-      </p>
+      <p className="font-semibold text-[var(--monad-purple)]">{getDisplayName(tooltip.entry)}</p>
       <p className="mt-1 text-sm font-semibold">{formatUsd(tooltip.entry.notionalUsd)}</p>
       <p className="text-[11px] text-white/70">
         {(tooltip.entry.share * 100).toFixed(1)}% of LP notional
@@ -264,7 +262,7 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
 
   return (
     <div
-      className="relative mx-auto flex w-full max-w-full flex-col items-center justify-center rounded-[32px] border border-white/10 bg-gradient-to-b from-black/90 to-black/60 p-4 text-white"
+      className="relative mx-auto flex w-full max-w-full flex-col items-center justify-center rounded-[32px] bg-black p-4 text-white shadow-[0_0_60px_rgba(0,0,0,0.65)]"
       style={{ width, height }}
     >
       <canvas

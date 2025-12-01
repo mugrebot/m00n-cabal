@@ -1,4 +1,5 @@
 import M00nSolarSystem from '@/app/components/M00nSolarSystem';
+import { formatUsd } from '@/app/lib/m00nSolarSystem';
 import { buildSolarSystemPayload } from '@/app/lib/lpTelemetry';
 import { readSolarSystemSnapshot } from '@/app/lib/lpTelemetryStore';
 
@@ -28,6 +29,11 @@ export default async function SolarDebugPage() {
     );
   }
 
+  const totalNotionalUsd = payload.positions.reduce(
+    (acc, position) => acc + Math.max(position.notionalUsd, 0),
+    0
+  );
+
   return (
     <main className="min-h-screen bg-black text-white p-6 space-y-6">
       <div className="space-y-2 text-center">
@@ -35,11 +41,24 @@ export default async function SolarDebugPage() {
         <p className="text-sm opacity-75">Updated {new Date(payload.updatedAt).toLocaleString()}</p>
       </div>
 
+      <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-center gap-4">
+        <div className="flex min-w-[220px] flex-col rounded-2xl bg-black/80 p-4 text-center shadow-[0_0_30px_rgba(0,0,0,0.45)]">
+          <span className="text-xs uppercase tracking-[0.2em] text-white/50">
+            Total LP Notional
+          </span>
+          <span className="text-2xl font-semibold">{formatUsd(totalNotionalUsd)}</span>
+        </div>
+        <div className="flex min-w-[220px] flex-col rounded-2xl bg-black/80 p-4 text-center shadow-[0_0_30px_rgba(0,0,0,0.45)]">
+          <span className="text-xs uppercase tracking-[0.2em] text-white/50">Sigils</span>
+          <span className="text-2xl font-semibold">{payload.positions.length}</span>
+        </div>
+      </div>
+
       <div className="flex justify-center">
         <M00nSolarSystem positions={payload.positions} width={640} height={640} />
       </div>
 
-      <section className="bg-white/5 rounded-xl p-4 overflow-auto text-xs leading-relaxed">
+      <section className="rounded-2xl border border-white/5 bg-black/80 p-4 text-xs leading-relaxed">
         <pre className="whitespace-pre-wrap break-all">{JSON.stringify(payload, null, 2)}</pre>
       </section>
     </main>
