@@ -1,4 +1,7 @@
-import 'server-only';
+if (typeof process !== 'undefined' && process.env.NEXT_RUNTIME) {
+   
+  import('server-only');
+}
 
 import { GraphQLClient, gql } from 'graphql-request';
 import { Pool } from '@uniswap/v4-sdk';
@@ -33,6 +36,7 @@ const TICK_SPACING = 200;
 const WMON_USDC_POOL_ID = '0x18a9fc874581f3ba12b7898f80a683c66fd5877fd74b26a85ba9a3a79c549954';
 const POOL_SAMPLE_SIZE = Number(process.env.M00N_SOLAR_POOL_SAMPLE_SIZE ?? 120);
 const SPECIAL_CLANKER_ID = '6914';
+const FALLBACK_M00N_POOL_ID = '0x4934249c6914ae7cfb16d19a069437811a2d119d3785ca2e8188e8606be54abd';
 
 const MONAD_CHAIN_ID = Number(process.env.MONAD_CHAIN_ID ?? 143);
 
@@ -41,7 +45,18 @@ const wmonToken = new Token(MONAD_CHAIN_ID, TOKEN_WMON_ADDRESS, 18, 'WMON', 'Wra
 const [token0, token1] = moonToken.sortsBefore(wmonToken)
   ? [moonToken, wmonToken]
   : [wmonToken, moonToken];
-const M00N_POOL_ID = Pool.getPoolId(token0, token1, FEE, TICK_SPACING, HOOK_ADDRESS).toLowerCase();
+const computedPoolId = Pool.getPoolId(
+  token0,
+  token1,
+  FEE,
+  TICK_SPACING,
+  HOOK_ADDRESS
+).toLowerCase();
+const M00N_POOL_ID = (
+  process.env.M00N_POOL_ID ??
+  FALLBACK_M00N_POOL_ID ??
+  computedPoolId
+).toLowerCase();
 
 const GET_WMON_PRICE = gql`
   query GetWmonUsd($id: ID!) {
@@ -59,15 +74,12 @@ const GET_WMON_PRICE = gql`
 `;
 
 const GET_POOL_POSITIONS = gql`
-  query GetPoolPositions($poolId: String!, $first: Int!) {
-    positions(
-      where: { pool_: { id: $poolId } }
-      orderBy: tokenId
-      orderDirection: desc
-      first: $first
-    ) {
-      tokenId
-      owner
+  query GetPoolPositions($id: ID!, $first: Int!) {
+    pool(id: $id) {
+      positions(orderBy: liquidity, orderDirection: desc, first: $first) {
+        tokenId
+        owner
+      }
     }
   }
 `;
@@ -79,12 +91,14 @@ const LOWER_HOOK_ADDRESS = HOOK_ADDRESS.toLowerCase();
 async function fetchPoolTokenIds(limit: number) {
   try {
     const data = (await graphClient.request(GET_POOL_POSITIONS, {
-      poolId: M00N_POOL_ID,
+      id: M00N_POOL_ID,
       first: limit
     })) as {
-      positions: Array<{ tokenId: string; owner: string }>;
+      pool?: {
+        positions: Array<{ tokenId: string; owner: string }>;
+      };
     };
-    return data.positions ?? [];
+    return data.pool?.positions ?? [];
   } catch (error) {
     console.error('[m00nSolarSystem] Failed to fetch pool tokenIds', error);
     return [];

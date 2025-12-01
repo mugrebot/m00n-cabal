@@ -1,4 +1,7 @@
-import 'server-only';
+if (typeof process !== 'undefined' && process.env.NEXT_RUNTIME) {
+   
+  import('server-only');
+}
 
 import fs from 'node:fs';
 import path from 'node:path';

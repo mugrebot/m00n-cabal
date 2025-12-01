@@ -637,11 +637,11 @@ function MiniAppPageInner() {
     if (csvPersona) {
       return csvPersona;
     }
-    if (personaFromLpPositions) {
-      return personaFromLpPositions;
-    }
     if (emojiFallbackEligible) {
       return 'emoji_chat';
+    }
+    if (personaFromLpPositions) {
+      return personaFromLpPositions;
     }
     if (hasZeroPoints) {
       return 'locked_out';
