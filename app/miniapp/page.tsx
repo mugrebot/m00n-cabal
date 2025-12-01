@@ -604,8 +604,12 @@ function MiniAppPageInner() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const computeSize = () =>
-      setSolarCanvasSize(Math.min(520, Math.max(320, window.innerWidth - 80)));
+    const computeSize = () => {
+      const widthCap = Math.min(520, window.innerWidth - 48);
+      const heightAllowance = window.innerHeight - 360;
+      const responsiveSize = Math.max(220, Math.min(widthCap, heightAllowance));
+      setSolarCanvasSize(responsiveSize);
+    };
     computeSize();
     window.addEventListener('resize', computeSize);
     return () => {
