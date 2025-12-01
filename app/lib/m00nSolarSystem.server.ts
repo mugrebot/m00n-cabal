@@ -1,5 +1,4 @@
 if (typeof process !== 'undefined' && process.env.NEXT_RUNTIME) {
-   
   import('server-only');
 }
 
@@ -74,12 +73,10 @@ const GET_WMON_PRICE = gql`
 `;
 
 const GET_POOL_POSITIONS = gql`
-  query GetPoolPositions($id: ID!, $first: Int!) {
-    pool(id: $id) {
-      positions(orderBy: liquidity, orderDirection: desc, first: $first) {
-        tokenId
-        owner
-      }
+  query GetPoolPositions($poolId: String!, $first: Int!) {
+    positions(where: { pool: $poolId }, orderBy: id, orderDirection: desc, first: $first) {
+      tokenId
+      owner
     }
   }
 `;
@@ -91,14 +88,12 @@ const LOWER_HOOK_ADDRESS = HOOK_ADDRESS.toLowerCase();
 async function fetchPoolTokenIds(limit: number) {
   try {
     const data = (await graphClient.request(GET_POOL_POSITIONS, {
-      id: M00N_POOL_ID,
+      poolId: M00N_POOL_ID,
       first: limit
     })) as {
-      pool?: {
-        positions: Array<{ tokenId: string; owner: string }>;
-      };
+      positions: Array<{ tokenId: string; owner: string }>;
     };
-    return data.pool?.positions ?? [];
+    return data.positions ?? [];
   } catch (error) {
     console.error('[m00nSolarSystem] Failed to fetch pool tokenIds', error);
     return [];
