@@ -1,6 +1,4 @@
 import { GraphQLClient, gql } from 'graphql-request';
-import { Token } from '@uniswap/sdk-core';
-import { Pool } from '@uniswap/v4-sdk';
 import { formatUnits } from 'viem';
 import {
   computePositionValueUsd,
@@ -30,12 +28,10 @@ const SPECIAL_CLANKER_ID = '6914';
 const MONAD_CHAIN_ID = Number(process.env.MONAD_CHAIN_ID ?? 143);
 
 const GET_TOP_POSITIONS = gql`
-  query TopM00nPositions($poolId: String!, $limit: Int!) {
-    positions(where: { pool_: { id: $poolId } }, orderBy: id, orderDirection: desc, first: $limit) {
+  query TopM00nPositions($limit: Int!) {
+    positions(orderBy: id, orderDirection: desc, first: $limit) {
       id
       owner
-      tickLower
-      tickUpper
     }
   }
 `;
@@ -55,9 +51,9 @@ const GET_WMON_PRICE = gql`
   }
 `;
 
-const moonToken = new Token(MONAD_CHAIN_ID, TOKEN_MOON_ADDRESS, 18, 'm00n', 'm00nad');
-const wmonToken = new Token(MONAD_CHAIN_ID, TOKEN_WMON_ADDRESS, 18, 'WMON', 'Wrapped MON');
-const poolId = Pool.getPoolId(moonToken, wmonToken, FEE, TICK_SPACING, HOOK_ADDRESS).toLowerCase();
+const LOWER_MOON_ADDRESS = TOKEN_MOON_ADDRESS.toLowerCase();
+const LOWER_WMON_ADDRESS = TOKEN_WMON_ADDRESS.toLowerCase();
+const LOWER_HOOK_ADDRESS = HOOK_ADDRESS.toLowerCase();
 
 export interface LpPosition {
   owner: string;
@@ -101,14 +97,11 @@ async function getWmonUsdPrice(): Promise<number | null> {
 
 export async function getTopM00nLpPositions(limit = 8): Promise<LpPosition[]> {
   const response = (await graphClient.request(GET_TOP_POSITIONS, {
-    poolId,
     limit: Math.max(limit * 2, 16)
   })) as {
     positions: Array<{
       id: string;
       owner: string;
-      tickLower?: string | number | null;
-      tickUpper?: string | number | null;
     }>;
   };
 
@@ -117,8 +110,10 @@ export async function getTopM00nLpPositions(limit = 8): Promise<LpPosition[]> {
     return [];
   }
 
+  const ownerMap = new Map<string, string>();
   const tokenIds = rawPositions
     .map((p) => {
+      ownerMap.set(p.id, p.owner);
       try {
         return BigInt(p.id);
       } catch {
@@ -127,13 +122,29 @@ export async function getTopM00nLpPositions(limit = 8): Promise<LpPosition[]> {
     })
     .filter((value): value is bigint => value !== null);
 
-  const [details, wmonPriceUsd] = await Promise.all([
+  const [baseDetails, wmonPriceUsd] = await Promise.all([
     getManyPositionDetails(tokenIds),
     getWmonUsdPrice()
   ]);
-  if (!details.length) return [];
+  if (!baseDetails.length) return [];
 
-  const enriched = await enrichManyPositionsWithAmounts(details);
+  const targetDetails = baseDetails.filter((position) => {
+    const currency0 = position.poolKey.currency0.toLowerCase();
+    const currency1 = position.poolKey.currency1.toLowerCase();
+    const pairMatch =
+      (currency0 === LOWER_MOON_ADDRESS && currency1 === LOWER_WMON_ADDRESS) ||
+      (currency0 === LOWER_WMON_ADDRESS && currency1 === LOWER_MOON_ADDRESS);
+    const hookMatch = position.poolKey.hooks.toLowerCase() === LOWER_HOOK_ADDRESS;
+    return (
+      pairMatch &&
+      hookMatch &&
+      position.poolKey.fee === FEE &&
+      position.poolKey.tickSpacing === TICK_SPACING
+    );
+  });
+  if (!targetDetails.length) return [];
+
+  const enriched = await enrichManyPositionsWithAmounts(targetDetails);
 
   const moonPriceUsd =
     wmonPriceUsd !== null && enriched[0]?.currentTick !== undefined
@@ -141,9 +152,7 @@ export async function getTopM00nLpPositions(limit = 8): Promise<LpPosition[]> {
       : null;
 
   const entries: LpPosition[] = enriched.map((position) => {
-    const owner =
-      rawPositions.find((subgraphPosition) => subgraphPosition.id === position.tokenId.toString())
-        ?.owner ?? '0x0';
+    const owner = ownerMap.get(position.tokenId.toString()) ?? '0x0';
 
     let notionalUsd = 0;
     if (moonPriceUsd !== null && wmonPriceUsd !== null) {

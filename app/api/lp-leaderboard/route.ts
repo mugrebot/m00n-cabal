@@ -3,8 +3,6 @@ import path from 'node:path';
 import { NextResponse } from 'next/server';
 import { GraphQLClient, gql } from 'graphql-request';
 import { parse } from 'csv-parse/sync';
-import { Token } from '@uniswap/sdk-core';
-import { Pool } from '@uniswap/v4-sdk';
 import {
   enrichManyPositionsWithAmounts,
   getManyPositionDetails,
@@ -30,8 +28,8 @@ const UNISWAP_V4_SUBGRAPH_URL =
   FALLBACK_SUBGRAPH_URL;
 
 const GET_TOP_POSITIONS = gql`
-  query GetTopPositions($poolId: String!, $first: Int!) {
-    positions(where: { pool_: { id: $poolId } }, orderBy: id, orderDirection: desc, first: $first) {
+  query GetTopPositions($first: Int!) {
+    positions(orderBy: id, orderDirection: desc, first: $first) {
       tokenId
       owner
     }
@@ -59,15 +57,9 @@ const GET_WMON_PRICE = gql`
   }
 `;
 
-const moonToken = new Token(MONAD_CHAIN_ID, TOKEN_MOON_ADDRESS, 18, 'm00n', 'm00nad');
-const wmonToken = new Token(MONAD_CHAIN_ID, TOKEN_WMON_ADDRESS, 18, 'WMON', 'Wrapped MON');
-const poolId = Pool.getPoolId(
-  moonToken,
-  wmonToken,
-  FEE,
-  TICK_SPACING,
-  HOOK_ADDRESS.toLowerCase()
-).toLowerCase();
+const LOWER_MOON_ADDRESS = TOKEN_MOON_ADDRESS.toLowerCase();
+const LOWER_WMON_ADDRESS = TOKEN_WMON_ADDRESS.toLowerCase();
+const LOWER_HOOK_ADDRESS = HOOK_ADDRESS.toLowerCase();
 
 const graphClient = new GraphQLClient(UNISWAP_V4_SUBGRAPH_URL);
 
@@ -171,7 +163,6 @@ async function getWmonUsdPrice(): Promise<number | null> {
 export async function GET() {
   try {
     const { positions } = (await graphClient.request(GET_TOP_POSITIONS, {
-      poolId,
       first: TOP_POSITION_SAMPLE_SIZE
     })) as {
       positions: { tokenId: string; owner: string }[];
@@ -196,7 +187,34 @@ export async function GET() {
     });
 
     const baseDetails = await getManyPositionDetails(tokenIds);
-    const enriched = await enrichManyPositionsWithAmounts(baseDetails);
+    const targetDetails = baseDetails.filter((position) => {
+      const currency0 = position.poolKey.currency0.toLowerCase();
+      const currency1 = position.poolKey.currency1.toLowerCase();
+      const pairMatch =
+        (currency0 === LOWER_MOON_ADDRESS && currency1 === LOWER_WMON_ADDRESS) ||
+        (currency0 === LOWER_WMON_ADDRESS && currency1 === LOWER_MOON_ADDRESS);
+      const hookMatch = position.poolKey.hooks.toLowerCase() === LOWER_HOOK_ADDRESS;
+      return (
+        pairMatch &&
+        hookMatch &&
+        position.poolKey.fee === FEE &&
+        position.poolKey.tickSpacing === TICK_SPACING
+      );
+    });
+
+    if (!targetDetails.length) {
+      return NextResponse.json({
+        updatedAt: new Date().toISOString(),
+        moonPriceUsd: null,
+        wmonPriceUsd: null,
+        crashBand: [],
+        upsideBand: [],
+        mixedBand: [],
+        overall: []
+      });
+    }
+
+    const enriched = await enrichManyPositionsWithAmounts(targetDetails);
 
     const wmonPriceUsd = await getWmonUsdPrice();
     const referenceTick = enriched[0]?.currentTick ?? 0;

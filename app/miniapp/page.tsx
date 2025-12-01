@@ -124,6 +124,17 @@ const formatAmountDisplay = (value?: string) => {
   return parsed.toLocaleString(undefined, { maximumFractionDigits: 6 });
 };
 
+const formatCompactNumber = (value?: number | null) => {
+  if (value === null || value === undefined) return '—';
+  if (!Number.isFinite(value)) return '—';
+  const abs = Math.abs(value);
+  const fractionDigits = abs >= 1000 ? 1 : 2;
+  return new Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    maximumFractionDigits: fractionDigits
+  }).format(value);
+};
+
 const formatTokenDisplay = (token?: TokenBreakdown) => {
   if (!token) return '0';
   const amount = formatAmountDisplay(token.amountFormatted);
@@ -2493,8 +2504,7 @@ function MiniAppPageInner() {
   const renderPersonaStatsCard = () => {
     if (!personaRecord) return null;
     const formatStat = (value?: number | null) => {
-      if (value === null || value === undefined) return '—';
-      return formatAmountDisplay(String(value));
+      return formatCompactNumber(value);
     };
     const behaviorLabel = personaRecord.behaviorPattern
       ? personaRecord.behaviorPattern.replace(/_/g, ' ')
@@ -2506,7 +2516,7 @@ function MiniAppPageInner() {
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <p className="opacity-60">Replies logged</p>
-            <p className="font-mono text-lg">{personaRecord.replyCount ?? '—'}</p>
+            <p className="font-mono text-lg">{formatStat(personaRecord.replyCount)}</p>
           </div>
           <div>
             <p className="opacity-60">Estimated balance</p>

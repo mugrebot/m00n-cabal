@@ -3,6 +3,13 @@ import { NextRequest, NextResponse } from 'next/server';
 const NEYNAR_API_KEY = process.env.NEYNAR_API_KEY || '';
 const NEYNAR_API_BASE = 'https://api.neynar.com';
 const M00NPAPI_USERNAME = 'm00npapi';
+const FALLBACK_M00NPAPI_FID =
+  Number(
+    process.env.M00NPAPI_FID ??
+      process.env.NEXT_PUBLIC_M00NPAPI_FID ??
+      process.env.NEYNAR_M00NPAPI_FID ??
+      0
+  ) || null;
 const CACHE_DURATION = 60 * 5; // 5 minutes
 
 interface CacheEntry<T> {
@@ -196,9 +203,25 @@ export async function GET(request: NextRequest) {
   try {
     const viewerFid = parseInt(fid);
 
-    const moonpapiInfo = await getM00npapiInfo();
+    const fallbackInfo =
+      FALLBACK_M00NPAPI_FID && FALLBACK_M00NPAPI_FID > 0
+        ? { fid: FALLBACK_M00NPAPI_FID, username: M00NPAPI_USERNAME }
+        : null;
+    let moonpapiInfo = await getM00npapiInfo();
+    let usedFallback = false;
+    if (!moonpapiInfo && fallbackInfo) {
+      console.warn('[engagement] Using fallback moonpapi fid');
+      moonpapiInfo = fallbackInfo;
+      usedFallback = true;
+    }
     if (!moonpapiInfo) {
-      return NextResponse.json({ error: 'Failed to fetch m00npapi info' }, { status: 500 });
+      console.warn('[engagement] Unable to resolve moonpapi fid; sending fallback response');
+      return NextResponse.json({
+        replyCount: 0,
+        isFollowing: false,
+        moonpapiFid: null,
+        fallback: true
+      });
     }
 
     const [replyCount, isFollowing] = await Promise.all([
@@ -209,7 +232,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       replyCount,
       isFollowing,
-      moonpapiFid: moonpapiInfo.fid
+      moonpapiFid: moonpapiInfo.fid,
+      fallback: usedFallback
     });
   } catch (error) {
     console.error('Error in engagement API:', error);
