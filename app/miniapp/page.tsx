@@ -2804,6 +2804,13 @@ function MiniAppPageInner() {
             minute: '2-digit'
           })
         : null;
+    const totalSolarNotionalUsd =
+      solarSystemStatus === 'loaded' && solarSystemData?.positions?.length
+        ? solarSystemData.positions.reduce(
+            (acc, position) => acc + Math.max(position.notionalUsd ?? 0, 0),
+            0
+          )
+        : null;
 
     const renderSolarSystem = () => {
       if (solarSystemStatus === 'loaded' && solarSystemData?.positions?.length) {
@@ -2856,6 +2863,11 @@ function MiniAppPageInner() {
             {updatedStamp && (
               <p className="text-[10px] uppercase tracking-[0.35em] text-[var(--moss-green)]">
                 Updated {updatedStamp}
+              </p>
+            )}
+            {totalSolarNotionalUsd !== null && (
+              <p className="text-xs font-semibold text-white/80">
+                Total LP Notional {formatUsd(totalSolarNotionalUsd)}
               </p>
             )}
           </div>
@@ -3103,7 +3115,7 @@ function MiniAppPageInner() {
   };
 
   const StickerRain = () => (
-    <div className="sticker-rain" aria-hidden="true">
+    <div className="sticker-rain pointer-events-none" aria-hidden="true">
       {fallingStickers.map((drop) => (
         <span
           key={drop.id}
@@ -3252,9 +3264,9 @@ function MiniAppPageInner() {
 
   const BackgroundOrbs = () => (
     <>
-      <span className="floating-orb orb-one" />
-      <span className="floating-orb orb-two" />
-      <span className="floating-orb orb-three" />
+      <span className="floating-orb orb-one pointer-events-none" />
+      <span className="floating-orb orb-two pointer-events-none" />
+      <span className="floating-orb orb-three pointer-events-none" />
     </>
   );
 

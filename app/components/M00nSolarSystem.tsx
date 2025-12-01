@@ -142,11 +142,13 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
           rotationSpeed: 0.00012
         });
 
-        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.25)';
         ctx.lineWidth = 1;
+        ctx.setLineDash([4, 8]);
         ctx.beginPath();
         ctx.arc(centerX, centerY, orbitRadius, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.setLineDash([]);
 
         drawPlanet(planet, x, y);
         renderStates.push({
