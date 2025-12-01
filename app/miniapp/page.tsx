@@ -4,7 +4,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
   type ReactNode
@@ -17,7 +16,6 @@ import { WagmiConfig, createConfig, http } from 'wagmi';
 import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector';
 import { getTierByReplyCount } from '@/app/lib/tiers';
 import { getPersonaCopy, type PersonaActionId, type LpStatus } from '@/app/copy/persona';
-import { Howl } from 'howler';
 
 interface UserData {
   fid: number;
@@ -52,9 +50,6 @@ const CLAIM_URL =
   'https://clanker.onchain.cooking/?token=0x22cd99ec337a2811f594340a4a6e41e4a3022b07&risk=warn&riskTag=Warning';
 const CLAIM_UNLOCK_TIMESTAMP_MS = 1764272894 * 1000;
 const LP_GATE_ENABLED = process.env.NEXT_PUBLIC_ENABLE_LP_GATE === 'true';
-const LP_MINT_URL =
-  process.env.NEXT_PUBLIC_LP_MINT_URL ??
-  'https://clanker.onchain.cooking/lp?token=0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
 const LP_DOCS_URL =
   process.env.NEXT_PUBLIC_LP_DOCS_URL ??
   'https://docs.uniswap.org/concepts/protocol/concentrated-liquidity';
@@ -70,13 +65,6 @@ const MON_NATIVE_CAIP = `${CHAIN_CAIP}/native`;
 const WMON_CAIP = `${CHAIN_CAIP}/erc20:${WMON_ADDRESS.toLowerCase()}`;
 const MOON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_ADDRESS.toLowerCase()}`;
 const MOON_EMOJI_THRESHOLD_WEI = parseUnits('1000000', 18);
-const EMOJI_CHAR_REGEX = /\p{Extended_Pictographic}/u;
-const EMOJI_ORACLE_OPENING = [
-  { speaker: 'oracle', text: '🔐 Only glyphs pass the gate. Leave words behind.' },
-  { speaker: 'seer', text: '🌫️ The sigil listens… offer your emoji.' },
-  { speaker: 'you', text: '🙏' }
-] as const;
-const EMOJI_AUTOREPLIES = ['🌖⚡', '🚪✨', '🛸💫', '🌊🌙', '🔮🧬', '☄️☁️', '🌀👁️'] as const;
 const MANIFESTO_LINES = [
   'All that you touch',
   'And all that you see',
@@ -104,8 +92,6 @@ const MANIFESTO_LINES = [
   'And everything under the sun is in tune',
   'But the sun is eclipsed by the moon'
 ] as const;
-const HOLD_AUDIO_URL = '/audio/hold.wav';
-const EMOJI_SOUND_URL = '/audio/emoji-chat.mp3';
 type MoonPhase = {
   label: string;
   emoji: string;
@@ -153,11 +139,6 @@ const formatUsd = (value?: number | null) => {
   });
   return formatter.format(value ?? 0);
 };
-
-const filterEmojiOnly = (value: string) =>
-  Array.from(value)
-    .filter((char) => EMOJI_CHAR_REGEX.test(char))
-    .join('');
 
 const LP_PRESET_CONTENT: Record<
   LpClaimPreset,
@@ -333,8 +314,6 @@ interface PersonaApiResponse {
 }
 
 type LpClaimPreset = 'backstop' | 'moon_upside';
-type EmojiChatSpeaker = 'oracle' | 'seer' | 'you';
-
 interface ReplyGlow {
   color: string;
   shadow: string;
@@ -457,56 +436,20 @@ function MiniAppPageInner() {
   const [primaryBalanceStatus, setPrimaryBalanceStatus] = useState<
     'idle' | 'loading' | 'error' | 'loaded'
   >('idle');
-  const [emojiInput, setEmojiInput] = useState('');
-  const [emojiChatLog, setEmojiChatLog] = useState<
-    { id: number; speaker: EmojiChatSpeaker; text: string }[]
-  >(() =>
-    EMOJI_ORACLE_OPENING.map((entry, index) => ({
-      id: index,
-      speaker: entry.speaker,
-      text: entry.text
-    }))
-  );
-  const [audioUnlocked, setAudioUnlocked] = useState(false);
-  const [emojiSoundEnabled, setEmojiSoundEnabled] = useState(false);
-  const [emojiHapticsEnabled, setEmojiHapticsEnabled] = useState(true);
-  const [hapticsSupported, setHapticsSupported] = useState(false);
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardResponse | null>(null);
   const [leaderboardStatus, setLeaderboardStatus] = useState<
     'idle' | 'loading' | 'error' | 'loaded'
   >('idle');
   const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
 
-  const hasUpsideBand = useMemo(
-    () => (lpGateState.lpPositions ?? []).some((pos) => pos.bandType === 'upside_band'),
-    [lpGateState.lpPositions]
-  );
-  const hasCrashBand = useMemo(
-    () => (lpGateState.lpPositions ?? []).some((pos) => pos.bandType === 'crash_band'),
-    [lpGateState.lpPositions]
-  );
   const hasAnyLp = useMemo(
     () => (lpGateState.lpPositions?.length ?? 0) > 0,
     [lpGateState.lpPositions]
   );
   const hasLpNft = lpGateState.lpStatus === 'HAS_LP' || hasAnyLp;
-  const emojiSoundRef = useRef<Howl | null>(null);
-  const holdSoundRef = useRef<Howl | null>(null);
 
   const showToast = useCallback((kind: 'info' | 'success' | 'error', message: string) => {
     setToast({ kind, message });
-  }, []);
-
-  const ensureEmojiSoundInstance = useCallback(() => {
-    if (!emojiSoundRef.current) {
-      emojiSoundRef.current = new Howl({
-        src: [EMOJI_SOUND_URL],
-        loop: true,
-        volume: 0.35,
-        html5: true
-      });
-    }
-    return emojiSoundRef.current;
   }, []);
 
   useEffect(() => {
@@ -514,54 +457,6 @@ function MiniAppPageInner() {
     const timer = window.setTimeout(() => setToast(null), 4000);
     return () => window.clearTimeout(timer);
   }, [toast]);
-
-  useEffect(() => {
-    holdSoundRef.current = new Howl({ src: [HOLD_AUDIO_URL], volume: 0.6 });
-    return () => {
-      holdSoundRef.current?.unload();
-      holdSoundRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!audioUnlocked || !emojiSoundEnabled) {
-      emojiSoundRef.current?.stop();
-      return;
-    }
-    const instance = ensureEmojiSoundInstance();
-    if (!instance.playing()) {
-      instance.play();
-    }
-  }, [audioUnlocked, emojiSoundEnabled, ensureEmojiSoundInstance]);
-
-  useEffect(
-    () => () => {
-      emojiSoundRef.current?.unload();
-      emojiSoundRef.current = null;
-    },
-    []
-  );
-
-  useEffect(() => {
-    if (!isSdkReady || typeof sdk.getCapabilities !== 'function') return;
-    let cancelled = false;
-    const check = async () => {
-      try {
-        const capabilities = await sdk.getCapabilities();
-        if (cancelled) return;
-        const hasHaptics = Array.isArray(capabilities)
-          ? capabilities.some((cap: string) => cap.startsWith('haptics'))
-          : false;
-        setHapticsSupported(hasHaptics);
-      } catch {
-        setHapticsSupported(false);
-      }
-    };
-    check();
-    return () => {
-      cancelled = true;
-    };
-  }, [isSdkReady]);
 
   useEffect(() => {
     let cancelled = false;
@@ -659,9 +554,6 @@ function MiniAppPageInner() {
   }, [lpGateState.lpPositions, lpGateState.lpStatus]);
 
   const derivedPersona: UserPersona = useMemo(() => {
-    if (isAdmin && adminPortalView === 'default') {
-      return 'locked_out';
-    }
     if (!userData) {
       return 'locked_out';
     }
@@ -695,9 +587,7 @@ function MiniAppPageInner() {
     csvPersona,
     emojiFallbackEligible,
     personaFromLpPositions,
-    userData,
-    isAdmin,
-    adminPortalView
+    userData
   ]);
 
   const adminPersonaOverride = isAdmin && adminPortalView !== 'default' ? adminPortalView : null;
@@ -707,43 +597,6 @@ function MiniAppPageInner() {
       ['lp_gate', 'claimed_held', 'claimed_bought_more', 'emoji_chat'].includes(effectivePersona),
     [effectivePersona]
   );
-  const handleToggleEmojiSound = useCallback(() => {
-    setAudioUnlocked(true);
-    setEmojiSoundEnabled((prev) => {
-      const next = !prev;
-      if (next) {
-        const sound = ensureEmojiSoundInstance();
-        sound?.play();
-      } else {
-        emojiSoundRef.current?.stop();
-      }
-      return next;
-    });
-  }, [ensureEmojiSoundInstance]);
-  const handleToggleEmojiHaptics = useCallback(() => {
-    setEmojiHapticsEnabled((prev) => !prev);
-  }, []);
-  const triggerEmojiFeedback = useCallback(async () => {
-    if (emojiHapticsEnabled && hapticsSupported && sdk?.haptics?.selectionChanged) {
-      try {
-        await sdk.haptics.selectionChanged();
-      } catch (err) {
-        console.warn('selectionChanged haptic failed', err);
-      }
-    }
-  }, [emojiHapticsEnabled, hapticsSupported]);
-  const triggerLpSuccessFeedback = useCallback(async () => {
-    if (audioUnlocked && holdSoundRef.current) {
-      holdSoundRef.current.play();
-    }
-    if (hapticsSupported && sdk?.haptics?.notificationOccurred) {
-      try {
-        await sdk.haptics.notificationOccurred('success');
-      } catch (err) {
-        console.warn('notificationOccurred haptic failed', err);
-      }
-    }
-  }, [audioUnlocked, hapticsSupported]);
   const openManifesto = useCallback(() => setIsManifestoOpen(true), []);
 
   useEffect(() => {
@@ -1697,25 +1550,6 @@ function MiniAppPageInner() {
     [miniWalletAddress, sendCallsViaProvider, showToast, tokenDecimals.moon, tokenDecimals.wmon]
   );
 
-  const handleEmojiSend = () => {
-    const sanitized = filterEmojiOnly(emojiInput).trim();
-    if (!sanitized) {
-      setEmojiInput('');
-      return;
-    }
-    const oracleReply = EMOJI_AUTOREPLIES[Math.floor(Math.random() * EMOJI_AUTOREPLIES.length)];
-    setEmojiChatLog((prev) => {
-      const lastId = prev.length > 0 ? prev[prev.length - 1].id : 0;
-      return [
-        ...prev,
-        { id: lastId + 1, speaker: 'you', text: sanitized },
-        { id: lastId + 2, speaker: 'oracle', text: oracleReply }
-      ];
-    });
-    setEmojiInput('');
-    void triggerEmojiFeedback();
-  };
-
   const personaActionHandlers: Record<PersonaActionId, (() => void) | undefined> = {
     lp_connect_wallet: handleSignIn,
     lp_become_lp: () => handleOpenLpClaimModal('backstop'),
@@ -2346,20 +2180,20 @@ function MiniAppPageInner() {
 
   const renderManifestoModal = () => (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur">
-      <div className="max-w-2xl w-full bg-black/70 border border-[var(--monad-purple)] rounded-[32px] p-6 space-y-6 shadow-[0_0_60px_rgba(133,118,255,0.35)]">
-        <div className="flex items-center justify-between">
-          <p className="pixel-font text-[9px] tracking-[0.45em] text-[var(--moss-green)]">
+      <div className="max-w-2xl w-full bg-black/75 border border-[var(--monad-purple)] rounded-[32px] p-6 space-y-6 shadow-[0_0_60px_rgba(133,118,255,0.35)]">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 text-center md:text-left">
+          <p className="pixel-font text-[8px] tracking-[0.35em] text-[var(--moss-green)] w-full text-center uppercase">
             MANIFESTO
           </p>
           <button
             type="button"
             onClick={() => setIsManifestoOpen(false)}
-            className="pixel-font text-[9px] border border-white/25 rounded-full px-3 py-1 tracking-[0.4em] hover:bg-white/10 transition-colors"
+            className="pixel-font text-[9px] border border-white/25 rounded-full px-3 py-1 tracking-[0.4em] hover:bg-white/10 transition-colors self-center md:self-auto"
           >
             CLOSE
           </button>
         </div>
-        <div className="space-y-3 text-center text-[11px] leading-relaxed text-white/75 max-h-[60vh] overflow-y-auto font-mono tracking-[0.2em]">
+        <div className="space-y-2 text-center text-[10px] leading-relaxed text-white/80 max-h-[60vh] overflow-y-auto font-mono tracking-[0.25em]">
           {MANIFESTO_LINES.map((line, idx) => (
             <p key={`${line}-${idx}`}>{line}</p>
           ))}
@@ -2785,54 +2619,78 @@ function MiniAppPageInner() {
   };
 
   const renderEmojiChatPortal = () => {
-    const chatDisabled = true;
     const showManager = hasAnyLp;
+    const leaderboardReady = leaderboardStatus === 'loaded' && Boolean(leaderboardData);
+    const updatedStamp =
+      leaderboardReady && leaderboardData?.updatedAt
+        ? new Date(leaderboardData.updatedAt).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        : null;
+
+    const renderLeaderboardSection = () => {
+      if (leaderboardReady && leaderboardData) {
+        const hasClanker = leaderboardData.overall.some((entry) => entry.tokenId === '6914');
+        return (
+          <div className="space-y-3">
+            {renderLeaderboardVisualizer(leaderboardData.overall, {
+              title: 'm00n Garden Leaderboard',
+              subtitle: 'Top 7 single-sided LP sigils ranked by USD value.'
+            })}
+            {hasClanker && (
+              <p className="text-center text-xs opacity-70">
+                Sigil #6914 is tagged as the Clanker Pool anchor.
+              </p>
+            )}
+          </div>
+        );
+      }
+      if (leaderboardStatus === 'loading' || leaderboardStatus === 'idle') {
+        return (
+          <div className={`${PANEL_CLASS} text-center text-sm opacity-70`}>
+            Calibrating the Monad garden…
+          </div>
+        );
+      }
+      if (leaderboardStatus === 'error') {
+        return (
+          <div className={`${PANEL_CLASS} text-center text-sm text-red-300`}>
+            Leaderboard unavailable right now.
+          </div>
+        );
+      }
+      return null;
+    };
+
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
-        <div className="max-w-3xl w-full space-y-6 scanline bg-black/50 border border-white/15 rounded-3xl px-8 py-10">
+        <div className="max-w-4xl w-full space-y-8 scanline bg-black/50 border border-white/15 rounded-3xl px-8 py-10">
           <div className="text-center space-y-2">
             <p className="pixel-font text-2xl text-white">Heaven&apos;s Gate</p>
-            <p className="text-sm opacity-75">Chat coming soon — glyph array under construction.</p>
-          </div>
-          <div className={`${PANEL_CLASS} h-60 flex items-center justify-center`}>
-            <p className="text-center text-sm opacity-70">
-              The emoji uplink is calibrating ({emojiChatLog.length} cached glyphs). Tap the
-              launcher below to visit m00nlander in the meantime.
+            <p className="text-sm opacity-75">
+              Emoji chat is on pause while we broadcast the live LP garden.
             </p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <input
-              value={emojiInput}
-              onChange={(event) => setEmojiInput(filterEmojiOnly(event.target.value))}
-              placeholder="Chat coming soon"
-              disabled={chatDisabled}
-              className="flex-1 rounded-xl border border-white/15 bg-black/40 px-4 py-3 font-mono text-sm text-white focus:border-[var(--monad-purple)] focus:outline-none disabled:opacity-40"
-            />
-            <button
-              type="button"
-              onClick={handleEmojiSend}
-              disabled={chatDisabled || !emojiInput.trim()}
-              className="pixel-font px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-colors disabled:opacity-40"
-            >
-              SEND
-            </button>
+          <div className={`${PANEL_CLASS} text-center space-y-2`}>
+            <p className="text-sm opacity-80">
+              Every sigil below is a single-sided LP guardian. We surface the seven largest m00n
+              bands on Monad so holders know who is anchoring the heavens.
+            </p>
+            {updatedStamp && (
+              <p className="text-[10px] uppercase tracking-[0.35em] text-[var(--moss-green)]">
+                Updated {updatedStamp}
+              </p>
+            )}
           </div>
-          {renderPersonaStatsCard()}
+          {renderLeaderboardSection()}
           {personaLookupStatus === 'loading' && (
-            <p className="text-xs text-center text-yellow-300">Syncing cabal dossier…</p>
+            <p className="text-center text-xs text-yellow-300">Syncing cabal dossier…</p>
           )}
           {personaLookupStatus === 'error' && (
-            <p className="text-xs text-center text-red-300">CSV dossier temporarily unavailable.</p>
+            <p className="text-center text-xs text-red-300">CSV dossier temporarily unavailable.</p>
           )}
-          {showManager && (
-            <div className="pt-2">
-              {renderPositionManager({
-                title: 'Sigil Manager',
-                subtitle: 'LP sigils fueling this gate.'
-              })}
-            </div>
-          )}
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button
               type="button"
               onClick={handleOpenMoonLander}
@@ -2840,51 +2698,32 @@ function MiniAppPageInner() {
             >
               LAUNCH m00nLANDER
             </button>
-          </div>
-          <div className="flex flex-wrap justify-center gap-3 text-xs uppercase tracking-[0.3em]">
-            <button
-              type="button"
-              onClick={handleToggleEmojiSound}
-              className={`px-4 py-2 rounded-full border ${
-                emojiSoundEnabled
-                  ? 'border-[var(--monad-purple)] text-white'
-                  : 'border-white/20 text-white/60'
-              }`}
-            >
-              {emojiSoundEnabled ? 'SOUND ON' : 'SOUND OFF'}
-            </button>
-            <button
-              type="button"
-              onClick={handleToggleEmojiHaptics}
-              className={`px-4 py-2 rounded-full border ${
-                emojiHapticsEnabled
-                  ? 'border-[var(--monad-purple)] text-white'
-                  : 'border-white/20 text-white/60'
-              }`}
-            >
-              HAPTICS {emojiHapticsEnabled ? 'ON' : 'OFF'}
-            </button>
-            {hasAnyLp && (
+            {hasAnyLp ? (
               <button
                 type="button"
                 onClick={() => setIsLpLoungeOpen(true)}
-                className="px-4 py-2 rounded-full border border-white/20 text-white hover:bg-white/10 transition-colors"
+                className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
               >
-                OPEN LP LOUNGE
+                ENTER LP LOUNGE
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleOpenLpClaimModal('backstop')}
+                className="pixel-font px-6 py-3 border border-[var(--monad-purple)] text-[var(--monad-purple)] rounded-lg hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
+              >
+                DEPLOY CRASH BACKSTOP
               </button>
             )}
           </div>
-          {leaderboardStatus === 'loaded' && leaderboardData ? (
-            <div className="space-y-4">
-              {renderLeaderboardVisualizer(leaderboardData.overall, {
-                title: 'Global LP Leaderboard',
-                subtitle: 'Top 10 LP sigils by USD value across the cabal.',
-                emptyLabel: 'No LP data available yet.'
+          {showManager && (
+            <div className="pt-2">
+              {renderPositionManager({
+                title: 'Sigil Manager',
+                subtitle: 'Your LP sigils that currently grant access.'
               })}
             </div>
-          ) : leaderboardStatus === 'error' ? (
-            <p className="text-center text-xs text-red-400">Leaderboard unavailable right now.</p>
-          ) : null}
+          )}
           <ManifestoHint />
         </div>
       </div>
