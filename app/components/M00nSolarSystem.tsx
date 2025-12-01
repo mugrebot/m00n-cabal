@@ -113,18 +113,28 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
       const centerPlanet = preparedPlanets[0];
       const satellitePlanets = preparedPlanets.slice(1);
       const baseDimension = Math.min(width, height);
-      const orbitBoundary = Math.max(baseDimension * 0.25, baseDimension / 2 - 16);
-      const desiredOrbitBase =
-        centerPlanet !== undefined
-          ? centerPlanet.radius + Math.max(20, baseDimension * 0.05)
-          : baseDimension * 0.18;
-      const desiredOrbitStep = baseDimension * 0.11;
-      const desiredMaxRadius =
-        desiredOrbitBase + desiredOrbitStep * Math.max(satellitePlanets.length - 1, 0);
-      const scale =
-        desiredMaxRadius > orbitBoundary ? orbitBoundary / (desiredMaxRadius || orbitBoundary) : 1;
-      const orbitBase = Math.max(12, desiredOrbitBase * scale);
-      const orbitStep = Math.max(8, desiredOrbitStep * scale);
+      const satelliteCount = satellitePlanets.length;
+      const minMargin = Math.max(18, baseDimension * 0.055);
+      const minStep = Math.max(14, baseDimension * 0.06);
+      const desiredStep = Math.max(minStep, baseDimension * 0.12);
+      const padding = Math.max(20, baseDimension * 0.06);
+      const centerRadius = centerPlanet?.radius ?? baseDimension * 0.12;
+      const orbitBoundary = Math.max(
+        centerRadius + minMargin + padding,
+        baseDimension / 2 - padding
+      );
+      const baseCandidate = centerRadius + minMargin;
+      let orbitBase = baseCandidate;
+      let orbitStep = desiredStep;
+
+      if (satelliteCount > 0) {
+        const availableBand = Math.max(0, orbitBoundary - baseCandidate - padding * 0.4);
+        const maxStepPerOrbit =
+          satelliteCount > 0 ? availableBand / Math.max(satelliteCount, 1) : availableBand;
+        orbitStep = Math.max(minStep, Math.min(desiredStep, maxStepPerOrbit));
+        const totalSpan = orbitStep * satelliteCount;
+        orbitBase = Math.max(baseCandidate, orbitBoundary - totalSpan);
+      }
       const texture = textureRef.current;
       const renderStates: PlanetRenderState[] = [];
 

@@ -484,6 +484,35 @@ function MiniAppPageInner() {
   const [isObservationManagerVisible, setIsObservationManagerVisible] = useState(false);
   const [isObservationDeckOpen, setIsObservationDeckOpen] = useState(false);
   const [solarSystemRefreshNonce, setSolarSystemRefreshNonce] = useState(0);
+  const viewerAddressLabels = useMemo(() => {
+    const pool = new Set<string>();
+    const candidates = [miniWalletAddress, primaryAddress, dropAddress, ...addresses];
+    candidates.forEach((address) => {
+      if (address) {
+        pool.add(address.toLowerCase());
+      }
+    });
+    return pool;
+  }, [addresses, dropAddress, miniWalletAddress, primaryAddress]);
+
+  const viewerLabel =
+    viewerContext?.username ?? viewerContext?.displayName ?? personaRecord?.username ?? null;
+
+  const personalizedSolarPositions = useMemo(() => {
+    if (!solarSystemData?.positions) return null;
+    if (!viewerLabel || viewerAddressLabels.size === 0) {
+      return solarSystemData.positions;
+    }
+    return solarSystemData.positions.map((position) => {
+      if (viewerAddressLabels.has(position.owner.toLowerCase())) {
+        return {
+          ...position,
+          label: viewerLabel
+        };
+      }
+      return position;
+    });
+  }, [solarSystemData?.positions, viewerAddressLabels, viewerLabel]);
 
   const handleLpAmountChange = useCallback(
     (rawValue: string) => {
@@ -3005,20 +3034,24 @@ function MiniAppPageInner() {
             minute: '2-digit'
           })
         : null;
+    const activeSolarPositions =
+      solarSystemStatus === 'loaded'
+        ? (personalizedSolarPositions ?? solarSystemData?.positions ?? [])
+        : [];
     const totalSolarNotionalUsd =
-      solarSystemStatus === 'loaded' && solarSystemData?.positions?.length
-        ? solarSystemData.positions.reduce(
+      solarSystemStatus === 'loaded' && activeSolarPositions.length
+        ? activeSolarPositions.reduce(
             (acc, position) => acc + Math.max(position.notionalUsd ?? 0, 0),
             0
           )
         : null;
 
     const renderSolarSystem = () => {
-      if (solarSystemStatus === 'loaded' && solarSystemData?.positions?.length) {
+      if (solarSystemStatus === 'loaded' && activeSolarPositions.length) {
         return (
           <div className="flex w-full justify-center">
             <M00nSolarSystem
-              positions={solarSystemData.positions}
+              positions={activeSolarPositions}
               width={solarCanvasSize}
               height={solarCanvasSize}
             />
