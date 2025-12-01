@@ -462,7 +462,7 @@ function MiniAppPageInner() {
   >('idle');
   const [solarCanvasSize, setSolarCanvasSize] = useState(420);
   const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
-  const [isEmojiManagerVisible, setIsEmojiManagerVisible] = useState(false);
+  const [isObservationManagerVisible, setIsObservationManagerVisible] = useState(false);
 
   const hasAnyLp = useMemo(
     () => (lpGateState.lpPositions?.length ?? 0) > 0,
@@ -611,7 +611,7 @@ function MiniAppPageInner() {
     return null;
   }, [personaHint]);
 
-  const emojiFallbackEligible = useMemo(() => {
+  const observationDeckEligible = useMemo(() => {
     if (csvPersona) return false;
     if (primaryBalanceStatus !== 'loaded') return false;
     if (!primaryAddressMoonBalanceWei) return false;
@@ -642,7 +642,7 @@ function MiniAppPageInner() {
     if (csvPersona) {
       return csvPersona;
     }
-    if (emojiFallbackEligible) {
+    if (observationDeckEligible) {
       return 'emoji_chat';
     }
     if (personaFromLpPositions) {
@@ -667,7 +667,7 @@ function MiniAppPageInner() {
     engagementData?.replyCount,
     hasZeroPoints,
     csvPersona,
-    emojiFallbackEligible,
+    observationDeckEligible,
     personaFromLpPositions,
     userData
   ]);
@@ -688,10 +688,10 @@ function MiniAppPageInner() {
   }, [isAdmin, adminPortalView]);
 
   useEffect(() => {
-    if (!hasAnyLp && isEmojiManagerVisible) {
-      setIsEmojiManagerVisible(false);
+    if (!hasAnyLp && isObservationManagerVisible) {
+      setIsObservationManagerVisible(false);
     }
-  }, [hasAnyLp, isEmojiManagerVisible]);
+  }, [hasAnyLp, isObservationManagerVisible]);
 
   const fallingStickers = useMemo(
     () =>
@@ -2796,7 +2796,7 @@ function MiniAppPageInner() {
     );
   };
 
-  const renderEmojiChatPortal = () => {
+  const renderObservationDeckPortal = () => {
     const updatedStamp =
       solarSystemStatus === 'loaded' && solarSystemData?.updatedAt
         ? new Date(solarSystemData.updatedAt).toLocaleTimeString([], {
@@ -2850,9 +2850,9 @@ function MiniAppPageInner() {
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-4xl w-full space-y-8 scanline bg-black/50 border border-white/15 rounded-3xl px-8 py-10">
           <div className="text-center space-y-2">
-            <p className="pixel-font text-2xl text-white">Heaven&apos;s Gate</p>
+            <p className="pixel-font text-2xl text-white">Observation Deck</p>
             <p className="text-sm opacity-75">
-              Emoji chat is off-air; we&apos;re streaming the m00n LP solar system instead.
+              The deck is live — broadcasting the m00n LP solar system telemetry in real time.
             </p>
           </div>
           <div className={`${PANEL_CLASS} text-center space-y-2`}>
@@ -2896,10 +2896,10 @@ function MiniAppPageInner() {
               <>
                 <button
                   type="button"
-                  onClick={() => setIsEmojiManagerVisible((prev) => !prev)}
+                  onClick={() => setIsObservationManagerVisible((prev) => !prev)}
                   className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
                 >
-                  {isEmojiManagerVisible ? 'HIDE SIGIL MANAGER' : 'SHOW SIGIL MANAGER'}
+                  {isObservationManagerVisible ? 'HIDE SIGIL MANAGER' : 'SHOW SIGIL MANAGER'}
                 </button>
                 <button
                   type="button"
@@ -2919,7 +2919,7 @@ function MiniAppPageInner() {
               </button>
             )}
           </div>
-          {hasAnyLp && isEmojiManagerVisible && (
+          {hasAnyLp && isObservationManagerVisible && (
             <div className="pt-2">
               {renderPositionManager({
                 title: 'Sigil Manager',
@@ -3174,7 +3174,7 @@ function MiniAppPageInner() {
       { id: 'claimed_sold', label: 'Claimed + sold' },
       { id: 'claimed_held', label: 'Claimed + held' },
       { id: 'claimed_bought_more', label: 'Claimed + bought' },
-      { id: 'emoji_chat', label: 'Emoji chat' },
+      { id: 'emoji_chat', label: 'Observation deck' },
       { id: 'eligible_holder', label: 'Claim console' },
       { id: 'locked_out', label: 'Lockout gate' },
       { id: 'lp_gate', label: 'No claim + LP' }
@@ -3440,7 +3440,7 @@ function MiniAppPageInner() {
       case 'claimed_bought_more':
         return renderClaimedBoughtMorePortal();
       case 'emoji_chat':
-        return renderEmojiChatPortal();
+        return renderObservationDeckPortal();
       case 'lp_gate':
         return isLpLoungeOpen && lpGateState.lpStatus === 'HAS_LP'
           ? renderLpLoungePanel()
@@ -3462,7 +3462,7 @@ function MiniAppPageInner() {
     case 'claimed_bought_more':
       return renderClaimedBoughtMorePortal();
     case 'emoji_chat':
-      return renderEmojiChatPortal();
+      return renderObservationDeckPortal();
     case 'lp_gate':
       if (isLpLoungeOpen && lpGateState.lpStatus === 'HAS_LP') {
         return renderLpLoungePanel();

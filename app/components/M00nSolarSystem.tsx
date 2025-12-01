@@ -110,25 +110,31 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
 
       const centerX = width / 2;
       const centerY = height / 2;
+      const centerPlanet = preparedPlanets[0];
       const satellitePlanets = preparedPlanets.slice(1);
-      const orbitBase = Math.min(width, height) * 0.18;
-      const orbitStep = Math.min(width, height) * 0.09;
+      const baseDimension = Math.min(width, height);
+      const orbitBase =
+        centerPlanet !== undefined
+          ? centerPlanet.radius + Math.max(28, baseDimension * 0.05)
+          : baseDimension * 0.18;
+      const orbitStep = baseDimension * 0.09;
       const texture = textureRef.current;
       const renderStates: PlanetRenderState[] = [];
 
       const drawPlanet = (planet: PreparedPlanet, x: number, y: number) => {
         const planetRadius = planet.radius;
         const diameter = planetRadius * 2;
+        const overscan = planet.isCenter ? 1.02 : 1.12;
+        const drawSize = diameter * overscan;
         ctx.save();
         ctx.beginPath();
         ctx.arc(x, y, planetRadius, 0, Math.PI * 2);
         ctx.clip();
-        ctx.drawImage(texture, x - planetRadius, y - planetRadius, diameter, diameter);
+        ctx.drawImage(texture, x - drawSize / 2, y - drawSize / 2, drawSize, drawSize);
         ctx.restore();
       };
 
       // Center planet
-      const centerPlanet = preparedPlanets[0];
       drawPlanet(centerPlanet, centerX, centerY);
       renderStates.push({ idx: 0, x: centerX, y: centerY, radius: centerPlanet.radius });
 
@@ -202,8 +208,9 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
     []
   );
 
-  const handlePointerMove = useCallback(
+  const handlePointerInteract = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
+      event.preventDefault();
       if (!canvasRef.current || preparedPlanets.length === 0) return;
       const rect = canvasRef.current.getBoundingClientRect();
       const tooltipX = event.clientX - rect.left;
@@ -272,7 +279,8 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
         width={width}
         height={height}
         style={{ width: '100%', height: '100%', cursor: 'pointer' }}
-        onPointerMove={handlePointerMove}
+        onPointerMove={handlePointerInteract}
+        onPointerDown={handlePointerInteract}
         onPointerLeave={handlePointerLeave}
       />
       {tooltipContent}
