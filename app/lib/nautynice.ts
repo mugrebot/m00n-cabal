@@ -107,18 +107,23 @@ export const getPersonaRow = (fid: number): NautyCsvRow | null => {
 export const derivePersonaHint = (row: NautyCsvRow): CsvPersonaHint | null => {
   const category = row.userCategory?.toLowerCase();
   const behavior = row.behaviorPattern?.toLowerCase();
+  const balance = row.totalEstimatedBalance;
+  const hasZeroBalance = typeof balance === 'number' ? balance <= 0 : false;
 
-  if (behavior === 'mostly_sold' || category === 'claimed_and_sold') {
+  if ((behavior === 'mostly_sold' || category === 'claimed_and_sold') && hasZeroBalance) {
     return 'claimed_sold';
-  }
-  if (category === 'claimed_and_held') {
-    return 'claimed_held';
   }
   if (category === 'claimed_and_bought_more') {
     return 'claimed_bought_more';
   }
   if (category === 'didnt_claim_but_bought') {
     return 'emoji_chat';
+  }
+  if (category === 'claimed_and_held') {
+    return 'claimed_held';
+  }
+  if (category === 'claimed_and_sold' || behavior === 'partial_seller') {
+    return 'claimed_held';
   }
   return null;
 };

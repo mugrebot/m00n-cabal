@@ -2,7 +2,6 @@
 
 import {
   useCallback,
-  useDeferredValue,
   useEffect,
   useMemo,
   useState,
@@ -471,6 +470,7 @@ function MiniAppPageInner() {
   const [leaderboardStatus, setLeaderboardStatus] = useState<
     'idle' | 'loading' | 'error' | 'loaded'
   >('idle');
+  const [leaderboardRefreshNonce, setLeaderboardRefreshNonce] = useState(0);
   const [solarSystemData, setSolarSystemData] = useState<{
     positions: LeaderboardLpPosition[];
     updatedAt: string;
@@ -482,13 +482,16 @@ function MiniAppPageInner() {
   const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
   const [isObservationManagerVisible, setIsObservationManagerVisible] = useState(false);
   const [isObservationDeckOpen, setIsObservationDeckOpen] = useState(false);
-  const deferredLpClaimAmount = useDeferredValue(lpClaimAmount);
+  const [solarSystemRefreshNonce, setSolarSystemRefreshNonce] = useState(0);
 
-  const handleLpAmountChange = useCallback((rawValue: string) => {
-    const stripped = rawValue.replace(/[^\d.,]/g, '');
-    const normalized = stripped.replace(/,/g, '.');
-    setLpClaimAmount(normalized);
-  }, []);
+  const handleLpAmountChange = useCallback(
+    (rawValue: string) => {
+      const stripped = rawValue.replace(/[^\d.,]/g, '');
+      const normalized = stripped.replace(/,/g, '.');
+      setLpClaimAmount(normalized);
+    },
+    [leaderboardRefreshNonce]
+  );
 
   const hasAnyLp = useMemo(
     () => (lpGateState.lpPositions?.length ?? 0) > 0,
@@ -499,6 +502,23 @@ function MiniAppPageInner() {
   const showToast = useCallback((kind: 'info' | 'success' | 'error', message: string) => {
     setToast({ kind, message });
   }, []);
+
+  const refreshLeaderboard = useCallback(() => {
+    setLeaderboardRefreshNonce((nonce) => nonce + 1);
+  }, []);
+
+  const refreshSolarTelemetry = useCallback(() => {
+    setSolarSystemRefreshNonce((nonce) => nonce + 1);
+  }, []);
+
+  const refreshPersonalSigils = useCallback(() => {
+    setLpRefreshNonce((nonce) => nonce + 1);
+  }, []);
+
+  const handleRefreshTelemetry = useCallback(() => {
+    refreshSolarTelemetry();
+    refreshLeaderboard();
+  }, [refreshLeaderboard, refreshSolarTelemetry]);
 
   useEffect(() => {
     if (!toast) return;
@@ -531,7 +551,7 @@ function MiniAppPageInner() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [leaderboardRefreshNonce]);
 
   useEffect(() => {
     let cancelled = false;
@@ -580,7 +600,7 @@ function MiniAppPageInner() {
         window.clearInterval(intervalId);
       }
     };
-  }, []);
+  }, [solarSystemRefreshNonce]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1332,7 +1352,7 @@ function MiniAppPageInner() {
   };
 
   const handleRetryLpStatus = () => {
-    setLpRefreshNonce((prev) => prev + 1);
+    refreshPersonalSigils();
   };
 
   const handleEnterLpLounge = () => {
@@ -1589,7 +1609,7 @@ function MiniAppPageInner() {
       setLpClaimError(null);
       setLpDebugLog((prev) => `${prev}\n✅ LP claim batch sent to wallet successfully.`);
       setTimeout(() => {
-        setLpRefreshNonce((prev) => prev + 1);
+        refreshPersonalSigils();
         setIsLpLoungeOpen(true);
       }, 2000);
       setFundingRefreshNonce((prev) => prev + 1);
@@ -1771,8 +1791,32 @@ function MiniAppPageInner() {
     );
   };
 
+  const renderBalanceButtons = (options?: { layout?: 'row' | 'column' }) => {
+    const layoutClass = options?.layout === 'row' ? 'flex-row' : 'flex-col sm:flex-row';
+    return (
+      <div className={`flex ${layoutClass} gap-2 w-full`}>
+        <button
+          type="button"
+          onClick={() => handleSwapMonToToken('moon')}
+          disabled={swapInFlight === 'moon'}
+          className="flex-1 rounded-xl border border-[var(--monad-purple)] px-[5px] py-[5px] text-[11px] uppercase tracking-[0.25em] text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-black transition-colors disabled:opacity-40"
+        >
+          {swapInFlight === 'moon' ? 'OPENING…' : 'BUY m00n'}
+        </button>
+        <button
+          type="button"
+          onClick={() => handleSwapMonToToken('wmon')}
+          disabled={swapInFlight === 'wmon'}
+          className="flex-1 rounded-xl border border-white/40 px-[5px] py-[5px] text-[11px] uppercase tracking-[0.25em] text-white hover:bg-white/10 transition-colors disabled:opacity-40"
+        >
+          {swapInFlight === 'wmon' ? 'OPENING…' : 'BUY WMON'}
+        </button>
+      </div>
+    );
+  };
+
   const desiredAmountWei = useMemo(() => {
-    const sanitized = deferredLpClaimAmount.trim();
+    const sanitized = lpClaimAmount.trim();
     if (!sanitized) return null;
     const decimals =
       lpClaimPreset === 'moon_upside' ? (tokenDecimals.moon ?? 18) : (tokenDecimals.wmon ?? 18);
@@ -1781,7 +1825,7 @@ function MiniAppPageInner() {
     } catch {
       return null;
     }
-  }, [deferredLpClaimAmount, lpClaimPreset, tokenDecimals.moon, tokenDecimals.wmon]);
+  }, [lpClaimAmount, lpClaimPreset, tokenDecimals.moon, tokenDecimals.wmon]);
 
   const renderLpClaimModal = () => {
     const walletReady = Boolean(miniWalletAddress);
@@ -1795,7 +1839,7 @@ function MiniAppPageInner() {
       moonAllowanceWei !== null &&
       fundingStatus !== 'loading';
     const tokenInfoPending = walletReady && !hasFundingSnapshot;
-    const hasAmountInput = Boolean(deferredLpClaimAmount.trim());
+    const hasAmountInput = Boolean(lpClaimAmount.trim());
     const hasSufficientInputBalance =
       walletReady &&
       desiredAmountWei !== null &&
@@ -2138,7 +2182,7 @@ function MiniAppPageInner() {
   const SHOW_LP_SOURCE_DIAGNOSTICS = false;
 
   const PANEL_CLASS =
-    'bg-black/45 border border-[var(--monad-purple)] rounded-2xl px-8 py-6 backdrop-blur';
+    'bg-black/45 border border-[var(--monad-purple)] rounded-2xl p-[5px] sm:px-8 sm:py-6 backdrop-blur';
 
   const renderSessionCard = (fid?: number, wallet?: string | null, extraClass = '') => (
     <div
@@ -2451,11 +2495,20 @@ function MiniAppPageInner() {
 
     return (
       <div className={`${PANEL_CLASS} space-y-4 bg-black/60`}>
-        <div>
-          <p className="text-lg font-semibold">{title}</p>
-          {subtitle && <p className="text-sm opacity-70">{subtitle}</p>}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-lg font-semibold">{title}</p>
+            {subtitle && <p className="text-sm opacity-70">{subtitle}</p>}
+          </div>
+          <button
+            type="button"
+            onClick={refreshLeaderboard}
+            className="self-start sm:self-auto pixel-font text-[10px] px-[5px] py-[5px] border border-white/20 rounded-full text-white hover:bg-white/10 transition-colors"
+          >
+            Refresh
+          </button>
         </div>
-        <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
+        <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1 touch-pan-y">
           {entries.map((entry, index) => {
             const ratio = maxValue > 0 ? entry.valueUsd / maxValue : 0;
             const iconSize = 28 + ratio * 60;
@@ -2577,7 +2630,7 @@ function MiniAppPageInner() {
           <div className="flex justify-center">
             <button
               type="button"
-              onClick={() => setLpRefreshNonce((n) => n + 1)}
+              onClick={refreshPersonalSigils}
               disabled={lpStatus === 'CHECKING'}
               className="mt-2 inline-flex items-center gap-1 rounded-full border border-white/20 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-white/70 hover:bg-white/10 disabled:opacity-40"
             >
@@ -2686,6 +2739,7 @@ function MiniAppPageInner() {
           <h1 className="pixel-font text-3xl text-red-500">{copy.title}</h1>
           {renderCopyBody(copy.body)}
           {renderPersonaCtas(copy)}
+          <div className="w-full">{renderBalanceButtons()}</div>
           <ManifestoHint align="left" />
         </div>
       </div>
@@ -2808,7 +2862,7 @@ function MiniAppPageInner() {
               type="button"
               onClick={() => handleShareBand('upside_band')}
               disabled={!hasMoonBand}
-              className="pixel-font px-6 py-2 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors disabled:opacity-30"
+              className="pixel-font px-[5px] py-[5px] border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors disabled:opacity-30"
             >
               {hasMoonBand ? 'SHARE MOON BAND' : 'DEPLOY TO UNLOCK SHARE'}
             </button>
@@ -2902,7 +2956,7 @@ function MiniAppPageInner() {
                 type="button"
                 onClick={() => handleShareBand('crash_band')}
                 disabled={!hasCrashBand}
-                className="pixel-font px-6 py-3 border border-white/30 text-white rounded-lg hover:bg-white/10 transition-colors disabled:opacity-30"
+                className="pixel-font px-[5px] py-[5px] border border-white/30 text-white rounded-lg hover:bg-white/10 transition-colors disabled:opacity-30"
               >
                 {hasCrashBand ? 'SHARE CRASH BAND' : 'DEPLOY TO SHARE'}
               </button>
@@ -2952,27 +3006,27 @@ function MiniAppPageInner() {
       if (solarSystemStatus === 'empty') {
         return (
           <div className={`${PANEL_CLASS} text-center text-sm text-white/70`}>
-            Solar telemetry snapshot came back empty. Control is rebuilding the sigil index — try
-            again shortly.
+            Solar telemetry snapshot came back empty. Control is rebuilding the sigil index — tap
+            REFRESH TELEMETRY to retry.
           </div>
         );
       }
       if (solarSystemStatus === 'error') {
         return (
           <div className={`${PANEL_CLASS} text-center text-sm text-red-300`}>
-            Solar telemetry unavailable right now.
+            Solar telemetry unavailable right now — tap REFRESH TELEMETRY to retry.
           </div>
         );
       }
       return (
         <div className={`${PANEL_CLASS} text-center text-sm opacity-70`}>
-          Calibrating orbital tracks…
+          Calibrating orbital tracks… hang tight or tap REFRESH TELEMETRY.
         </div>
       );
     };
 
     return renderShell(
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
+      <div className="min-h-screen w-full flex flex-col items-center justify-start gap-6 p-6 pb-24 relative z-10">
         <div className="max-w-4xl w-full space-y-8 scanline bg-black/50 border border-white/15 rounded-3xl px-8 py-10">
           <div className="text-center space-y-2">
             <p className="pixel-font text-2xl text-white">Observation Deck</p>
@@ -2991,6 +3045,29 @@ function MiniAppPageInner() {
               </button>
             </div>
           )}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-[10px] uppercase tracking-[0.35em] text-white/70">
+            <span>
+              {updatedStamp
+                ? `Snapshot synced at ${updatedStamp}`
+                : 'Snapshot pending — refresh to fetch telemetry.'}
+            </span>
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={handleRefreshTelemetry}
+                className="pixel-font px-[5px] py-[5px] rounded-full border border-white/30 text-white hover:bg-white/10 transition-colors"
+              >
+                REFRESH TELEMETRY
+              </button>
+              <button
+                type="button"
+                onClick={refreshPersonalSigils}
+                className="pixel-font px-[5px] py-[5px] rounded-full border border-[var(--monad-purple)] text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-black transition-colors"
+              >
+                RESCAN SIGILS
+              </button>
+            </div>
+          </div>
           <div className={`${PANEL_CLASS} text-center space-y-2`}>
             <p className="text-sm opacity-80">
               These are the largest single-sided LP sigils in the Monad pool — the Clanker core plus
@@ -3394,26 +3471,7 @@ function MiniAppPageInner() {
                   : 'Hold ≥ 1M m00n to unlock'}
               </span>
             </button>
-            {!observationDeckEligible && (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleSwapMonToToken('moon')}
-                  disabled={swapInFlight === 'moon'}
-                  className="flex-1 rounded-xl border border-[var(--monad-purple)] text-[var(--monad-purple)] text-[11px] uppercase tracking-[0.25em] px-[5px] py-[5px] hover:bg-[var(--monad-purple)] hover:text-black transition-colors disabled:opacity-40"
-                >
-                  {swapInFlight === 'moon' ? 'OPENING…' : 'BUY m00n'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSwapMonToToken('wmon')}
-                  disabled={swapInFlight === 'wmon'}
-                  className="flex-1 rounded-xl border border-white/30 text-white text-[11px] uppercase tracking-[0.25em] px-[5px] py-[5px] hover:bg-white/10 transition-colors disabled:opacity-40"
-                >
-                  {swapInFlight === 'wmon' ? 'OPENING…' : 'BUY WMON'}
-                </button>
-              </div>
-            )}
+            {!observationDeckEligible && renderBalanceButtons({ layout: 'row' })}
           </div>
         </div>
       )}
