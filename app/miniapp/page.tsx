@@ -16,6 +16,8 @@ import { WagmiConfig, createConfig, http } from 'wagmi';
 import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector';
 import { getTierByReplyCount } from '@/app/lib/tiers';
 import { getPersonaCopy, type PersonaActionId, type LpStatus } from '@/app/copy/persona';
+import M00nSolarSystem from '@/app/components/M00nSolarSystem';
+import type { LpPosition as LeaderboardLpPosition } from '@/app/lib/m00nSolarSystem';
 
 interface UserData {
   fid: number;
@@ -440,6 +442,14 @@ function MiniAppPageInner() {
   const [leaderboardStatus, setLeaderboardStatus] = useState<
     'idle' | 'loading' | 'error' | 'loaded'
   >('idle');
+  const [solarSystemData, setSolarSystemData] = useState<{
+    positions: LeaderboardLpPosition[];
+    updatedAt: string;
+  } | null>(null);
+  const [solarSystemStatus, setSolarSystemStatus] = useState<
+    'idle' | 'loading' | 'error' | 'loaded'
+  >('idle');
+  const [solarCanvasSize, setSolarCanvasSize] = useState(420);
   const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
 
   const hasAnyLp = useMemo(
@@ -482,6 +492,61 @@ function MiniAppPageInner() {
     loadLeaderboard();
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadSolarSystem = async () => {
+      setSolarSystemStatus('loading');
+      try {
+        const response = await fetch('/api/lp-solar-system');
+        if (!response.ok) {
+          throw new Error('lp_solar_system_failed');
+        }
+        const data = (await response.json()) as {
+          positions: LeaderboardLpPosition[];
+          updatedAt: string;
+        };
+        if (!cancelled) {
+          setSolarSystemData(data);
+          setSolarSystemStatus('loaded');
+        }
+      } catch (error) {
+        console.error('Solar system fetch failed', error);
+        if (!cancelled) {
+          setSolarSystemStatus('error');
+        }
+      }
+    };
+
+    void loadSolarSystem();
+    const intervalId =
+      typeof window !== 'undefined'
+        ? window.setInterval(
+            () => {
+              void loadSolarSystem();
+            },
+            1000 * 60 * 5
+          )
+        : null;
+
+    return () => {
+      cancelled = true;
+      if (intervalId) {
+        window.clearInterval(intervalId);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const computeSize = () =>
+      setSolarCanvasSize(Math.min(520, Math.max(320, window.innerWidth - 80)));
+    computeSize();
+    window.addEventListener('resize', computeSize);
+    return () => {
+      window.removeEventListener('resize', computeSize);
     };
   }, []);
 
@@ -2620,47 +2685,38 @@ function MiniAppPageInner() {
 
   const renderEmojiChatPortal = () => {
     const showManager = hasAnyLp;
-    const leaderboardReady = leaderboardStatus === 'loaded' && Boolean(leaderboardData);
     const updatedStamp =
-      leaderboardReady && leaderboardData?.updatedAt
-        ? new Date(leaderboardData.updatedAt).toLocaleTimeString([], {
+      solarSystemStatus === 'loaded' && solarSystemData?.updatedAt
+        ? new Date(solarSystemData.updatedAt).toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit'
           })
         : null;
 
-    const renderLeaderboardSection = () => {
-      if (leaderboardReady && leaderboardData) {
-        const hasClanker = leaderboardData.overall.some((entry) => entry.tokenId === '6914');
+    const renderSolarSystem = () => {
+      if (solarSystemStatus === 'loaded' && solarSystemData?.positions?.length) {
         return (
-          <div className="space-y-3">
-            {renderLeaderboardVisualizer(leaderboardData.overall, {
-              title: 'm00n Garden Leaderboard',
-              subtitle: 'Top 7 single-sided LP sigils ranked by USD value.'
-            })}
-            {hasClanker && (
-              <p className="text-center text-xs opacity-70">
-                Sigil #6914 is tagged as the Clanker Pool anchor.
-              </p>
-            )}
+          <div className="flex w-full justify-center">
+            <M00nSolarSystem
+              positions={solarSystemData.positions}
+              width={solarCanvasSize}
+              height={solarCanvasSize}
+            />
           </div>
         );
       }
-      if (leaderboardStatus === 'loading' || leaderboardStatus === 'idle') {
-        return (
-          <div className={`${PANEL_CLASS} text-center text-sm opacity-70`}>
-            Calibrating the Monad garden…
-          </div>
-        );
-      }
-      if (leaderboardStatus === 'error') {
+      if (solarSystemStatus === 'error') {
         return (
           <div className={`${PANEL_CLASS} text-center text-sm text-red-300`}>
-            Leaderboard unavailable right now.
+            Solar telemetry unavailable right now.
           </div>
         );
       }
-      return null;
+      return (
+        <div className={`${PANEL_CLASS} text-center text-sm opacity-70`}>
+          Calibrating orbital tracks…
+        </div>
+      );
     };
 
     return renderShell(
@@ -2669,13 +2725,13 @@ function MiniAppPageInner() {
           <div className="text-center space-y-2">
             <p className="pixel-font text-2xl text-white">Heaven&apos;s Gate</p>
             <p className="text-sm opacity-75">
-              Emoji chat is on pause while we broadcast the live LP garden.
+              Emoji chat is off-air; we&apos;re streaming the m00n LP solar system instead.
             </p>
           </div>
           <div className={`${PANEL_CLASS} text-center space-y-2`}>
             <p className="text-sm opacity-80">
-              Every sigil below is a single-sided LP guardian. We surface the seven largest m00n
-              bands on Monad so holders know who is anchoring the heavens.
+              These are the largest single-sided LP sigils in the Monad pool — the Clanker core plus
+              seven orbiting guardians.
             </p>
             {updatedStamp && (
               <p className="text-[10px] uppercase tracking-[0.35em] text-[var(--moss-green)]">
@@ -2683,7 +2739,7 @@ function MiniAppPageInner() {
               </p>
             )}
           </div>
-          {renderLeaderboardSection()}
+          {renderSolarSystem()}
           {personaLookupStatus === 'loading' && (
             <p className="text-center text-xs text-yellow-300">Syncing cabal dossier…</p>
           )}
