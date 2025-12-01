@@ -54,6 +54,14 @@ const UNISWAP_V4_SUBGRAPH_URL =
 
 const graphClient = new GraphQLClient(UNISWAP_V4_SUBGRAPH_URL);
 
+const DEFAULT_POSITION_DETAILS_DELAY_MS = 150;
+const POSITION_DETAILS_DELAY_MS =
+  typeof process !== 'undefined' && process.env.POSITION_DETAILS_DELAY_MS
+    ? Number(process.env.POSITION_DETAILS_DELAY_MS)
+    : DEFAULT_POSITION_DETAILS_DELAY_MS;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 // -----------------------------
 // Types
 // -----------------------------
@@ -284,7 +292,21 @@ export async function getPositionDetails(tokenId: bigint): Promise<PositionDetai
  */
 export async function getManyPositionDetails(tokenIds: bigint[]): Promise<PositionDetails[]> {
   if (tokenIds.length === 0) return [];
-  return Promise.all(tokenIds.map((id) => getPositionDetails(id)));
+
+  const details: PositionDetails[] = [];
+  const delayMs = Number.isFinite(POSITION_DETAILS_DELAY_MS)
+    ? Math.max(0, POSITION_DETAILS_DELAY_MS)
+    : DEFAULT_POSITION_DETAILS_DELAY_MS;
+
+  for (let i = 0; i < tokenIds.length; i += 1) {
+    if (i > 0 && delayMs > 0) {
+      await sleep(delayMs);
+    }
+    const detail = await getPositionDetails(tokenIds[i]);
+    details.push(detail);
+  }
+
+  return details;
 }
 
 // -----------------------------
@@ -574,25 +596,24 @@ export function computePositionValueUsd(
 // Enrichment helpers
 // -----------------------------
 
-export async function enrichPositionWithAmounts(
-  position: PositionDetails
-): Promise<PositionWithAmounts> {
-  const { sqrtPriceX96, tick: currentTick } = await getCurrentPoolState(position.poolKey);
-
+function buildPositionWithPoolState(
+  position: PositionDetails,
+  poolState: { sqrtPriceX96: bigint; tick: number }
+): PositionWithAmounts {
   const sqrtLower = sqrtRatioAtTick(position.tickLower);
   const sqrtUpper = sqrtRatioAtTick(position.tickUpper);
 
   const { amount0, amount1 } = getAmountsForLiquidity(
-    sqrtPriceX96,
+    poolState.sqrtPriceX96,
     sqrtLower,
     sqrtUpper,
     position.liquidity
   );
 
   let rangeStatus: PositionWithAmounts['rangeStatus'];
-  if (currentTick < position.tickLower) {
+  if (poolState.tick < position.tickLower) {
     rangeStatus = 'below-range';
-  } else if (currentTick > position.tickUpper) {
+  } else if (poolState.tick > position.tickUpper) {
     rangeStatus = 'above-range';
   } else {
     rangeStatus = 'in-range';
@@ -603,16 +624,37 @@ export async function enrichPositionWithAmounts(
     amount0,
     amount1,
     rangeStatus,
-    currentTick,
-    sqrtPriceX96
+    currentTick: poolState.tick,
+    sqrtPriceX96: poolState.sqrtPriceX96
   };
+}
+
+export async function enrichPositionWithAmounts(
+  position: PositionDetails
+): Promise<PositionWithAmounts> {
+  const poolState = await getCurrentPoolState(position.poolKey);
+  return buildPositionWithPoolState(position, poolState);
 }
 
 export async function enrichManyPositionsWithAmounts(
   positions: PositionDetails[]
 ): Promise<PositionWithAmounts[]> {
   if (positions.length === 0) return [];
-  return Promise.all(positions.map((p) => enrichPositionWithAmounts(p)));
+
+  const results: PositionWithAmounts[] = [];
+  const poolStateCache = new Map<string, { sqrtPriceX96: bigint; tick: number }>();
+
+  for (const position of positions) {
+    const poolId = getPoolIdFromKey(position.poolKey);
+    let poolState = poolStateCache.get(poolId);
+    if (!poolState) {
+      poolState = await getCurrentPoolState(position.poolKey);
+      poolStateCache.set(poolId, poolState);
+    }
+    results.push(buildPositionWithPoolState(position, poolState));
+  }
+
+  return results;
 }
 
 // -----------------------------
