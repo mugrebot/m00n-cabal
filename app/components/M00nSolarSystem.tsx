@@ -35,7 +35,7 @@ interface StarPoint {
   alpha: number;
 }
 
-const PLANET_TEXTURE_SRC = '/assets/m00n-planet.jpg';
+const PLANET_TEXTURE_SRC = '/assets/m00nsvg.svg';
 const STAR_COUNT = 72;
 
 function createStarfield(width: number, height: number, count: number): StarPoint[] {
