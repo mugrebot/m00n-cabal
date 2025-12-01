@@ -26,9 +26,14 @@ const monadChain = defineChain({
   }
 });
 
+const transport = http(monadRpcUrl, {
+  batch: true,
+  timeout: 30_000
+});
+
 const publicClient = createPublicClient({
   chain: monadChain,
-  transport: http(monadRpcUrl)
+  transport
 });
 
 export async function GET(request: NextRequest) {
@@ -50,25 +55,29 @@ export async function GET(request: NextRequest) {
         address: WMON_ADDRESS,
         abi: erc20Abi,
         functionName: 'balanceOf',
-        args: [address as `0x${string}`]
+        args: [address as `0x${string}`],
+        batch: { multicall: true }
       }),
       publicClient.readContract({
         address: WMON_ADDRESS,
         abi: erc20Abi,
         functionName: 'allowance',
-        args: [address as `0x${string}`, PERMIT2_ADDRESS as `0x${string}`]
+        args: [address as `0x${string}`, PERMIT2_ADDRESS as `0x${string}`],
+        batch: { multicall: true }
       }),
       publicClient.readContract({
         address: MOON_TOKEN_ADDRESS,
         abi: erc20Abi,
         functionName: 'balanceOf',
-        args: [address as `0x${string}`]
+        args: [address as `0x${string}`],
+        batch: { multicall: true }
       }),
       publicClient.readContract({
         address: MOON_TOKEN_ADDRESS,
         abi: erc20Abi,
         functionName: 'allowance',
-        args: [address as `0x${string}`, PERMIT2_ADDRESS as `0x${string}`]
+        args: [address as `0x${string}`, PERMIT2_ADDRESS as `0x${string}`],
+        batch: { multicall: true }
       }),
       publicClient.readContract({
         address: WMON_ADDRESS,
