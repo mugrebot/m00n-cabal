@@ -463,6 +463,7 @@ function MiniAppPageInner() {
   const [solarCanvasSize, setSolarCanvasSize] = useState(420);
   const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
   const [isObservationManagerVisible, setIsObservationManagerVisible] = useState(false);
+  const [isObservationDeckOpen, setIsObservationDeckOpen] = useState(false);
 
   const hasAnyLp = useMemo(
     () => (lpGateState.lpPositions?.length ?? 0) > 0,
@@ -472,6 +473,22 @@ function MiniAppPageInner() {
 
   const showToast = useCallback((kind: 'info' | 'success' | 'error', message: string) => {
     setToast({ kind, message });
+  }, []);
+
+  const handleObservationDeckRequest = useCallback(() => {
+    if (primaryBalanceStatus !== 'loaded') {
+      showToast('info', 'Syncing wallet balance — try again in a moment.');
+      return;
+    }
+    if (!observationDeckEligible) {
+      showToast('error', 'Observation deck entry requires you to hold 1 million m00nad.');
+      return;
+    }
+    setIsObservationDeckOpen(true);
+  }, [observationDeckEligible, primaryBalanceStatus, showToast]);
+
+  const handleCloseObservationDeck = useCallback(() => {
+    setIsObservationDeckOpen(false);
   }, []);
 
   useEffect(() => {
@@ -612,11 +629,10 @@ function MiniAppPageInner() {
   }, [personaHint]);
 
   const observationDeckEligible = useMemo(() => {
-    if (csvPersona) return false;
     if (primaryBalanceStatus !== 'loaded') return false;
     if (!primaryAddressMoonBalanceWei) return false;
     return primaryAddressMoonBalanceWei >= MOON_EMOJI_THRESHOLD_WEI;
-  }, [csvPersona, primaryAddressMoonBalanceWei, primaryBalanceStatus]);
+  }, [primaryAddressMoonBalanceWei, primaryBalanceStatus]);
 
   const personaFromLpPositions = useMemo<UserPersona | null>(() => {
     if (lpGateState.lpStatus !== 'HAS_LP') {
@@ -642,9 +658,6 @@ function MiniAppPageInner() {
     if (csvPersona) {
       return csvPersona;
     }
-    if (observationDeckEligible) {
-      return 'emoji_chat';
-    }
     if (personaFromLpPositions) {
       return personaFromLpPositions;
     }
@@ -667,7 +680,6 @@ function MiniAppPageInner() {
     engagementData?.replyCount,
     hasZeroPoints,
     csvPersona,
-    observationDeckEligible,
     personaFromLpPositions,
     userData
   ]);
@@ -692,6 +704,12 @@ function MiniAppPageInner() {
       setIsObservationManagerVisible(false);
     }
   }, [hasAnyLp, isObservationManagerVisible]);
+
+  useEffect(() => {
+    if (!observationDeckEligible) {
+      setIsObservationDeckOpen(false);
+    }
+  }, [observationDeckEligible]);
 
   const fallingStickers = useMemo(
     () =>
@@ -2796,7 +2814,8 @@ function MiniAppPageInner() {
     );
   };
 
-  const renderObservationDeckPortal = () => {
+  const renderObservationDeckPortal = (options?: { allowClose?: boolean }) => {
+    const allowClose = options?.allowClose ?? false;
     const updatedStamp =
       solarSystemStatus === 'loaded' && solarSystemData?.updatedAt
         ? new Date(solarSystemData.updatedAt).toLocaleTimeString([], {
@@ -2855,6 +2874,17 @@ function MiniAppPageInner() {
               The deck is live — broadcasting the m00n LP solar system telemetry in real time.
             </p>
           </div>
+          {allowClose && (
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={handleCloseObservationDeck}
+                className="pixel-font px-6 py-2 border border-white/25 text-white rounded-lg hover:bg-white/10 transition-colors text-xs tracking-[0.35em]"
+              >
+                EXIT OBSERVATION DECK
+              </button>
+            </div>
+          )}
           <div className={`${PANEL_CLASS} text-center space-y-2`}>
             <p className="text-sm opacity-80">
               These are the largest single-sided LP sigils in the Monad pool — the Clanker core plus
@@ -3243,6 +3273,15 @@ function MiniAppPageInner() {
       {renderAdminPanel()}
       <BackgroundOrbs />
       <StickerRain />
+      {!isObservationDeckOpen && (
+        <button
+          type="button"
+          onClick={handleObservationDeckRequest}
+          className="fixed bottom-4 left-4 z-40 pixel-font text-[10px] tracking-[0.4em] px-4 py-2 rounded-full border border-white/25 text-white bg-black/60 hover:bg-black/40 transition-colors"
+        >
+          OBSERVATION DECK
+        </button>
+      )}
       {toast && (
         <div
           className={`fixed top-6 left-1/2 z-50 -translate-x-1/2 px-4 py-2 rounded-full border backdrop-blur ${
@@ -3429,6 +3468,10 @@ function MiniAppPageInner() {
         </div>
       </div>
     );
+  }
+
+  if (isObservationDeckOpen) {
+    return renderObservationDeckPortal({ allowClose: true });
   }
 
   if (isAdmin && adminPortalView !== 'default') {

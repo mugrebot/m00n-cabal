@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { buildSolarSystemPayload, type SolarSystemPayload } from '@/app/lib/lpTelemetry';
+import { getAddressLabel } from '@/app/lib/addressLabels';
 import { readSolarSystemSnapshot, writeSolarSystemSnapshot } from '@/app/lib/lpTelemetryStore';
 
 const FALLBACK_REBUILD_ENABLED = process.env.LP_SOLAR_SYSTEM_ON_DEMAND === '1';
 const DEFAULT_LIMIT = 8;
 const MAX_LIMIT = 12;
+
+const withLabels = (payload: SolarSystemPayload): SolarSystemPayload => ({
+  ...payload,
+  positions: payload.positions.map((position) => ({
+    ...position,
+    label: position.label ?? getAddressLabel(position.owner)
+  }))
+});
 
 const formatResponse = (payload: SolarSystemPayload, limit: number) => ({
   updatedAt: payload.updatedAt,
@@ -25,6 +34,7 @@ export async function GET(request: NextRequest) {
       if (FALLBACK_REBUILD_ENABLED) {
         try {
           payload = await buildSolarSystemPayload(MAX_LIMIT);
+          payload = withLabels(payload);
           await writeSolarSystemSnapshot(payload);
         } catch (error) {
           console.error('[lp-solar-system] on-demand rebuild failed', error);
@@ -36,7 +46,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json(formatResponse(payload, limit), {
+    const enrichedPayload = withLabels(payload);
+
+    return NextResponse.json(formatResponse(enrichedPayload, limit), {
       headers: {
         'Cache-Control': 's-maxage=60, stale-while-revalidate=300'
       }
