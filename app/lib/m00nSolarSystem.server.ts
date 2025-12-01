@@ -66,6 +66,14 @@ const M00N_POOL_ID = (
   FALLBACK_M00N_POOL_ID ??
   computedPoolId
 ).toLowerCase();
+const EXCLUDED_OWNER_ADDRESSES = new Set(
+  [
+    '0xbf4977f1295454cb46d95fe7d8e1d99e32d8aed1',
+    ...(process.env.M00N_SOLAR_EXCLUDED_OWNERS ?? '').split(',')
+  ]
+    .map((entry) => entry.trim().toLowerCase())
+    .filter((entry) => entry.startsWith('0x') && entry.length === 42)
+);
 
 const GET_RECENT_POSITIONS = gql`
   query GetRecentPositions($first: Int!, $skip: Int!) {
@@ -409,37 +417,39 @@ export async function getTopM00nLpPositions(limit = 8): Promise<LpPosition[]> {
 
   const resolveOwnerLabel = (owner: string): string | null => getAddressLabel(owner);
 
-  const entries: LpPosition[] = enriched.map((position) => {
-    const tokenId = position.tokenId.toString();
-    const isClankerPool = tokenId === SPECIAL_CLANKER_ID;
-    const owner = ownerMap.get(tokenId) ?? '0x0';
-    const label = isClankerPool ? 'Clanker Pool' : resolveOwnerLabel(owner);
+  const entries: LpPosition[] = enriched
+    .map((position) => {
+      const tokenId = position.tokenId.toString();
+      const isClankerPool = tokenId === SPECIAL_CLANKER_ID;
+      const owner = ownerMap.get(tokenId) ?? '0x0';
+      const label = isClankerPool ? 'Clanker Pool' : resolveOwnerLabel(owner);
 
-    let notionalUsd = 0;
-    if (moonPriceUsd !== null && wmonPriceUsd !== null) {
-      notionalUsd = computePositionValueUsd(
-        { amount0: position.amount0, amount1: position.amount1 },
-        moonPriceUsd,
-        wmonPriceUsd,
-        18,
-        18
-      );
-    }
+      let notionalUsd = 0;
+      if (moonPriceUsd !== null && wmonPriceUsd !== null) {
+        notionalUsd = computePositionValueUsd(
+          { amount0: position.amount0, amount1: position.amount1 },
+          moonPriceUsd,
+          wmonPriceUsd,
+          18,
+          18
+        );
+      }
 
-    return {
-      owner,
-      label,
-      tokenId,
-      notionalUsd,
-      notionalToken0: Number(formatUnits(position.amount0, 18)),
-      notionalToken1: Number(formatUnits(position.amount1, 18)),
-      isClankerPool,
-      tickLower: position.tickLower,
-      tickUpper: position.tickUpper,
-      rangeStatus: position.rangeStatus,
-      currentTick: position.currentTick
-    };
-  });
+      return {
+        owner,
+        label,
+        tokenId,
+        notionalUsd,
+        notionalToken0: Number(formatUnits(position.amount0, 18)),
+        notionalToken1: Number(formatUnits(position.amount1, 18)),
+        isClankerPool,
+        tickLower: position.tickLower,
+        tickUpper: position.tickUpper,
+        rangeStatus: position.rangeStatus,
+        currentTick: position.currentTick
+      };
+    })
+    .filter((entry) => !EXCLUDED_OWNER_ADDRESSES.has(entry.owner.toLowerCase()));
 
   return entries
     .sort((a, b) => b.notionalUsd - a.notionalUsd)

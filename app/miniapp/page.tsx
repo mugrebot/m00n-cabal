@@ -611,9 +611,21 @@ function MiniAppPageInner() {
       setSolarCanvasSize(responsiveSize);
     };
     computeSize();
-    window.addEventListener('resize', computeSize);
+    let resizeTimeout: number | null = null;
+    const handleResize = () => {
+      if (resizeTimeout) {
+        window.clearTimeout(resizeTimeout);
+      }
+      resizeTimeout = window.setTimeout(() => {
+        computeSize();
+      }, 100);
+    };
+    window.addEventListener('resize', handleResize);
     return () => {
-      window.removeEventListener('resize', computeSize);
+      if (resizeTimeout) {
+        window.clearTimeout(resizeTimeout);
+      }
+      window.removeEventListener('resize', handleResize);
     };
   }, []);
 
