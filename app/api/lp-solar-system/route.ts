@@ -4,8 +4,8 @@ import { getAddressLabel } from '@/app/lib/addressLabels';
 import { readSolarSystemSnapshot, writeSolarSystemSnapshot } from '@/app/lib/lpTelemetryStore';
 
 const FALLBACK_REBUILD_ENABLED = process.env.LP_SOLAR_SYSTEM_ON_DEMAND === '1';
-const DEFAULT_LIMIT = 8;
-const MAX_LIMIT = 12;
+const SOLAR_DEFAULT_LIMIT = Number(process.env.M00N_SOLAR_POSITION_LIMIT ?? 16);
+const SOLAR_MAX_LIMIT = Number(process.env.M00N_SOLAR_POSITION_MAX ?? 24);
 
 const withLabels = (payload: SolarSystemPayload): SolarSystemPayload => ({
   ...payload,
@@ -22,10 +22,10 @@ const formatResponse = (payload: SolarSystemPayload, limit: number) => ({
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const limitParam = Number(searchParams.get('limit') ?? `${DEFAULT_LIMIT}`);
+  const limitParam = Number(searchParams.get('limit') ?? `${SOLAR_DEFAULT_LIMIT}`);
   const limit = Number.isFinite(limitParam)
-    ? Math.min(Math.max(1, limitParam), MAX_LIMIT)
-    : DEFAULT_LIMIT;
+    ? Math.min(Math.max(1, limitParam), SOLAR_MAX_LIMIT)
+    : SOLAR_DEFAULT_LIMIT;
 
   try {
     let payload = await readSolarSystemSnapshot();
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     if (!payload) {
       if (FALLBACK_REBUILD_ENABLED) {
         try {
-          payload = await buildSolarSystemPayload(MAX_LIMIT);
+          payload = await buildSolarSystemPayload(SOLAR_MAX_LIMIT);
           payload = withLabels(payload);
           await writeSolarSystemSnapshot(payload);
         } catch (error) {

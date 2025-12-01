@@ -113,22 +113,18 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
       const centerPlanet = preparedPlanets[0];
       const satellitePlanets = preparedPlanets.slice(1);
       const baseDimension = Math.min(width, height);
-      const maxOrbitRadius = Math.max(
-        (centerPlanet?.radius ?? baseDimension * 0.12) + 12,
-        baseDimension * 0.18
-      );
-      const orbitBoundary = Math.max(baseDimension * 0.25, baseDimension / 2 - 18);
-      const safeOrbitLimit = Math.min(maxOrbitRadius, orbitBoundary);
-      const minOrbitBase =
+      const orbitBoundary = Math.max(baseDimension * 0.25, baseDimension / 2 - 16);
+      const desiredOrbitBase =
         centerPlanet !== undefined
-          ? centerPlanet.radius + Math.max(12, baseDimension * 0.04)
-          : baseDimension * 0.16;
-      const orbitBase = Math.min(minOrbitBase, safeOrbitLimit);
-      const availableBand = Math.max(0, safeOrbitLimit - orbitBase);
-      const orbitStep =
-        satellitePlanets.length > 0
-          ? availableBand / Math.max(satellitePlanets.length, 1)
-          : baseDimension * 0.08;
+          ? centerPlanet.radius + Math.max(20, baseDimension * 0.05)
+          : baseDimension * 0.18;
+      const desiredOrbitStep = baseDimension * 0.11;
+      const desiredMaxRadius =
+        desiredOrbitBase + desiredOrbitStep * Math.max(satellitePlanets.length - 1, 0);
+      const scale =
+        desiredMaxRadius > orbitBoundary ? orbitBoundary / (desiredMaxRadius || orbitBoundary) : 1;
+      const orbitBase = Math.max(12, desiredOrbitBase * scale);
+      const orbitStep = Math.max(8, desiredOrbitStep * scale);
       const texture = textureRef.current;
       const renderStates: PlanetRenderState[] = [];
 

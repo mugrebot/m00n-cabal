@@ -12,7 +12,11 @@ export type SolarSystemPayload = {
   updatedAt: string;
 };
 
-export async function buildSolarSystemPayload(limit = 12): Promise<SolarSystemPayload> {
+const SOLAR_SYSTEM_LIMIT = Number(process.env.M00N_SOLAR_POSITION_LIMIT ?? 16);
+
+export async function buildSolarSystemPayload(
+  limit = SOLAR_SYSTEM_LIMIT
+): Promise<SolarSystemPayload> {
   const positions = await getTopM00nLpPositions(limit);
   if (!positions.length) {
     throw new Error('solar_system_positions_empty');
@@ -60,7 +64,7 @@ export interface LeaderboardSnapshot {
   overall: LeaderboardEntry[];
 }
 
-const TOP_POSITION_SAMPLE_SIZE = 120;
+const TOP_POSITION_SAMPLE_SIZE = Number(process.env.M00N_SOLAR_LEADERBOARD_SAMPLE_SIZE ?? 200);
 const TOP_OVERALL_COUNT = 7;
 const SPECIAL_CLANKER_LABEL = 'Clanker Pool';
 

@@ -256,7 +256,9 @@ function buildOwnerLookupTargets(
   return combined;
 }
 
-export async function getTopM00nLpPositions(limit = 8): Promise<LpPosition[]> {
+const MAX_SOLAR_POSITIONS = Number(process.env.M00N_SOLAR_POSITION_LIMIT ?? 16);
+
+export async function getTopM00nLpPositions(limit = MAX_SOLAR_POSITIONS): Promise<LpPosition[]> {
   const debugEnabled = process.env.DEBUG_SOLAR_SYSTEM === '1';
   const labels = loadAddressLabelMap();
   const labeledAddresses = Array.from(labels.keys());
@@ -271,6 +273,7 @@ export async function getTopM00nLpPositions(limit = 8): Promise<LpPosition[]> {
         '15963',
         '16034',
         '16037',
+        '16608',
         ...(process.env.M00N_SOLAR_SEED_TOKEN_IDS ?? '').split(',')
       ]
         .map((entry) => entry.trim())
