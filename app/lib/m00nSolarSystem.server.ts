@@ -5,13 +5,14 @@ if (typeof process !== 'undefined' && process.env.NEXT_RUNTIME) {
 import { GraphQLClient, gql } from 'graphql-request';
 import { Pool } from '@uniswap/v4-sdk';
 import { Token } from '@uniswap/sdk-core';
-import { formatUnits } from 'viem';
+import { formatUnits, type Address } from 'viem';
 
 import { loadAddressLabelMap } from '@/app/lib/addressLabels';
 import {
   computePositionValueUsd,
   enrichManyPositionsWithAmounts,
-  getManyPositionDetails
+  getManyPositionDetails,
+  getPositionIds
 } from '@/app/lib/uniswapV4Positions';
 import { getWmonUsdPriceFromSubgraph } from '@/app/lib/pricing/monadPrices';
 import type { LpPosition } from '@/app/lib/m00nSolarSystem.types';
@@ -36,6 +37,11 @@ const POSITION_SAMPLE_SIZE = Number(
   process.env.M00N_SOLAR_POSITION_SAMPLE_SIZE ?? process.env.M00N_SOLAR_POOL_SAMPLE_SIZE ?? 100
 );
 const POSITION_PAGE_SIZE = Number(process.env.M00N_SOLAR_POSITION_PAGE_SIZE ?? 100);
+const LABEL_OWNER_LOOKUP_LIMIT = Number(process.env.M00N_SOLAR_LABEL_OWNER_LIMIT ?? 50);
+const SEED_OWNER_ADDRESSES = (process.env.M00N_SOLAR_SEED_ADDRESSES ?? '')
+  .split(',')
+  .map((entry) => entry.trim())
+  .filter((entry) => entry.length > 0);
 const OWNER_BATCH_SIZE = Number(process.env.M00N_SOLAR_OWNER_BATCH_SIZE ?? 40);
 const OWNER_POSITIONS_PER_BATCH = Number(process.env.M00N_SOLAR_OWNER_POSITIONS_PER_BATCH ?? 40);
 const SPECIAL_CLANKER_ID = '6914';
@@ -86,6 +92,16 @@ const GET_POSITIONS_FOR_OWNERS = gql`
   }
 `;
 
+const GET_POSITIONS_BY_TOKEN_IDS = gql`
+  query GetPositionsByTokenIds($tokenIds: [BigInt!]!) {
+    positions(where: { tokenId_in: $tokenIds }) {
+      tokenId
+      owner
+      createdAtTimestamp
+    }
+  }
+`;
+
 const LOWER_MOON_ADDRESS = TOKEN_MOON_ADDRESS.toLowerCase();
 const LOWER_WMON_ADDRESS = TOKEN_WMON_ADDRESS.toLowerCase();
 const LOWER_HOOK_ADDRESS = HOOK_ADDRESS.toLowerCase();
@@ -94,6 +110,15 @@ type PositionRecord = {
   tokenId: string;
   owner: string;
   createdAtTimestamp?: string;
+};
+
+const normalizeAddress = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed.startsWith('0x') || trimmed.length !== 42) {
+    return null;
+  }
+  return trimmed;
 };
 
 async function fetchRecentPositionCandidates(limit: number) {
@@ -173,6 +198,56 @@ async function fetchPositionsForOwners(owners: string[], limitPerChunk: number) 
   return collected;
 }
 
+async function fetchPositionsByTokenIds(tokenIds: string[]) {
+  const filtered = tokenIds.filter((entry) => /^\d+$/.test(entry));
+  if (!filtered.length) return [];
+  try {
+    const data = (await graphClient.request(GET_POSITIONS_BY_TOKEN_IDS, {
+      tokenIds: filtered
+    })) as {
+      positions: PositionRecord[];
+    };
+    return data.positions ?? [];
+  } catch (error) {
+    console.error('[m00nSolarSystem] Failed to fetch seed token positions', error);
+    return [];
+  }
+}
+
+function buildOwnerLookupTargets(
+  labeledAddresses: string[],
+  ownerMap: Map<string, string>
+): string[] {
+  const seedAddresses = Array.from(
+    new Set(
+      SEED_OWNER_ADDRESSES.map((entry) => normalizeAddress(entry)).filter(
+        (entry): entry is string => Boolean(entry)
+      )
+    )
+  );
+
+  const labelAddresses = labeledAddresses
+    .map((address) => normalizeAddress(address))
+    .filter((address): address is string => {
+      if (!address) return false;
+      return !seedAddresses.includes(address);
+    });
+
+  const limitedLabelAddresses = labelAddresses.slice(0, Math.max(0, LABEL_OWNER_LOOKUP_LIMIT));
+
+  const combined = [...seedAddresses, ...limitedLabelAddresses];
+
+  // Ensure we always retain owners already discovered via subgraph to preserve mapping.
+  for (const owner of ownerMap.values()) {
+    const normalized = normalizeAddress(owner);
+    if (normalized && !combined.includes(normalized)) {
+      combined.push(normalized);
+    }
+  }
+
+  return combined;
+}
+
 export async function getTopM00nLpPositions(limit = 8): Promise<LpPosition[]> {
   const debugEnabled = process.env.DEBUG_SOLAR_SYSTEM === '1';
   const labels = loadAddressLabelMap();
@@ -180,12 +255,28 @@ export async function getTopM00nLpPositions(limit = 8): Promise<LpPosition[]> {
   const ownerMap = new Map<string, string>();
   const tokenIdSet = new Set<bigint>();
 
-  const [recentPositions, ownerScopedPositions] = await Promise.all([
+  const seedTokenIds = Array.from(
+    new Set(
+      [
+        '15252',
+        '15278',
+        '15963',
+        '16034',
+        '16037',
+        ...(process.env.M00N_SOLAR_SEED_TOKEN_IDS ?? '').split(',')
+      ]
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0)
+    )
+  );
+
+  const [recentPositions, ownerScopedPositions, seedPositions] = await Promise.all([
     fetchRecentPositionCandidates(POSITION_SAMPLE_SIZE),
-    fetchPositionsForOwners(labeledAddresses, OWNER_POSITIONS_PER_BATCH)
+    fetchPositionsForOwners(labeledAddresses, OWNER_POSITIONS_PER_BATCH),
+    fetchPositionsByTokenIds(seedTokenIds)
   ]);
 
-  const candidatePositions = [...recentPositions, ...ownerScopedPositions];
+  const candidatePositions = [...recentPositions, ...ownerScopedPositions, ...seedPositions];
 
   for (const entry of candidatePositions) {
     if (!entry.tokenId) continue;
@@ -193,10 +284,31 @@ export async function getTopM00nLpPositions(limit = 8): Promise<LpPosition[]> {
       const id = BigInt(entry.tokenId);
       tokenIdSet.add(id);
       if (entry.owner) {
-        ownerMap.set(entry.tokenId, entry.owner);
+        ownerMap.set(entry.tokenId, normalizeAddress(entry.owner) ?? entry.owner);
       }
     } catch {
       // ignore malformed ids
+    }
+  }
+
+  for (const seedTokenId of seedTokenIds) {
+    try {
+      tokenIdSet.add(BigInt(seedTokenId));
+    } catch {
+      // ignore malformed seeds
+    }
+  }
+
+  const ownerLookupTargets = buildOwnerLookupTargets(labeledAddresses, ownerMap);
+  for (const owner of ownerLookupTargets) {
+    try {
+      const ids = await getPositionIds(owner as Address);
+      ids.forEach((id) => {
+        tokenIdSet.add(id);
+        ownerMap.set(id.toString(), owner);
+      });
+    } catch (error) {
+      console.warn('[m00nSolarSystem] Failed to load position ids for owner', owner, error);
     }
   }
 
