@@ -694,10 +694,10 @@ function MiniAppPageInner() {
   const openManifesto = useCallback(() => setIsManifestoOpen(true), []);
 
   useEffect(() => {
-    if (!isAdmin && adminPortalView !== 'default') {
+    if ((!isAdmin || isObservationDeckOpen) && adminPortalView !== 'default') {
       setAdminPortalView('default');
     }
-  }, [isAdmin, adminPortalView]);
+  }, [isAdmin, adminPortalView, isObservationDeckOpen]);
 
   useEffect(() => {
     if (!hasAnyLp && isObservationManagerVisible) {
@@ -3197,7 +3197,7 @@ function MiniAppPageInner() {
   );
 
   const renderAdminPanel = () => {
-    if (!isAdmin) return null;
+    if (!isAdmin || isObservationDeckOpen) return null;
 
     const portals: { id: AdminPortalView; label: string }[] = [
       { id: 'default', label: 'Live state' },
@@ -3274,13 +3274,16 @@ function MiniAppPageInner() {
       <BackgroundOrbs />
       <StickerRain />
       {!isObservationDeckOpen && (
-        <button
-          type="button"
-          onClick={handleObservationDeckRequest}
-          className="fixed bottom-4 left-4 z-40 pixel-font text-[10px] tracking-[0.4em] px-4 py-2 rounded-full border border-white/25 text-white bg-black/60 hover:bg-black/40 transition-colors"
-        >
-          OBSERVATION DECK
-        </button>
+        <div className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 w-[min(420px,90vw)]">
+          <button
+            type="button"
+            onClick={handleObservationDeckRequest}
+            className="w-full pixel-font text-[11px] tracking-[0.4em] px-5 py-3 rounded-2xl border border-white/30 text-white bg-black/70 backdrop-blur hover:bg-white/10 transition-colors flex flex-col items-center gap-1"
+          >
+            <span className="text-xs uppercase">Observation Deck</span>
+            <span className="text-[10px] opacity-75">Tap to view live LP telemetry</span>
+          </button>
+        </div>
       )}
       {toast && (
         <div
@@ -3474,7 +3477,7 @@ function MiniAppPageInner() {
     return renderObservationDeckPortal({ allowClose: true });
   }
 
-  if (isAdmin && adminPortalView !== 'default') {
+  if (isAdmin && adminPortalView !== 'default' && !isObservationDeckOpen) {
     switch (adminPortalView) {
       case 'claimed_sold':
         return renderClaimedSoldPortal();
