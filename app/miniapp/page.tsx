@@ -475,22 +475,6 @@ function MiniAppPageInner() {
     setToast({ kind, message });
   }, []);
 
-  const handleObservationDeckRequest = useCallback(() => {
-    if (primaryBalanceStatus !== 'loaded') {
-      showToast('info', 'Syncing wallet balance — try again in a moment.');
-      return;
-    }
-    if (!observationDeckEligible) {
-      showToast('error', 'Observation deck entry requires you to hold 1 million m00nad.');
-      return;
-    }
-    setIsObservationDeckOpen(true);
-  }, [observationDeckEligible, primaryBalanceStatus, showToast]);
-
-  const handleCloseObservationDeck = useCallback(() => {
-    setIsObservationDeckOpen(false);
-  }, []);
-
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(null), 4000);
@@ -633,6 +617,22 @@ function MiniAppPageInner() {
     if (!primaryAddressMoonBalanceWei) return false;
     return primaryAddressMoonBalanceWei >= MOON_EMOJI_THRESHOLD_WEI;
   }, [primaryAddressMoonBalanceWei, primaryBalanceStatus]);
+
+  const handleObservationDeckRequest = useCallback(() => {
+    if (primaryBalanceStatus !== 'loaded') {
+      showToast('info', 'Syncing wallet balance — try again in a moment.');
+      return;
+    }
+    if (!observationDeckEligible) {
+      showToast('error', 'Observation deck entry requires you to hold 1 million m00nad.');
+      return;
+    }
+    setIsObservationDeckOpen(true);
+  }, [observationDeckEligible, primaryBalanceStatus, showToast]);
+
+  const handleCloseObservationDeck = useCallback(() => {
+    setIsObservationDeckOpen(false);
+  }, []);
 
   const personaFromLpPositions = useMemo<UserPersona | null>(() => {
     if (lpGateState.lpStatus !== 'HAS_LP') {
