@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  LpPosition,
   computeSatelliteOrbit,
   formatUsd,
   normalizeM00nRadii,
   truncateAddress
 } from '@/app/lib/m00nSolarSystem';
+import type { LpPosition } from '@/app/lib/m00nSolarSystem.types';
 
 export interface M00nSolarSystemProps {
   positions: LpPosition[];

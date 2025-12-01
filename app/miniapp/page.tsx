@@ -17,7 +17,7 @@ import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-c
 import { getTierByReplyCount } from '@/app/lib/tiers';
 import { getPersonaCopy, type PersonaActionId, type LpStatus } from '@/app/copy/persona';
 import M00nSolarSystem from '@/app/components/M00nSolarSystem';
-import type { LpPosition as LeaderboardLpPosition } from '@/app/lib/m00nSolarSystem';
+import type { LpPosition as LeaderboardLpPosition } from '@/app/lib/m00nSolarSystem.types';
 
 interface UserData {
   fid: number;
