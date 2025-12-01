@@ -55,29 +55,25 @@ export async function GET(request: NextRequest) {
         address: WMON_ADDRESS,
         abi: erc20Abi,
         functionName: 'balanceOf',
-        args: [address as `0x${string}`],
-        batch: { multicall: true }
+        args: [address as `0x${string}`]
       }),
       publicClient.readContract({
         address: WMON_ADDRESS,
         abi: erc20Abi,
         functionName: 'allowance',
-        args: [address as `0x${string}`, PERMIT2_ADDRESS as `0x${string}`],
-        batch: { multicall: true }
+        args: [address as `0x${string}`, PERMIT2_ADDRESS as `0x${string}`]
       }),
       publicClient.readContract({
         address: MOON_TOKEN_ADDRESS,
         abi: erc20Abi,
         functionName: 'balanceOf',
-        args: [address as `0x${string}`],
-        batch: { multicall: true }
+        args: [address as `0x${string}`]
       }),
       publicClient.readContract({
         address: MOON_TOKEN_ADDRESS,
         abi: erc20Abi,
         functionName: 'allowance',
-        args: [address as `0x${string}`, PERMIT2_ADDRESS as `0x${string}`],
-        batch: { multicall: true }
+        args: [address as `0x${string}`, PERMIT2_ADDRESS as `0x${string}`]
       }),
       publicClient.readContract({
         address: WMON_ADDRESS,
