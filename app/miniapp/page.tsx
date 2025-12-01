@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useMemo,
   useState,
@@ -320,6 +321,23 @@ interface CsvPersonaRecord {
   latestInteraction?: string | null;
 }
 
+type PersonaBadge = 'm00nboy' | 'trial' | 'fader';
+
+const PERSONA_BADGE_COPY: Record<PersonaBadge, { label: string; description: string }> = {
+  m00nboy: {
+    label: 'm00nboy',
+    description: 'LP believer — active sigils detected in the m00n / W-MON pool.'
+  },
+  trial: {
+    label: 'trial',
+    description: 'Active cabalist without an LP sigil yet. Trialing the rituals.'
+  },
+  fader: {
+    label: 'fader',
+    description: 'Listed in NautyNice with 0 m00n balance remaining.'
+  }
+};
+
 interface PersonaApiResponse {
   found: boolean;
   personaHint?: CsvPersonaHint | null;
@@ -464,6 +482,13 @@ function MiniAppPageInner() {
   const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
   const [isObservationManagerVisible, setIsObservationManagerVisible] = useState(false);
   const [isObservationDeckOpen, setIsObservationDeckOpen] = useState(false);
+  const deferredLpClaimAmount = useDeferredValue(lpClaimAmount);
+
+  const handleLpAmountChange = useCallback((rawValue: string) => {
+    const stripped = rawValue.replace(/[^\d.,]/g, '');
+    const normalized = stripped.replace(/,/g, '.');
+    setLpClaimAmount(normalized);
+  }, []);
 
   const hasAnyLp = useMemo(
     () => (lpGateState.lpPositions?.length ?? 0) > 0,
@@ -611,6 +636,32 @@ function MiniAppPageInner() {
     }
     return null;
   }, [personaHint]);
+
+  const personaBadge = useMemo<PersonaBadge>(() => {
+    const hasLpSigil =
+      lpGateState.lpStatus === 'HAS_LP' &&
+      ((lpGateState.lpPositions?.length ?? 0) > 0 ||
+        lpGateState.hasLpFromOnchain ||
+        lpGateState.hasLpFromSubgraph);
+    if (hasLpSigil) {
+      return 'm00nboy';
+    }
+    if (
+      personaRecord &&
+      personaRecord.totalEstimatedBalance !== undefined &&
+      personaRecord.totalEstimatedBalance !== null &&
+      personaRecord.totalEstimatedBalance <= 0
+    ) {
+      return 'fader';
+    }
+    return 'trial';
+  }, [
+    lpGateState.hasLpFromOnchain,
+    lpGateState.hasLpFromSubgraph,
+    lpGateState.lpPositions,
+    lpGateState.lpStatus,
+    personaRecord
+  ]);
 
   const observationDeckEligible = useMemo(() => {
     if (primaryBalanceStatus !== 'loaded') return false;
@@ -1721,7 +1772,7 @@ function MiniAppPageInner() {
   };
 
   const desiredAmountWei = useMemo(() => {
-    const sanitized = lpClaimAmount.trim();
+    const sanitized = deferredLpClaimAmount.trim();
     if (!sanitized) return null;
     const decimals =
       lpClaimPreset === 'moon_upside' ? (tokenDecimals.moon ?? 18) : (tokenDecimals.wmon ?? 18);
@@ -1730,7 +1781,7 @@ function MiniAppPageInner() {
     } catch {
       return null;
     }
-  }, [lpClaimAmount, lpClaimPreset, tokenDecimals.moon, tokenDecimals.wmon]);
+  }, [deferredLpClaimAmount, lpClaimPreset, tokenDecimals.moon, tokenDecimals.wmon]);
 
   const renderLpClaimModal = () => {
     const walletReady = Boolean(miniWalletAddress);
@@ -1744,7 +1795,7 @@ function MiniAppPageInner() {
       moonAllowanceWei !== null &&
       fundingStatus !== 'loading';
     const tokenInfoPending = walletReady && !hasFundingSnapshot;
-    const hasAmountInput = Boolean(lpClaimAmount.trim());
+    const hasAmountInput = Boolean(deferredLpClaimAmount.trim());
     const hasSufficientInputBalance =
       walletReady &&
       desiredAmountWei !== null &&
@@ -1872,11 +1923,14 @@ function MiniAppPageInner() {
               {presetConfig.amountLabel}
             </label>
             <input
-              type="number"
-              min="0"
-              step="0.0001"
+              type="text"
+              inputMode="decimal"
+              pattern="[0-9]*"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
               value={lpClaimAmount}
-              onChange={(event) => setLpClaimAmount(event.target.value)}
+              onChange={(event) => handleLpAmountChange(event.target.value)}
               placeholder={amountPlaceholder}
               className="w-full rounded-xl border border-white/15 bg-black/40 px-4 py-3 font-mono text-sm text-white focus:border-[var(--monad-purple)] focus:outline-none disabled:opacity-40"
               disabled={!walletReady || isSubmittingLpClaim}
@@ -2050,6 +2104,36 @@ function MiniAppPageInner() {
       embeds: [SHARE_URL]
     });
   };
+
+  const handleShareBand = useCallback(
+    async (band: 'upside_band' | 'crash_band') => {
+      try {
+        const positions = (lpGateState.lpPositions ?? []).filter(
+          (position) => position.bandType === band
+        );
+        const quantity = positions.length;
+        const bandLabel = band === 'upside_band' ? 'm00n ladder' : 'WMON crash backstop';
+        const headline = quantity
+          ? `I just deployed ${quantity} ${bandLabel} ${quantity === 1 ? 'band' : 'bands'} in the m00n cabal.`
+          : `I'm staging a ${bandLabel} band inside the m00n cabal.`;
+        const primary = positions[0];
+        const rangeDetails =
+          primary && Number.isFinite(primary.tickLower) && Number.isFinite(primary.tickUpper)
+            ? ` Range ${primary.tickLower} ↔ ${primary.tickUpper}.`
+            : '';
+        const text = `${headline}${rangeDetails}\n\n${SHARE_URL}`;
+        await sdk.actions.composeCast({
+          text,
+          embeds: [SHARE_URL]
+        });
+        showToast('success', 'Cast composer opened in Warpcast.');
+      } catch (err) {
+        console.error('Failed to share LP band', err);
+        showToast('error', 'Unable to open the share composer right now.');
+      }
+    },
+    [lpGateState.lpPositions, showToast]
+  );
 
   const SHOW_LP_SOURCE_DIAGNOSTICS = false;
 
@@ -2371,7 +2455,7 @@ function MiniAppPageInner() {
           <p className="text-lg font-semibold">{title}</p>
           {subtitle && <p className="text-sm opacity-70">{subtitle}</p>}
         </div>
-        <div className="space-y-3">
+        <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1">
           {entries.map((entry, index) => {
             const ratio = maxValue > 0 ? entry.valueUsd / maxValue : 0;
             const iconSize = 28 + ratio * 60;
@@ -2613,13 +2697,16 @@ function MiniAppPageInner() {
     const formatStat = (value?: number | null) => {
       return formatCompactNumber(value);
     };
-    const behaviorLabel = personaRecord.behaviorPattern
-      ? personaRecord.behaviorPattern.replace(/_/g, ' ')
-      : null;
+    const badgeCopy = PERSONA_BADGE_COPY[personaBadge];
 
     return (
       <div className={`${PANEL_CLASS} space-y-3 text-left`}>
         <p className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">Cabal dossier</p>
+        <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+          <p className="text-[10px] uppercase tracking-[0.35em] text-white/60 mb-1">Persona</p>
+          <p className="font-mono text-xl text-white">{badgeCopy.label}</p>
+          <p className="text-xs opacity-70 mt-1 leading-relaxed">{badgeCopy.description}</p>
+        </div>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <p className="opacity-60">Replies logged</p>
@@ -2640,11 +2727,6 @@ function MiniAppPageInner() {
             <p className="font-mono text-lg">{formatStat(personaRecord.totalSold)}</p>
           </div>
         </div>
-        {behaviorLabel && (
-          <p className="text-xs uppercase tracking-[0.3em] text-white/70">
-            Behavior: {behaviorLabel}
-          </p>
-        )}
       </div>
     );
   };
@@ -2652,6 +2734,9 @@ function MiniAppPageInner() {
   const renderClaimedHeldPortal = () => {
     const preset = LP_PRESET_CONTENT.moon_upside;
     const showManager = hasAnyLp;
+    const moonBandCount =
+      lpGateState.lpPositions?.filter((pos) => pos.bandType === 'upside_band').length ?? 0;
+    const hasMoonBand = moonBandCount > 0;
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-4xl w-full space-y-8 scanline bg-black/45 border border-[var(--monad-purple)] rounded-3xl px-8 py-10">
@@ -2718,6 +2803,16 @@ function MiniAppPageInner() {
               </button>
             </div>
           )}
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => handleShareBand('upside_band')}
+              disabled={!hasMoonBand}
+              className="pixel-font px-6 py-2 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors disabled:opacity-30"
+            >
+              {hasMoonBand ? 'SHARE MOON BAND' : 'DEPLOY TO UNLOCK SHARE'}
+            </button>
+          </div>
           {leaderboardStatus === 'loaded' && leaderboardData
             ? renderLeaderboardVisualizer(leaderboardData.upsideBand, {
                 title: 'Sky Ladder Leaderboard',
@@ -2733,6 +2828,9 @@ function MiniAppPageInner() {
   const renderClaimedBoughtMorePortal = () => {
     const preset = LP_PRESET_CONTENT.backstop;
     const showManager = hasAnyLp;
+    const crashBandCount =
+      lpGateState.lpPositions?.filter((pos) => pos.bandType === 'crash_band').length ?? 0;
+    const hasCrashBand = crashBandCount > 0;
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-4xl w-full space-y-8 scanline bg-black/45 border border-white/20 rounded-3xl px-8 py-10">
@@ -2799,6 +2897,14 @@ function MiniAppPageInner() {
                 className="pixel-font px-6 py-3 border border-white/30 text-white rounded-lg hover:bg-white/10 transition-colors"
               >
                 OPEN LP LOUNGE
+              </button>
+              <button
+                type="button"
+                onClick={() => handleShareBand('crash_band')}
+                disabled={!hasCrashBand}
+                className="pixel-font px-6 py-3 border border-white/30 text-white rounded-lg hover:bg-white/10 transition-colors disabled:opacity-30"
+              >
+                {hasCrashBand ? 'SHARE CRASH BAND' : 'DEPLOY TO SHARE'}
               </button>
             </div>
           )}
@@ -3274,15 +3380,41 @@ function MiniAppPageInner() {
       <BackgroundOrbs />
       <StickerRain />
       {!isObservationDeckOpen && (
-        <div className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 w-[min(420px,90vw)]">
-          <button
-            type="button"
-            onClick={handleObservationDeckRequest}
-            className="w-full pixel-font text-[11px] tracking-[0.4em] px-5 py-3 rounded-2xl border border-white/30 text-white bg-black/70 backdrop-blur hover:bg-white/10 transition-colors flex flex-col items-center gap-1"
-          >
-            <span className="text-xs uppercase">Observation Deck</span>
-            <span className="text-[10px] opacity-75">Tap to view live LP telemetry</span>
-          </button>
+        <div className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 w-[min(420px,90vw)] px-[5px]">
+          <div className="rounded-3xl border border-white/20 bg-black/80 backdrop-blur p-[5px] text-center space-y-2">
+            <button
+              type="button"
+              onClick={handleObservationDeckRequest}
+              className="w-full pixel-font text-[11px] tracking-[0.35em] rounded-2xl border border-white/30 text-white bg-black/60 hover:bg-white/10 transition-colors flex flex-col items-center justify-center gap-1 px-[5px] py-[5px]"
+            >
+              <span className="text-xs uppercase">Observation Deck</span>
+              <span className="text-[10px] opacity-75">
+                {observationDeckEligible
+                  ? 'Tap to view live LP telemetry'
+                  : 'Hold ≥ 1M m00n to unlock'}
+              </span>
+            </button>
+            {!observationDeckEligible && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleSwapMonToToken('moon')}
+                  disabled={swapInFlight === 'moon'}
+                  className="flex-1 rounded-xl border border-[var(--monad-purple)] text-[var(--monad-purple)] text-[11px] uppercase tracking-[0.25em] px-[5px] py-[5px] hover:bg-[var(--monad-purple)] hover:text-black transition-colors disabled:opacity-40"
+                >
+                  {swapInFlight === 'moon' ? 'OPENING…' : 'BUY m00n'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSwapMonToToken('wmon')}
+                  disabled={swapInFlight === 'wmon'}
+                  className="flex-1 rounded-xl border border-white/30 text-white text-[11px] uppercase tracking-[0.25em] px-[5px] py-[5px] hover:bg-white/10 transition-colors disabled:opacity-40"
+                >
+                  {swapInFlight === 'wmon' ? 'OPENING…' : 'BUY WMON'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
       {toast && (
