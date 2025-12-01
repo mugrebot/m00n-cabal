@@ -1,5 +1,8 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { NextResponse } from 'next/server';
 import { GraphQLClient, gql } from 'graphql-request';
+import { parse } from 'csv-parse/sync';
 import { Token } from '@uniswap/sdk-core';
 import { Pool } from '@uniswap/v4-sdk';
 import {
@@ -19,9 +22,12 @@ const THE_GRAPH_API_KEY =
   (typeof process !== 'undefined' && process.env.THE_GRAPH_API_KEY) ||
   (typeof process !== 'undefined' && process.env.THEGRAPH_API_KEY) ||
   '';
+const FALLBACK_SUBGRAPH_URL = THE_GRAPH_API_KEY
+  ? `https://gateway.thegraph.com/api/${THE_GRAPH_API_KEY}/subgraphs/id/${UNISWAP_V4_SUBGRAPH_ID}`
+  : `https://gateway.thegraph.com/api/subgraphs/id/${UNISWAP_V4_SUBGRAPH_ID}`;
 const UNISWAP_V4_SUBGRAPH_URL =
   (typeof process !== 'undefined' && process.env.UNISWAP_V4_SUBGRAPH_URL?.trim()) ||
-  `https://gateway.thegraph.com/api/${THE_GRAPH_API_KEY}/subgraphs/id/${UNISWAP_V4_SUBGRAPH_ID}`;
+  FALLBACK_SUBGRAPH_URL;
 
 const GET_TOP_POSITIONS = gql`
   query GetTopPositions($poolId: String!, $first: Int!) {
@@ -31,6 +37,11 @@ const GET_TOP_POSITIONS = gql`
     }
   }
 `;
+
+const TOP_POSITION_SAMPLE_SIZE = 120;
+const TOP_OVERALL_COUNT = 7;
+const SPECIAL_CLANKER_ID = '6914';
+const SPECIAL_CLANKER_LABEL = 'Clanker Pool';
 
 const WMON_USDC_POOL_ID = '0x18a9fc874581f3ba12b7898f80a683c66fd5877fd74b26a85ba9a3a79c549954';
 const GET_WMON_PRICE = gql`
@@ -59,6 +70,58 @@ const poolId = Pool.getPoolId(
 ).toLowerCase();
 
 const graphClient = new GraphQLClient(UNISWAP_V4_SUBGRAPH_URL);
+
+interface AddressLabelRecord {
+  fid?: number | null;
+  username?: string | null;
+}
+
+let addressLabelCache: Map<string, AddressLabelRecord> | null = null;
+
+const ADDRESS_CSV_PATH =
+  process.env.LEADERBOARD_ADDRESS_CSV ?? path.join(process.cwd(), 'apps', 'm00n - m00n.csv.csv');
+
+const loadAddressLabelMap = (): Map<string, AddressLabelRecord> => {
+  if (addressLabelCache) {
+    return addressLabelCache;
+  }
+  try {
+    const file = fs.readFileSync(ADDRESS_CSV_PATH, 'utf8');
+    const rows = parse(file, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true
+    }) as Record<string, string>[];
+    addressLabelCache = new Map();
+    for (const row of rows) {
+      const address = row.address?.toLowerCase();
+      if (!address) continue;
+      const fid = Number(row.fid);
+      addressLabelCache.set(address, {
+        fid: Number.isFinite(fid) ? fid : null,
+        username: row.username?.trim() || null
+      });
+    }
+  } catch (err) {
+    console.warn('[lp-leaderboard] Unable to load address labels', err);
+    addressLabelCache = new Map();
+  }
+  return addressLabelCache!;
+};
+
+const getAddressLabel = (address: string): string | null => {
+  if (!address) return null;
+  const labels = loadAddressLabelMap();
+  const record = labels.get(address.toLowerCase());
+  if (!record) return null;
+  if (record.username) {
+    return record.username;
+  }
+  if (record.fid) {
+    return `FID ${record.fid}`;
+  }
+  return null;
+};
 
 type BandType = 'crash_band' | 'upside_band' | 'in_range';
 
@@ -109,7 +172,7 @@ export async function GET() {
   try {
     const { positions } = (await graphClient.request(GET_TOP_POSITIONS, {
       poolId,
-      first: 60
+      first: TOP_POSITION_SAMPLE_SIZE
     })) as {
       positions: { tokenId: string; owner: string }[];
     };
@@ -142,6 +205,10 @@ export async function GET() {
 
     const entries = enriched.map((position) => {
       const bandType = mapRangeToBand(position.rangeStatus);
+      const ownerAddress = ownerMap.get(position.tokenId.toString()) ?? '0x0';
+      const specialLabel =
+        position.tokenId.toString() === SPECIAL_CLANKER_ID ? SPECIAL_CLANKER_LABEL : null;
+      const ownerLabel = specialLabel ?? getAddressLabel(ownerAddress);
       const valueUsd =
         moonPriceUsd !== null && wmonPriceUsd !== null
           ? computePositionValueUsd(
@@ -155,9 +222,10 @@ export async function GET() {
 
       return {
         tokenId: position.tokenId.toString(),
-        owner: ownerMap.get(position.tokenId.toString()) ?? '0x0',
+        owner: ownerAddress,
         bandType,
-        valueUsd
+        valueUsd,
+        label: ownerLabel
       };
     });
 
@@ -166,7 +234,7 @@ export async function GET() {
     const crashBand = entries.filter((entry) => entry.bandType === 'crash_band').slice(0, 10);
     const upsideBand = entries.filter((entry) => entry.bandType === 'upside_band').slice(0, 10);
     const mixedBand = entries.filter((entry) => entry.bandType === 'in_range').slice(0, 10);
-    const overall = entries.slice(0, 10);
+    const overall = entries.slice(0, TOP_OVERALL_COUNT);
 
     return NextResponse.json({
       updatedAt: new Date().toISOString(),

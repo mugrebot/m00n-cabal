@@ -280,6 +280,7 @@ interface LeaderboardEntry {
   owner: string;
   valueUsd: number;
   bandType: LpPosition['bandType'];
+  label?: string | null;
 }
 
 interface LeaderboardResponse {
@@ -496,6 +497,18 @@ function MiniAppPageInner() {
     setToast({ kind, message });
   }, []);
 
+  const ensureEmojiSoundInstance = useCallback(() => {
+    if (!emojiSoundRef.current) {
+      emojiSoundRef.current = new Howl({
+        src: [EMOJI_SOUND_URL],
+        loop: true,
+        volume: 0.35,
+        html5: true
+      });
+    }
+    return emojiSoundRef.current;
+  }, []);
+
   useEffect(() => {
     if (!toast) return;
     const timer = window.setTimeout(() => setToast(null), 4000);
@@ -515,21 +528,19 @@ function MiniAppPageInner() {
       emojiSoundRef.current?.stop();
       return;
     }
-    if (!emojiSoundRef.current) {
-      emojiSoundRef.current = new Howl({
-        src: [EMOJI_SOUND_URL],
-        loop: true,
-        volume: 0.35,
-        html5: true
-      });
+    const instance = ensureEmojiSoundInstance();
+    if (!instance.playing()) {
+      instance.play();
     }
-    if (!emojiSoundRef.current.playing()) {
-      emojiSoundRef.current.play();
-    }
-    return () => {
-      emojiSoundRef.current?.stop();
-    };
-  }, [audioUnlocked, emojiSoundEnabled]);
+  }, [audioUnlocked, emojiSoundEnabled, ensureEmojiSoundInstance]);
+
+  useEffect(
+    () => () => {
+      emojiSoundRef.current?.unload();
+      emojiSoundRef.current = null;
+    },
+    []
+  );
 
   useEffect(() => {
     if (!isSdkReady || typeof sdk.getCapabilities !== 'function') return;
@@ -648,6 +659,9 @@ function MiniAppPageInner() {
   }, [lpGateState.lpPositions, lpGateState.lpStatus]);
 
   const derivedPersona: UserPersona = useMemo(() => {
+    if (isAdmin && adminPortalView === 'default') {
+      return 'locked_out';
+    }
     if (!userData) {
       return 'locked_out';
     }
@@ -681,7 +695,9 @@ function MiniAppPageInner() {
     csvPersona,
     emojiFallbackEligible,
     personaFromLpPositions,
-    userData
+    userData,
+    isAdmin,
+    adminPortalView
   ]);
 
   const adminPersonaOverride = isAdmin && adminPortalView !== 'default' ? adminPortalView : null;
@@ -693,8 +709,17 @@ function MiniAppPageInner() {
   );
   const handleToggleEmojiSound = useCallback(() => {
     setAudioUnlocked(true);
-    setEmojiSoundEnabled((prev) => !prev);
-  }, []);
+    setEmojiSoundEnabled((prev) => {
+      const next = !prev;
+      if (next) {
+        const sound = ensureEmojiSoundInstance();
+        sound?.play();
+      } else {
+        emojiSoundRef.current?.stop();
+      }
+      return next;
+    });
+  }, [ensureEmojiSoundInstance]);
   const handleToggleEmojiHaptics = useCallback(() => {
     setEmojiHapticsEnabled((prev) => !prev);
   }, []);
@@ -796,7 +821,11 @@ function MiniAppPageInner() {
     let cancelled = false;
     const walletAddress = miniWalletAddress;
     const runCheck = async () => {
-      setLpGateState({ lpStatus: 'CHECKING', walletAddress, lpPositions: [] });
+      setLpGateState((prev) => ({
+        ...prev,
+        lpStatus: 'CHECKING',
+        walletAddress
+      }));
 
       try {
         console.log('LP_GATE_FETCH:start', { walletAddress });
@@ -2283,6 +2312,7 @@ function MiniAppPageInner() {
           {entries.map((entry, index) => {
             const ratio = maxValue > 0 ? entry.valueUsd / maxValue : 0;
             const iconSize = 28 + ratio * 60;
+            const resolvedLabel = entry.label ?? truncateAddress(entry.owner);
             return (
               <div
                 key={`${entry.tokenId}-${entry.owner}`}
@@ -2298,8 +2328,7 @@ function MiniAppPageInner() {
                   </span>
                   <div>
                     <p className="text-sm font-semibold">
-                      #{index + 1}{' '}
-                      <span className="opacity-60">{truncateAddress(entry.owner) ?? '—'}</span>
+                      #{index + 1} <span className="opacity-80">{resolvedLabel}</span>
                     </p>
                     <p className="text-xs opacity-60">{formatUsd(entry.valueUsd)}</p>
                   </div>
@@ -2316,21 +2345,21 @@ function MiniAppPageInner() {
   };
 
   const renderManifestoModal = () => (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur">
-      <div className="max-w-xl w-full bg-black/70 border border-[var(--monad-purple)] rounded-3xl p-8 space-y-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur">
+      <div className="max-w-2xl w-full bg-black/70 border border-[var(--monad-purple)] rounded-[32px] p-6 space-y-6 shadow-[0_0_60px_rgba(133,118,255,0.35)]">
         <div className="flex items-center justify-between">
-          <p className="pixel-font text-[10px] tracking-[0.4em] text-[var(--moss-green)]">
+          <p className="pixel-font text-[9px] tracking-[0.45em] text-[var(--moss-green)]">
             MANIFESTO
           </p>
           <button
             type="button"
             onClick={() => setIsManifestoOpen(false)}
-            className="pixel-font text-xs border border-white/20 rounded-full px-3 py-1 hover:bg-white/10 transition-colors"
+            className="pixel-font text-[9px] border border-white/25 rounded-full px-3 py-1 tracking-[0.4em] hover:bg-white/10 transition-colors"
           >
             CLOSE
           </button>
         </div>
-        <div className="space-y-2 text-sm leading-relaxed text-white/80 max-h-[65vh] overflow-y-auto pr-2">
+        <div className="space-y-3 text-center text-[11px] leading-relaxed text-white/75 max-h-[60vh] overflow-y-auto font-mono tracking-[0.2em]">
           {MANIFESTO_LINES.map((line, idx) => (
             <p key={`${line}-${idx}`}>{line}</p>
           ))}
@@ -3109,13 +3138,38 @@ function MiniAppPageInner() {
       { id: 'lp_gate', label: 'No claim + LP' }
     ];
 
+    const currentPortalLabel =
+      portals.find((portal) => portal.id === adminPortalView)?.label ?? 'Live state';
+
+    if (isAdminPanelCollapsed) {
+      return (
+        <button
+          type="button"
+          onClick={() => setIsAdminPanelCollapsed(false)}
+          className="fixed top-4 right-4 z-50 pixel-font text-[10px] tracking-[0.4em] px-4 py-2 rounded-full border border-[var(--monad-purple)] text-white bg-black/70 hover:bg-black/60 transition-colors"
+        >
+          ADMIN • {currentPortalLabel}
+        </button>
+      );
+    }
+
     return (
       <div className="fixed top-4 right-4 z-50 bg-black/70 border border-[var(--monad-purple)] rounded-2xl p-4 w-64 space-y-3 backdrop-blur">
-        <div className="text-left">
-          <p className="pixel-font text-[10px] uppercase tracking-[0.4em] text-[var(--moss-green)]">
-            Admin portal
-          </p>
-          <p className="text-xs opacity-70">Preview each basket instantly</p>
+        <div className="flex items-start justify-between gap-2">
+          <div className="text-left">
+            <p className="pixel-font text-[10px] uppercase tracking-[0.4em] text-[var(--moss-green)]">
+              Admin portal
+            </p>
+            <p className="text-xs opacity-70">Preview each basket instantly</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsAdminPanelCollapsed(true)}
+            className="pixel-font text-[10px] border border-white/20 rounded-full px-2 py-1 hover:bg-white/10 transition-colors"
+            aria-label="Collapse admin controls"
+          >
+            —
+          </button>
         </div>
         <button
           onClick={handleOpenClaimSite}
@@ -3123,7 +3177,7 @@ function MiniAppPageInner() {
         >
           Open claim site
         </button>
-        <div className="grid grid-cols-1 gap-2">
+        <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1">
           {portals.map((portal) => (
             <button
               key={portal.id}
