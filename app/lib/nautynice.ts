@@ -23,7 +23,22 @@ export type CsvPersonaHint = 'claimed_sold' | 'claimed_held' | 'claimed_bought_m
 
 let cachedRows: Map<number, NautyCsvRow> | null = null;
 
-const CSV_PATH = path.join(process.cwd(), 'apps', 'nautynice.csv');
+const CSV_CANDIDATES = [
+  path.join(process.cwd(), 'data', 'nautynice.csv'),
+  path.join(process.cwd(), 'apps', 'nautynice.csv'),
+  path.join(process.cwd(), 'nautynice.csv')
+];
+
+const resolveCsvPath = () => {
+  for (const candidate of CSV_CANDIDATES) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  throw new Error(
+    `nautynice.csv not found. Checked: ${CSV_CANDIDATES.map((candidate) => candidate).join(', ')}`
+  );
+};
 
 const toNumber = (value?: string | null) => {
   if (value === undefined || value === null || value.trim() === '') {
@@ -66,7 +81,8 @@ const loadCsv = () => {
   if (cachedRows) {
     return cachedRows;
   }
-  const fileContents = fs.readFileSync(CSV_PATH, 'utf8');
+  const csvPath = resolveCsvPath();
+  const fileContents = fs.readFileSync(csvPath, 'utf8');
   const records = parse(fileContents, {
     columns: true,
     skip_empty_lines: true,

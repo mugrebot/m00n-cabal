@@ -30,16 +30,12 @@ const SPECIAL_CLANKER_ID = '6914';
 const MONAD_CHAIN_ID = Number(process.env.MONAD_CHAIN_ID ?? 143);
 
 const GET_TOP_POSITIONS = gql`
-  query TopM00nPositions($poolId: ID!, $limit: Int!) {
-    pool(id: $poolId) {
+  query TopM00nPositions($poolId: String!, $limit: Int!) {
+    positions(where: { pool_: { id: $poolId } }, orderBy: id, orderDirection: desc, first: $limit) {
       id
-      positions(first: $limit, orderBy: liquidity, orderDirection: desc) {
-        id
-        owner
-        liquidity
-        tickLower
-        tickUpper
-      }
+      owner
+      tickLower
+      tickUpper
     }
   }
 `;
@@ -108,17 +104,15 @@ export async function getTopM00nLpPositions(limit = 8): Promise<LpPosition[]> {
     poolId,
     limit: Math.max(limit * 2, 16)
   })) as {
-    pool?: {
-      positions: Array<{
-        id: string;
-        owner: string;
-        tickLower?: string | number | null;
-        tickUpper?: string | number | null;
-      }>;
-    };
+    positions: Array<{
+      id: string;
+      owner: string;
+      tickLower?: string | number | null;
+      tickUpper?: string | number | null;
+    }>;
   };
 
-  const rawPositions = response.pool?.positions ?? [];
+  const rawPositions = response.positions ?? [];
   if (rawPositions.length === 0) {
     return [];
   }

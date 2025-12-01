@@ -31,7 +31,7 @@ const UNISWAP_V4_SUBGRAPH_URL =
 
 const GET_TOP_POSITIONS = gql`
   query GetTopPositions($poolId: String!, $first: Int!) {
-    positions(where: { pool: $poolId }, orderBy: liquidity, orderDirection: desc, first: $first) {
+    positions(where: { pool_: { id: $poolId } }, orderBy: id, orderDirection: desc, first: $first) {
       tokenId
       owner
     }
