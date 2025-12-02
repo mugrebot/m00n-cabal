@@ -446,6 +446,7 @@ function MiniAppPageInner() {
   );
   const [isLpClaimModalOpen, setIsLpClaimModalOpen] = useState(false);
   const [isManifestoOpen, setIsManifestoOpen] = useState(false);
+  const [isObservationDeckOpen, setIsObservationDeckOpen] = useState(false);
   const [lpClaimAmount, setLpClaimAmount] = useState('');
   const [lpClaimPreset, setLpClaimPreset] = useState<LpClaimPreset>('backstop');
   const [isSubmittingLpClaim, setIsSubmittingLpClaim] = useState(false);
@@ -489,9 +490,10 @@ function MiniAppPageInner() {
   >('idle');
   const [solarCanvasSize, setSolarCanvasSize] = useState(420);
   const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
-  const [isSigilManagerVisible, setIsSigilManagerVisible] = useState(true);
+  const [isSigilManagerVisible, setIsSigilManagerVisible] = useState(false);
   const [preferredBand, setPreferredBand] = useState<'crash_band' | 'upside_band' | null>(null);
   const [solarSystemRefreshNonce, setSolarSystemRefreshNonce] = useState(0);
+  const [expandedLeaderboards, setExpandedLeaderboards] = useState<Record<string, boolean>>({});
   const viewerAddressLabels = useMemo(() => {
     const pool = new Set<string>();
     const candidates = [miniWalletAddress, primaryAddress, dropAddress, ...addresses];
@@ -740,6 +742,19 @@ function MiniAppPageInner() {
     return primaryAddressMoonBalanceWei >= MOON_EMOJI_THRESHOLD_WEI;
   }, [primaryAddressMoonBalanceWei, primaryBalanceStatus]);
 
+  const handleObservationDeckRequest = useCallback(() => {
+    if (!observationDeckEligible) {
+      const suffix = balanceProbeAddress ? ` (${truncateAddress(balanceProbeAddress)})` : '';
+      showToast('info', `Observation deck requires ≥ 1M m00n on the connected wallet${suffix}.`);
+      return;
+    }
+    setIsObservationDeckOpen(true);
+  }, [balanceProbeAddress, observationDeckEligible, showToast]);
+
+  const handleCloseObservationDeck = useCallback(() => {
+    setIsObservationDeckOpen(false);
+  }, []);
+
   const personaFromLpPositions = useMemo<UserPersona | null>(() => {
     if (lpGateState.lpStatus !== 'HAS_LP') {
       return null;
@@ -856,6 +871,12 @@ function MiniAppPageInner() {
       setIsSigilManagerVisible(false);
     }
   }, [hasAnyLp, isSigilManagerVisible]);
+
+  useEffect(() => {
+    if (!observationDeckEligible && isObservationDeckOpen) {
+      setIsObservationDeckOpen(false);
+    }
+  }, [observationDeckEligible, isObservationDeckOpen]);
 
   const fallingStickers = useMemo(
     () =>
@@ -1436,9 +1457,7 @@ function MiniAppPageInner() {
 
   const handleEnterLpLounge = () => {
     if (!canAccessLpFeatures) return;
-    if (lpGateState.lpStatus === 'HAS_LP') {
-      setIsLpLoungeOpen(true);
-    }
+    setIsLpLoungeOpen(true);
   };
 
   const handleOpenLpClaimModal = (preset: LpClaimPreset = 'backstop') => {
@@ -2631,6 +2650,69 @@ function MiniAppPageInner() {
     );
   };
 
+  const renderObservationLeaderboard = (
+    key: string,
+    entries: LeaderboardEntry[] | undefined,
+    { title, subtitle }: { title: string; subtitle?: string }
+  ) => {
+    if (!entries || entries.length === 0) return null;
+    const expanded = expandedLeaderboards[key] ?? false;
+    const visibleEntries = expanded ? entries : entries.slice(0, 5);
+    const maxValue = Math.max(...entries.map((entry) => entry.valueUsd));
+
+    return (
+      <div className={`${PANEL_CLASS} space-y-4 bg-black/60`}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-lg font-semibold">{title}</p>
+            {subtitle && <p className="text-sm opacity-70">{subtitle}</p>}
+          </div>
+          {entries.length > 5 && (
+            <button
+              type="button"
+              onClick={() => setExpandedLeaderboards((prev) => ({ ...prev, [key]: !expanded }))}
+              className="self-start sm:self-auto pixel-font text-[10px] px-[5px] py-[5px] border border-white/20 rounded-full text-white hover:bg-white/10 transition-colors"
+            >
+              {expanded ? 'Show Top 5' : `Show all ${entries.length}`}
+            </button>
+          )}
+        </div>
+        <div className="space-y-3 max-h-[360px] overflow-y-auto pr-1 touch-pan-y">
+          {visibleEntries.map((entry, index) => {
+            const ratio = maxValue > 0 ? entry.valueUsd / maxValue : 0;
+            const iconSize = 28 + ratio * 60;
+            const resolvedLabel = entry.label ?? truncateAddress(entry.owner);
+            return (
+              <div
+                key={`${key}-${entry.tokenId}-${entry.owner}`}
+                className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/40 px-4 py-3"
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className="select-none"
+                    style={{ fontSize: `${iconSize}px`, lineHeight: 1 }}
+                    aria-hidden="true"
+                  >
+                    🌙
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold">
+                      #{index + 1} <span className="opacity-80">{resolvedLabel}</span>
+                    </p>
+                    <p className="text-xs opacity-60">{formatUsd(entry.valueUsd)}</p>
+                  </div>
+                </div>
+                <span className="text-[10px] uppercase tracking-[0.4em] text-[var(--moss-green)]">
+                  {entry.bandType?.replace('_', ' ') ?? ''}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const renderManifestoModal = () => (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur">
       <div className="max-w-2xl w-full bg-black/75 border border-[var(--monad-purple)] rounded-[32px] p-6 space-y-6 shadow-[0_0_60px_rgba(133,118,255,0.35)]">
@@ -2653,6 +2735,17 @@ function MiniAppPageInner() {
         </div>
       </div>
     </div>
+  );
+
+  const renderObservationDeckInlineButton = () => (
+    <button
+      type="button"
+      onClick={handleObservationDeckRequest}
+      disabled={!observationDeckEligible}
+      className="pixel-font px-4 py-2 border border-white/30 rounded-full text-xs tracking-[0.35em] text-white hover:bg-white/10 transition-colors disabled:opacity-40"
+    >
+      {observationDeckEligible ? 'OPEN OBSERVATION DECK' : 'Hold ≥ 1M m00n to unlock deck'}
+    </button>
   );
 
   const renderLpDiagnostics = () => {
@@ -2890,6 +2983,7 @@ function MiniAppPageInner() {
               <p className="text-xs opacity-70">m00n-only ladder ~20% above tick</p>
             </div>
           </div>
+          <div className="flex justify-end">{renderObservationDeckInlineButton()}</div>
           <div className="grid md:grid-cols-2 gap-6 items-start">
             <div className={`${PANEL_CLASS} space-y-4`}>
               <div>
@@ -2992,6 +3086,7 @@ function MiniAppPageInner() {
               <p className="text-xs opacity-70">WMON crash band ~20% below tick</p>
             </div>
           </div>
+          <div className="flex justify-end">{renderObservationDeckInlineButton()}</div>
           <div className="grid md:grid-cols-2 gap-6 items-start">
             <div className={`${PANEL_CLASS} space-y-4 text-left`}>
               <p className="text-sm opacity-85">{preset.description}</p>
@@ -3103,6 +3198,13 @@ function MiniAppPageInner() {
             title: 'Sky Band Console',
             subtitle: 'Stagger m00n ladders up to the heavens.'
           };
+    const deckLeaderboardEntries =
+      leaderboardStatus === 'loaded'
+        ? preferredBand === 'crash_band'
+          ? leaderboardData?.crashBand
+          : leaderboardData?.upsideBand
+        : undefined;
+    const canRefreshTelemetry = isAdmin;
 
     const renderSolarSystem = () => {
       if (solarSystemStatus === 'loaded' && activeSolarPositions.length) {
@@ -3163,53 +3265,54 @@ function MiniAppPageInner() {
           >
             {hasBand && isCurrentBand ? 'SHARE DEPLOYED BAND' : 'DEPLOY TO SHARE'}
           </button>
-          {hasAnyLp && (
-            <button
-              type="button"
-              onClick={handleEnterLpLounge}
-              className="pixel-font px-5 py-3 border border-white/20 rounded-2xl text-xs tracking-[0.35em] hover:bg-white/10 transition-colors"
-            >
-              OPEN LP LOUNGE
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleEnterLpLounge}
+            className="pixel-font px-5 py-3 border border-white/20 rounded-2xl text-xs tracking-[0.35em] hover:bg-white/10 transition-colors"
+          >
+            OPEN LP LOUNGE
+          </button>
         </div>
       );
     };
 
     const renderBandInventory = (band: 'crash_band' | 'upside_band') => {
-      const isCrash = band === 'crash_band';
+      if (!canAccessLpFeatures) {
+        return null;
+      }
       return (
         <>
-          {renderSigilPreview({
-            title: isCrash ? 'Crash Band Sigils' : 'Sky Band Sigils',
-            subtitle: isCrash
-              ? 'Single-sided WMON bands staged under spot.'
-              : 'Single-sided m00n ladders staged above spot.',
-            filter: band,
-            limit: 3,
-            emptyLabel: isCrash
-              ? 'No crash bands detected — deploy one to anchor the downside.'
-              : 'No sky bands detected — deploy one to climb higher.'
-          })}
-          {renderPositionManager({
-            title: isCrash ? 'Crash Band Manager' : 'Sky Band Manager',
-            subtitle: isCrash
-              ? 'Scale WMON into m00n roughly −10% from spot.'
-              : 'Scale m00n into WMON from 1.2× to 5× spot.',
-            filter: band
-          })}
           {renderBandActions(band)}
-          {leaderboardStatus === 'loaded' && leaderboardData
-            ? renderLeaderboardVisualizer(
-                isCrash ? leaderboardData.crashBand : leaderboardData.upsideBand,
-                {
-                  title: isCrash ? 'Crash Band Leaderboard' : 'Sky Band Leaderboard',
-                  subtitle: isCrash
-                    ? 'Top 10 WMON crash backstops'
-                    : 'Top 10 m00n ladders pushing for upside'
-                }
-              )
-            : null}
+          {hasAnyLp && (
+            <>
+              <div
+                className={`${PANEL_CLASS} flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between`}
+              >
+                <div>
+                  <p className="text-xs uppercase tracking-[0.35em] text-white/60">Sigil manager</p>
+                  <p className="text-sm opacity-75">
+                    Toggle the live positions powering your access.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSigilManagerVisible((prev) => !prev)}
+                  className="pixel-font px-5 py-2 border border-white/25 rounded-full text-xs tracking-[0.35em] hover:bg-white/10 transition-colors"
+                >
+                  {isSigilManagerVisible ? 'HIDE SIGILS' : 'SHOW SIGILS'}
+                </button>
+              </div>
+              {isSigilManagerVisible &&
+                renderPositionManager({
+                  title: band === 'crash_band' ? 'Crash Band Manager' : 'Sky Band Manager',
+                  subtitle:
+                    band === 'crash_band'
+                      ? 'Scale WMON into m00n roughly −10% from spot.'
+                      : 'Scale m00n into WMON from 1.2× to 5× spot.',
+                  filter: band
+                })}
+            </>
+          )}
         </>
       );
     };
@@ -3217,6 +3320,15 @@ function MiniAppPageInner() {
     return renderShell(
       <div className="min-h-screen w-full flex flex-col items-center justify-start gap-6 p-4 pb-24 relative z-10">
         <div className="max-w-5xl w-full space-y-6 scanline bg-black/40 border border-white/15 rounded-3xl px-6 py-8">
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleCloseObservationDeck}
+              className="pixel-font px-4 py-2 border border-white/20 rounded-full text-[10px] tracking-[0.4em] text-white hover:bg-white/10 transition-colors"
+            >
+              EXIT LIVE STATE
+            </button>
+          </div>
           <div className="text-center space-y-2">
             <p className="pixel-font text-2xl text-white">Observation Deck</p>
             <p className="text-sm opacity-75">
@@ -3256,13 +3368,15 @@ function MiniAppPageInner() {
               <span>Total LP notional • {formatUsd(totalSolarNotionalUsd)}</span>
             )}
             <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleRefreshTelemetry}
-                className="pixel-font px-[5px] py-[5px] rounded-full border border-white/30 text-white hover:bg-white/10 transition-colors"
-              >
-                REFRESH TELEMETRY
-              </button>
+              {canRefreshTelemetry && (
+                <button
+                  type="button"
+                  onClick={handleRefreshTelemetry}
+                  className="pixel-font px-[5px] py-[5px] rounded-full border border-white/30 text-white hover:bg-white/10 transition-colors"
+                >
+                  REFRESH TELEMETRY
+                </button>
+              )}
               <button
                 type="button"
                 onClick={refreshPersonalSigils}
@@ -3292,44 +3406,19 @@ function MiniAppPageInner() {
               </p>
             </div>
           )}
+          {renderObservationLeaderboard(`deck-${preferredBand}`, deckLeaderboardEntries, {
+            title:
+              preferredBand === 'crash_band' ? 'Crash Band Leaderboard' : 'Sky Band Leaderboard',
+            subtitle:
+              preferredBand === 'crash_band'
+                ? 'Top WMON crash backstops in the Monad pool.'
+                : 'Top m00n ladders pushing the upside.'
+          })}
           {personaLookupStatus === 'loading' && (
             <p className="text-center text-xs text-yellow-300">Syncing cabal dossier…</p>
           )}
           {personaLookupStatus === 'error' && (
             <p className="text-center text-xs text-red-300">CSV dossier temporarily unavailable.</p>
-          )}
-          {canAccessLpFeatures &&
-            hasAnyLp &&
-            renderSigilPreview({
-              title: 'Your LP Sigils',
-              subtitle: 'Active sigils granting access to the deck.',
-              limit: 3
-            })}
-          {canAccessLpFeatures && hasAnyLp && (
-            <>
-              <div
-                className={`${PANEL_CLASS} flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between`}
-              >
-                <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-white/60">Sigil manager</p>
-                  <p className="text-sm opacity-75">
-                    Toggle the live positions powering your access.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsSigilManagerVisible((prev) => !prev)}
-                  className="pixel-font px-5 py-2 border border-white/25 rounded-full text-xs tracking-[0.35em] hover:bg-white/10 transition-colors"
-                >
-                  {isSigilManagerVisible ? 'HIDE SIGILS' : 'SHOW SIGILS'}
-                </button>
-              </div>
-              {isSigilManagerVisible &&
-                renderPositionManager({
-                  title: 'Sigil Manager',
-                  subtitle: 'Manage every LP sigil tied to this wallet.'
-                })}
-            </>
           )}
           <div className="flex flex-wrap gap-3 justify-center">
             <button
@@ -3349,11 +3438,6 @@ function MiniAppPageInner() {
               </button>
             )}
           </div>
-          {!canAccessLpFeatures && (
-            <p className="text-xs uppercase tracking-[0.35em] text-white/60 text-center">
-              View-only deck access unlocked — LP deployment reserved for Moon Boys & Keepers.
-            </p>
-          )}
           <ManifestoHint />
         </div>
       </div>
@@ -3670,6 +3754,24 @@ function MiniAppPageInner() {
       {renderAdminPanel()}
       <BackgroundOrbs />
       <StickerRain />
+      {!isObservationDeckOpen && userData && (
+        <div className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 w-[min(420px,90vw)] px-[5px]">
+          <div className="rounded-3xl border border-white/20 bg-black/80 backdrop-blur p-[5px] text-center space-y-2">
+            <button
+              type="button"
+              onClick={handleObservationDeckRequest}
+              className="w-full pixel-font text-[11px] tracking-[0.35em] rounded-2xl border border-white/30 text-white bg-black/60 hover:bg-white/10 transition-colors flex flex-col items-center justify-center gap-1 px-[5px] py-[5px] disabled:opacity-40"
+            >
+              <span className="text-xs uppercase">Observation Deck</span>
+              <span className="text-[10px] opacity-75">
+                {observationDeckEligible
+                  ? 'Tap to view live LP telemetry'
+                  : 'Hold ≥ 1M m00n on connected wallet'}
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
       <div className="pb-36 pt-4">{content}</div>
       {toast && (
         <div
@@ -3858,6 +3960,14 @@ function MiniAppPageInner() {
     );
   }
 
+  if (isObservationDeckOpen) {
+    return renderObservationDeckPortal();
+  }
+
+  if (isLpLoungeOpen) {
+    return lpGateState.lpStatus === 'HAS_LP' ? renderLpLoungePanel() : renderLpGatePanel();
+  }
+
   if (isAdmin && adminPortalView !== 'default') {
     switch (adminPortalView) {
       case 'claimed_sold':
@@ -3879,19 +3989,25 @@ function MiniAppPageInner() {
     }
   }
 
-  if (effectivePersona === 'claimed_sold') {
-    return renderClaimedSoldPortal();
+  switch (effectivePersona) {
+    case 'claimed_sold':
+      return renderClaimedSoldPortal();
+    case 'claimed_held':
+      return renderClaimedHeldPortal();
+    case 'claimed_bought_more':
+      return renderClaimedBoughtMorePortal();
+    case 'emoji_chat':
+      return observationDeckEligible ? renderObservationDeckPortal() : renderLockedOutPanel();
+    case 'lp_gate':
+      return isLpLoungeOpen && lpGateState.lpStatus === 'HAS_LP'
+        ? renderLpLoungePanel()
+        : renderLpGatePanel();
+    case 'eligible_holder':
+      return airdropData?.eligible ? renderEligibleHolderPanel() : renderLockedOutPanel();
+    case 'locked_out':
+    default:
+      return renderLockedOutPanel();
   }
-
-  if (effectivePersona === 'eligible_holder' && airdropData?.eligible) {
-    return renderEligibleHolderPanel();
-  }
-
-  if (!observationDeckEligible) {
-    return renderLockedOutPanel();
-  }
-
-  return renderObservationDeckPortal();
 }
 
 export default function MiniAppPage() {
