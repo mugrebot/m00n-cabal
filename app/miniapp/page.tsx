@@ -787,11 +787,16 @@ function MiniAppPageInner() {
     if (!userData) {
       return 'locked_out';
     }
+    const lpPersona =
+      personaFromLpPositions &&
+      ['claimed_held', 'claimed_bought_more'].includes(personaFromLpPositions)
+        ? (personaFromLpPositions as UserPersona)
+        : null;
+    if (lpPersona) {
+      return lpPersona;
+    }
     if (csvPersona) {
       return csvPersona;
-    }
-    if (personaFromLpPositions) {
-      return personaFromLpPositions;
     }
     if (hasZeroPoints) {
       return 'locked_out';
@@ -889,8 +894,23 @@ function MiniAppPageInner() {
   useEffect(() => {
     if (!isAdmin && adminPortalView !== 'default') {
       setAdminPortalView('default');
+      return;
     }
-  }, [isAdmin, adminPortalView]);
+    if (isAdmin && adminPortalView !== 'default') {
+      const portalNeedsLp = ['lp_gate', 'claimed_held', 'claimed_bought_more'].includes(
+        adminPortalView
+      );
+      if (portalNeedsLp && miniWalletAddress && lpGateState.walletAddress !== miniWalletAddress) {
+        setLpGateState((prev) => ({
+          ...prev,
+          lpStatus: 'CHECKING',
+          walletAddress: miniWalletAddress,
+          lpPositions: []
+        }));
+        setLpRefreshNonce((prev) => prev + 1);
+      }
+    }
+  }, [isAdmin, adminPortalView, miniWalletAddress, lpGateState.walletAddress]);
 
   useEffect(() => {
     if (!hasAnyLp && isSigilManagerVisible) {
@@ -2754,7 +2774,11 @@ function MiniAppPageInner() {
       if (emptyLabel) {
         return <div className={`${PANEL_CLASS} text-sm opacity-70 text-center`}>{emptyLabel}</div>;
       }
-      return null;
+      return (
+        <div className={`${PANEL_CLASS} text-sm opacity-70 text-center`}>
+          No sigils detected yet — try rescanning or deploy a new one.
+        </div>
+      );
     }
 
     const positions = allPositions.slice(0, limit);
@@ -3218,12 +3242,19 @@ function MiniAppPageInner() {
             </p>
           </div>
           <div>
-            <p className="opacity-60">Total purchased</p>
-            <p className="font-mono text-lg">{formatStat(personaRecord.totalPurchased)}</p>
+            <p className="opacity-60">Combined flow</p>
+            <p className="font-mono text-lg">
+              {formatStat((personaRecord.totalPurchased ?? 0) + (personaRecord.totalSold ?? 0))}{' '}
+              m00n
+            </p>
           </div>
           <div>
-            <p className="opacity-60">Total sold</p>
-            <p className="font-mono text-lg">{formatStat(personaRecord.totalSold)}</p>
+            <p className="opacity-60">Primary wallet</p>
+            <p className="font-mono text-lg">
+              {primaryAddressMoonBalanceWei
+                ? `${formatAmountDisplay(formatUnits(primaryAddressMoonBalanceWei, 18))} m00n`
+                : '—'}
+            </p>
           </div>
         </div>
       </div>
