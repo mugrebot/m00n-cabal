@@ -751,6 +751,17 @@ function MiniAppPageInner() {
 
   const handleCloseObservationDeck = useCallback(() => {
     setIsObservationDeckOpen(false);
+    setAdminPortalView((prev) => (prev === 'emoji_chat' ? 'default' : prev));
+  }, []);
+
+  const handleAdminPortalSelect = useCallback((portalId: AdminPortalView) => {
+    if (portalId === 'emoji_chat') {
+      setAdminPortalView(portalId);
+      setIsObservationDeckOpen(true);
+      return;
+    }
+    setAdminPortalView(portalId);
+    setIsObservationDeckOpen(false);
   }, []);
 
   const personaFromLpPositions = useMemo<UserPersona | null>(() => {
@@ -803,7 +814,10 @@ function MiniAppPageInner() {
     userData
   ]);
 
-  const adminPersonaOverride = isAdmin && adminPortalView !== 'default' ? adminPortalView : null;
+  const adminPersonaOverride =
+    isAdmin && adminPortalView !== 'default' && adminPortalView !== 'emoji_chat'
+      ? adminPortalView
+      : null;
   const effectivePersona: UserPersona = adminPersonaOverride ?? derivedPersona;
   const personaNeedsLpData = useMemo(
     () =>
@@ -2524,7 +2538,7 @@ function MiniAppPageInner() {
                   <p>{formatTokenDisplay(position.token1)}</p>
                 </div>
               </div>
-              {canAccessLpFeatures && (
+              {canAccessLpFeatures && allowFeeRefresh && (
                 <div className="flex flex-wrap gap-3 items-center">
                   <button
                     type="button"
@@ -3146,7 +3160,8 @@ function MiniAppPageInner() {
             renderPositionManager({
               title: 'Holder Band Manager',
               subtitle: 'Monitor your single-sided ladder from 1.2× up to 5× spot.',
-              filter: 'upside_band'
+              filter: 'upside_band',
+              allowFeeRefresh: true
             })
           ) : (
             <div className="flex flex-col sm:flex-row gap-4">
@@ -3234,7 +3249,8 @@ function MiniAppPageInner() {
             renderPositionManager({
               title: 'Crash Band Manager',
               subtitle: 'Scales WMON into m00n ~10% beneath the current tick.',
-              filter: 'crash_band'
+              filter: 'crash_band',
+              allowFeeRefresh: true
             })
           ) : (
             <div className="flex flex-col sm:flex-row gap-4">
@@ -3839,7 +3855,7 @@ function MiniAppPageInner() {
           {portals.map((portal) => (
             <button
               key={portal.id}
-              onClick={() => setAdminPortalView(portal.id)}
+              onClick={() => handleAdminPortalSelect(portal.id)}
               className={`text-xs px-3 py-2 rounded-lg border transition-colors ${
                 adminPortalView === portal.id
                   ? 'bg-[var(--monad-purple)] text-white border-[var(--monad-purple)]'
