@@ -273,6 +273,8 @@ interface LpPosition {
     token0Formatted: string;
     token1Formatted: string;
   };
+  feesStatus?: 'idle' | 'loading' | 'loaded' | 'error';
+  feesError?: string | null;
 }
 
 interface LeaderboardEntry {
@@ -994,7 +996,11 @@ function MiniAppPageInner() {
 
         if (cancelled) return;
 
-        const lpPositions = data.lpPositions ?? [];
+        const lpPositions = (data.lpPositions ?? []).map((position) => ({
+          ...position,
+          feesStatus: position.fees ? ('loaded' as const) : ('idle' as const),
+          feesError: null
+        }));
         const hasLpSignal = lpPositions.length > 0 || data.hasLpNft;
 
         console.log('LP_GATE_FETCH:result', {
@@ -1284,7 +1290,7 @@ function MiniAppPageInner() {
   const asHexAddress = (value: string): `0x${string}` =>
     (value.startsWith('0x') ? value : `0x${value}`) as `0x${string}`;
 
-  const formatTokenAmount = (value?: bigint | null, decimals = 18, precision = 4) => {
+  const formatTokenAmount = useCallback((value?: bigint | null, decimals = 18, precision = 4) => {
     if (value === undefined || value === null) return '—';
     try {
       const asNumber = Number(formatUnits(value, decimals));
@@ -1296,7 +1302,108 @@ function MiniAppPageInner() {
     } catch {
       return formatUnits(value, decimals);
     }
-  };
+  }, []);
+
+  const mutateLpPosition = useCallback(
+    (tokenId: string, updater: (position: LpPosition) => LpPosition) => {
+      setLpGateState((prev) => {
+        if (!prev.lpPositions || prev.lpPositions.length === 0) {
+          return prev;
+        }
+        let hasUpdate = false;
+        const lpPositions = prev.lpPositions.map((position) => {
+          if (position.tokenId !== tokenId) {
+            return position;
+          }
+          hasUpdate = true;
+          return updater(position);
+        });
+        if (!hasUpdate) {
+          return prev;
+        }
+        return {
+          ...prev,
+          lpPositions
+        };
+      });
+    },
+    [setLpGateState]
+  );
+
+  const handleCheckLpFees = useCallback(
+    async (tokenId: string) => {
+      mutateLpPosition(tokenId, (position) => ({
+        ...position,
+        feesStatus: 'loading',
+        feesError: null
+      }));
+
+      const fallbackError = 'Unable to refresh rewards right now';
+
+      try {
+        const response = await fetch(`/api/lp-fees?tokenId=${tokenId}`, {
+          cache: 'no-store'
+        });
+
+        if (!response.ok) {
+          throw new Error(`fees_route_${response.status}`);
+        }
+
+        const data = (await response.json()) as {
+          tokenId: string;
+          fees: { token0Wei: string; token1Wei: string } | null;
+        };
+
+        const token0Wei = data.fees?.token0Wei ?? '0';
+        const token1Wei = data.fees?.token1Wei ?? '0';
+
+        const safeBigInt = (value: string) => {
+          try {
+            return BigInt(value);
+          } catch {
+            return BigInt(0);
+          }
+        };
+
+        mutateLpPosition(tokenId, (position) => {
+          const decimals0 = position.token0?.decimals ?? 18;
+          const decimals1 = position.token1?.decimals ?? 18;
+          const amount0 = safeBigInt(token0Wei);
+          const amount1 = safeBigInt(token1Wei);
+
+          return {
+            ...position,
+            fees: {
+              token0Wei,
+              token1Wei,
+              token0Formatted: formatTokenAmount(amount0, decimals0, 4),
+              token1Formatted: formatTokenAmount(amount1, decimals1, 4)
+            },
+            feesStatus: 'loaded',
+            feesError: null
+          };
+        });
+
+        setToast({
+          kind: 'success',
+          message: 'Rewards synced'
+        });
+      } catch (error) {
+        console.error('LP_FEES:refresh_failed', { tokenId, error });
+        const errorMessage = error instanceof Error ? error.message : fallbackError;
+        mutateLpPosition(tokenId, (position) => ({
+          ...position,
+          feesStatus: 'error',
+          feesError: errorMessage
+        }));
+        setToast({
+          kind: 'error',
+          message: 'Failed to fetch rewards'
+        });
+      }
+    },
+    [formatTokenAmount, mutateLpPosition]
+  );
 
   const formatLpClaimErrorMessage = (code?: string) => {
     switch (code) {
@@ -1827,7 +1934,14 @@ function MiniAppPageInner() {
       setFundingRefreshNonce((prev) => prev + 1);
       showToast('success', `Approved ${label} for LP.`);
     },
-    [miniWalletAddress, sendCallsViaProvider, showToast, tokenDecimals.moon, tokenDecimals.wmon]
+    [
+      miniWalletAddress,
+      sendCallsViaProvider,
+      showToast,
+      tokenDecimals.moon,
+      tokenDecimals.wmon,
+      formatTokenAmount
+    ]
   );
 
   const personaActionHandlers: Record<PersonaActionId, (() => void) | undefined> = {
@@ -2408,6 +2522,27 @@ function MiniAppPageInner() {
                   <p>{formatTokenDisplay(position.token1)}</p>
                 </div>
               </div>
+              {canAccessLpFeatures && (
+                <div className="flex flex-wrap gap-3 items-center">
+                  <button
+                    type="button"
+                    onClick={() => handleCheckLpFees(position.tokenId)}
+                    disabled={position.feesStatus === 'loading'}
+                    className="pixel-font text-[10px] tracking-[0.3em] px-4 py-2 border border-white/20 rounded-full uppercase disabled:opacity-50"
+                  >
+                    {position.feesStatus === 'loading'
+                      ? 'CHECKING REWARDS…'
+                      : position.fees
+                        ? 'REFRESH REWARDS'
+                        : 'CHECK REWARDS'}
+                  </button>
+                  {position.feesStatus === 'error' && (
+                    <span className="text-xs text-red-400">
+                      {position.feesError ?? 'Unable to load rewards'}
+                    </span>
+                  )}
+                </div>
+              )}
               {position.fees && (
                 <div className="rounded-2xl border border-white/5 bg-black/30 px-4 py-3 text-xs font-mono text-white/80 space-y-1">
                   <p className="text-[10px] uppercase tracking-[0.35em] text-white/60">
@@ -2471,13 +2606,15 @@ function MiniAppPageInner() {
     subtitle,
     filter,
     limit = 2,
-    emptyLabel
+    emptyLabel,
+    allowFeeRefresh = false
   }: {
     title?: string;
     subtitle?: string;
     filter?: 'crash_band' | 'upside_band';
     limit?: number;
     emptyLabel?: string;
+    allowFeeRefresh?: boolean;
   }) => {
     const { token0TotalSupply, token0CirculatingSupply, poolWmonUsdPrice } = lpGateState;
     const allPositions = (lpGateState.lpPositions ?? []).filter((position) =>
@@ -2527,6 +2664,27 @@ function MiniAppPageInner() {
                   <p>{formatTokenDisplay(position.token1)}</p>
                 </div>
               </div>
+              {allowFeeRefresh && (
+                <div className="flex flex-wrap gap-2 items-center">
+                  <button
+                    type="button"
+                    onClick={() => handleCheckLpFees(position.tokenId)}
+                    disabled={position.feesStatus === 'loading'}
+                    className="pixel-font text-[8px] tracking-[0.3em] px-3 py-1.5 border border-white/15 rounded-full uppercase disabled:opacity-50"
+                  >
+                    {position.feesStatus === 'loading'
+                      ? 'CHECKING…'
+                      : position.fees
+                        ? 'REFRESH REWARDS'
+                        : 'CHECK REWARDS'}
+                  </button>
+                  {position.feesStatus === 'error' && (
+                    <span className="text-[10px] text-red-400">
+                      {position.feesError ?? 'Unable to load rewards'}
+                    </span>
+                  )}
+                </div>
+              )}
               {position.fees && (
                 <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-[11px] font-mono text-white/80 space-y-1">
                   <p className="text-[9px] uppercase tracking-[0.35em] text-white/60">
@@ -2785,7 +2943,8 @@ function MiniAppPageInner() {
           {renderSigilPreview({
             title: 'LP Sigils',
             subtitle: 'Sigils currently gating this portal.',
-            limit: 2
+            limit: 2,
+            allowFeeRefresh: canAccessLpFeatures
           })}
           <div className="text-xs opacity-60">
             Need help?{' '}
@@ -2978,7 +3137,8 @@ function MiniAppPageInner() {
             subtitle: 'Single-sided upside bands already on-chain.',
             filter: 'upside_band',
             limit: 3,
-            emptyLabel: 'No upside sigils yet — deploy one to unlock this panel.'
+            emptyLabel: 'No upside sigils yet — deploy one to unlock this panel.',
+            allowFeeRefresh: canAccessLpFeatures
           })}
           {showManager ? (
             renderPositionManager({
@@ -3065,7 +3225,8 @@ function MiniAppPageInner() {
             subtitle: 'WMON single-sided bands staged beneath spot.',
             filter: 'crash_band',
             limit: 3,
-            emptyLabel: 'No crash bands yet — deploy one to anchor the downside.'
+            emptyLabel: 'No crash bands yet — deploy one to anchor the downside.',
+            allowFeeRefresh: canAccessLpFeatures
           })}
           {showManager ? (
             renderPositionManager({

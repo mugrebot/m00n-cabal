@@ -6,7 +6,8 @@ import {
   keccak256,
   encodeAbiParameters,
   formatUnits,
-  erc721Abi
+  erc721Abi,
+  toHex
 } from 'viem';
 import { GraphQLClient, gql } from 'graphql-request';
 
@@ -30,27 +31,54 @@ const monad = defineChain({
 });
 
 export const POSITION_MANAGER_ADDRESS = '0x5b7eC4a94fF9beDb700fb82aB09d5846972F4016' as const;
-const POSITION_MANAGER_SIM_ABI = [
+// StateView for Uniswap v4 on Monad (used to read sqrtPriceX96 + tick)
+const STATE_VIEW_ADDRESS = '0x77395f3b2e73ae90843717371294fa97cc419d64' as const;
+
+const STATE_VIEW_ABI = [
   {
-    name: 'modifyLiquidities',
+    name: 'getSlot0',
     type: 'function',
-    stateMutability: 'nonpayable',
+    stateMutability: 'view',
+    inputs: [{ name: 'poolId', type: 'bytes32' }],
+    outputs: [
+      { name: 'sqrtPriceX96', type: 'uint160' },
+      { name: 'tick', type: 'int24' },
+      { name: 'protocolFee', type: 'uint24' },
+      { name: 'lpFee', type: 'uint24' }
+    ]
+  },
+  {
+    name: 'getPositionInfo',
+    type: 'function',
+    stateMutability: 'view',
     inputs: [
-      { name: 'unlockData', type: 'bytes' },
-      { name: 'deadline', type: 'uint256' }
+      { name: 'poolId', type: 'bytes32' },
+      { name: 'owner', type: 'address' },
+      { name: 'tickLower', type: 'int24' },
+      { name: 'tickUpper', type: 'int24' },
+      { name: 'salt', type: 'bytes32' }
     ],
     outputs: [
-      { name: 'callerDelta', type: 'int256' },
-      { name: 'feesAccrued', type: 'int256' }
+      { name: 'liquidity', type: 'uint128' },
+      { name: 'feeGrowthInside0LastX128', type: 'uint256' },
+      { name: 'feeGrowthInside1LastX128', type: 'uint256' }
+    ]
+  },
+  {
+    name: 'getFeeGrowthInside',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'poolId', type: 'bytes32' },
+      { name: 'tickLower', type: 'int24' },
+      { name: 'tickUpper', type: 'int24' }
+    ],
+    outputs: [
+      { name: 'feeGrowthInside0X128', type: 'uint256' },
+      { name: 'feeGrowthInside1X128', type: 'uint256' }
     ]
   }
 ] as const;
-const ACTION_DECREASE_LIQUIDITY = '0x01';
-const BALANCE_DELTA_MASK = (BigInt(1) << BigInt(128)) - BigInt(1);
-const FEE_DEADLINE_BUFFER_SECONDS = 15 * 60;
-
-// StateView for Uniswap v4 on Monad (used to read sqrtPriceX96 + tick)
-const STATE_VIEW_ADDRESS = '0x77395f3b2e73ae90843717371294fa97cc419d64' as const;
 
 export const publicClient = createPublicClient({
   chain: monad,
@@ -158,21 +186,6 @@ const POSITION_MANAGER_ABI = [
     stateMutability: 'view',
     inputs: [{ name: 'tokenId', type: 'uint256' }],
     outputs: [{ name: 'liquidity', type: 'uint128' }]
-  }
-] as const;
-
-const STATE_VIEW_ABI = [
-  {
-    type: 'function',
-    name: 'getSlot0',
-    stateMutability: 'view',
-    inputs: [{ name: 'poolId', type: 'bytes32' }],
-    outputs: [
-      { name: 'sqrtPriceX96', type: 'uint160' },
-      { name: 'tick', type: 'int24' },
-      { name: 'protocolFee', type: 'uint24' },
-      { name: 'lpFee', type: 'uint24' }
-    ]
   }
 ] as const;
 
@@ -375,6 +388,35 @@ export async function getUserPositionsSummary(owner: Address): Promise<UserPosit
 // -----------------------------
 
 const Q96 = BigInt(1) << BigInt(96);
+const Q128 = BigInt(1) << BigInt(128);
+
+const POOL_KEY_ABI_COMPONENTS = [
+  { name: 'currency0', type: 'address' },
+  { name: 'currency1', type: 'address' },
+  { name: 'fee', type: 'uint24' },
+  { name: 'tickSpacing', type: 'int24' },
+  { name: 'hooks', type: 'address' }
+] as const;
+
+function poolKeyToId(poolKey: {
+  currency0: Address;
+  currency1: Address;
+  fee: number;
+  tickSpacing: number;
+  hooks: Address;
+}): `0x${string}` {
+  const encoded = encodeAbiParameters(
+    [
+      {
+        name: 'poolKey',
+        type: 'tuple',
+        components: POOL_KEY_ABI_COMPONENTS
+      }
+    ],
+    [poolKey]
+  );
+  return keccak256(encoded);
+}
 
 function mulDiv(a: bigint, b: bigint, denominator: bigint): bigint {
   if (denominator === BigInt(0)) {
@@ -558,17 +600,7 @@ function getAmountsForLiquidity(
 // -----------------------------
 
 function getPoolIdFromKey(poolKey: PositionDetails['poolKey']): `0x${string}` {
-  const encoded = encodeAbiParameters(
-    [
-      { name: 'currency0', type: 'address' },
-      { name: 'currency1', type: 'address' },
-      { name: 'fee', type: 'uint24' },
-      { name: 'tickSpacing', type: 'int24' },
-      { name: 'hooks', type: 'address' }
-    ],
-    [poolKey.currency0, poolKey.currency1, poolKey.fee, poolKey.tickSpacing, poolKey.hooks]
-  );
-  return keccak256(encoded) as `0x${string}`;
+  return poolKeyToId(poolKey);
 }
 
 async function getCurrentPoolState(poolKey: PositionDetails['poolKey']): Promise<{
@@ -675,55 +707,46 @@ export async function enrichManyPositionsWithAmounts(
   return results;
 }
 
-function decodeBalanceDelta(delta: bigint): { amount0: bigint; amount1: bigint } {
-  const amount0 = BigInt.asIntN(128, delta >> BigInt(128));
-  const amount1 = BigInt.asIntN(128, delta & BALANCE_DELTA_MASK);
-  return { amount0, amount1 };
-}
-
-function buildFeeProbeUnlockData(tokenId: bigint): `0x${string}` {
-  const params = encodeAbiParameters(
-    [
-      { name: 'tokenId', type: 'uint256' },
-      { name: 'liquidity', type: 'uint256' },
-      { name: 'amount0Min', type: 'uint128' },
-      { name: 'amount1Min', type: 'uint128' },
-      { name: 'hookData', type: 'bytes' }
-    ],
-    [tokenId, BigInt(0), BigInt(0), BigInt(0), '0x']
-  );
-
-  return encodeAbiParameters(
-    [
-      { name: 'actions', type: 'bytes' },
-      { name: 'params', type: 'bytes[]' }
-    ],
-    [ACTION_DECREASE_LIQUIDITY, [params]]
-  );
-}
-
 export async function getPositionFeesPreview(
-  tokenId: bigint,
-  owner: Address
+  tokenId: bigint
 ): Promise<{ amount0: bigint; amount1: bigint } | null> {
   try {
-    const unlockData = buildFeeProbeUnlockData(tokenId);
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + FEE_DEADLINE_BUFFER_SECONDS);
-    const simulation = await publicClient.simulateContract({
-      address: POSITION_MANAGER_ADDRESS,
-      abi: POSITION_MANAGER_SIM_ABI,
-      functionName: 'modifyLiquidities',
-      args: [unlockData, deadline],
-      account: owner
-    });
-    const [, feesAccrued] = simulation.result;
-    const decoded = decodeBalanceDelta(feesAccrued);
+    const details = await getPositionDetails(tokenId);
+    const poolId = poolKeyToId(details.poolKey);
+    const salt = toHex(tokenId, { size: 32 });
+    const [, feeGrowthInside0LastX128, feeGrowthInside1LastX128] = (await publicClient.readContract(
+      {
+        address: STATE_VIEW_ADDRESS,
+        abi: STATE_VIEW_ABI,
+        functionName: 'getPositionInfo',
+        args: [poolId, POSITION_MANAGER_ADDRESS, details.tickLower, details.tickUpper, salt]
+      }
+    )) as readonly [bigint, bigint, bigint];
+
+    const [feeGrowthInside0Current, feeGrowthInside1Current] = (await publicClient.readContract({
+      address: STATE_VIEW_ADDRESS,
+      abi: STATE_VIEW_ABI,
+      functionName: 'getFeeGrowthInside',
+      args: [poolId, details.tickLower, details.tickUpper]
+    })) as readonly [bigint, bigint];
+
+    const delta0 =
+      feeGrowthInside0Current >= feeGrowthInside0LastX128
+        ? feeGrowthInside0Current - feeGrowthInside0LastX128
+        : BigInt(0);
+    const delta1 =
+      feeGrowthInside1Current >= feeGrowthInside1LastX128
+        ? feeGrowthInside1Current - feeGrowthInside1LastX128
+        : BigInt(0);
+
+    const amount0 = (delta0 * details.liquidity) / Q128;
+    const amount1 = (delta1 * details.liquidity) / Q128;
     return {
-      amount0: decoded.amount0 < BigInt(0) ? -decoded.amount0 : BigInt(0),
-      amount1: decoded.amount1 < BigInt(0) ? -decoded.amount1 : BigInt(0)
+      amount0,
+      amount1
     };
   } catch (error) {
-    console.warn('Failed to preview LP fees', { tokenId: tokenId.toString(), owner, error });
+    console.warn('Failed to preview LP fees', { tokenId: tokenId.toString(), error });
     return null;
   }
 }
