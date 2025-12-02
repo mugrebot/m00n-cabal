@@ -48,6 +48,13 @@ const STATE_VIEW_ABI = [
     ]
   },
   {
+    name: 'getLiquidity',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'poolId', type: 'bytes32' }],
+    outputs: [{ name: 'liquidity', type: 'uint128' }]
+  },
+  {
     name: 'getPositionInfo',
     type: 'function',
     stateMutability: 'view',
@@ -603,22 +610,32 @@ function getPoolIdFromKey(poolKey: PositionDetails['poolKey']): `0x${string}` {
   return poolKeyToId(poolKey);
 }
 
-async function getCurrentPoolState(poolKey: PositionDetails['poolKey']): Promise<{
+export async function getCurrentPoolState(poolKey: PositionDetails['poolKey']): Promise<{
   sqrtPriceX96: bigint;
   tick: number;
+  liquidity: bigint;
 }> {
   const poolId = getPoolIdFromKey(poolKey);
-  const slot0 = await publicClient.readContract({
-    address: STATE_VIEW_ADDRESS,
-    abi: STATE_VIEW_ABI,
-    functionName: 'getSlot0',
-    args: [poolId]
-  });
+  const [slot0, poolLiquidity] = await Promise.all([
+    publicClient.readContract({
+      address: STATE_VIEW_ADDRESS,
+      abi: STATE_VIEW_ABI,
+      functionName: 'getSlot0',
+      args: [poolId]
+    }),
+    publicClient.readContract({
+      address: STATE_VIEW_ADDRESS,
+      abi: STATE_VIEW_ABI,
+      functionName: 'getLiquidity',
+      args: [poolId]
+    })
+  ]);
 
   const sqrtPriceX96 = slot0[0] as bigint;
   const tick = Number(slot0[1] as number);
+  const liquidity = BigInt(poolLiquidity as bigint);
 
-  return { sqrtPriceX96, tick };
+  return { sqrtPriceX96, tick, liquidity };
 }
 
 // -----------------------------

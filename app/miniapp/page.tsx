@@ -275,6 +275,8 @@ interface LpPosition {
   };
   feesStatus?: 'idle' | 'loading' | 'loaded' | 'error';
   feesError?: string | null;
+  collectStatus?: 'idle' | 'loading' | 'error';
+  collectError?: string | null;
 }
 
 interface LeaderboardEntry {
@@ -1013,7 +1015,9 @@ function MiniAppPageInner() {
         const lpPositions = (data.lpPositions ?? []).map((position) => ({
           ...position,
           feesStatus: position.fees ? ('loaded' as const) : ('idle' as const),
-          feesError: null
+          feesError: null,
+          collectStatus: 'idle' as const,
+          collectError: null
         }));
         const hasLpSignal = lpPositions.length > 0 || data.hasLpNft;
 
@@ -1472,6 +1476,79 @@ function MiniAppPageInner() {
       }
     },
     [getMiniWalletProvider, miniWalletAddress]
+  );
+
+  const handleCollectLpFees = useCallback(
+    async (tokenId: string) => {
+      if (!miniWalletAddress) {
+        showToast('error', 'Connect your mini wallet to collect rewards');
+        return;
+      }
+
+      mutateLpPosition(tokenId, (position) => ({
+        ...position,
+        collectStatus: 'loading',
+        collectError: null
+      }));
+
+      try {
+        const response = await fetch('/api/lp-collect', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            tokenId,
+            recipient: miniWalletAddress
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`collect_route_${response.status}`);
+        }
+
+        const payload = (await response.json()) as {
+          to: `0x${string}`;
+          data: `0x${string}`;
+          value?: string;
+        };
+
+        const callValue =
+          typeof payload.value === 'string' && payload.value.length > 0
+            ? BigInt(payload.value)
+            : BigInt(0);
+
+        await sendCallsViaProvider({
+          calls: [
+            {
+              to: payload.to,
+              data: payload.data,
+              value: callValue
+            }
+          ]
+        });
+
+        mutateLpPosition(tokenId, (position) => ({
+          ...position,
+          collectStatus: 'idle',
+          collectError: null
+        }));
+
+        showToast('success', 'Rewards collection submitted');
+        refreshPersonalSigils();
+      } catch (error) {
+        console.error('LP_FEES:collect_failed', { tokenId, error });
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unable to collect rewards right now';
+        mutateLpPosition(tokenId, (position) => ({
+          ...position,
+          collectStatus: 'error',
+          collectError: errorMessage
+        }));
+        showToast('error', 'Failed to collect rewards');
+      }
+    },
+    [miniWalletAddress, mutateLpPosition, refreshPersonalSigils, sendCallsViaProvider, showToast]
   );
 
   const syncMiniWalletAddress = useCallback(async () => {
@@ -2552,9 +2629,28 @@ function MiniAppPageInner() {
                         ? 'REFRESH REWARDS'
                         : 'CHECK REWARDS'}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCollectLpFees(position.tokenId)}
+                    disabled={
+                      position.collectStatus === 'loading' ||
+                      !position.fees ||
+                      (position.fees &&
+                        BigInt(position.fees.token0Wei || '0') === BigInt(0) &&
+                        BigInt(position.fees.token1Wei || '0') === BigInt(0))
+                    }
+                    className="pixel-font text-[10px] tracking-[0.3em] px-4 py-2 border border-white/20 rounded-full uppercase disabled:opacity-50"
+                  >
+                    {position.collectStatus === 'loading' ? 'COLLECTING…' : 'COLLECT REWARDS'}
+                  </button>
                   {position.feesStatus === 'error' && (
                     <span className="text-xs text-red-400">
                       {position.feesError ?? 'Unable to load rewards'}
+                    </span>
+                  )}
+                  {position.collectStatus === 'error' && (
+                    <span className="text-xs text-red-400">
+                      {position.collectError ?? 'Unable to collect rewards'}
                     </span>
                   )}
                 </div>
