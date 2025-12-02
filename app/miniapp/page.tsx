@@ -2587,6 +2587,15 @@ function MiniAppPageInner() {
     const positions = (lpGateState.lpPositions ?? []).filter((position) =>
       filter ? position.bandType === filter : true
     );
+    const isLoadingPositions = lpGateState.lpStatus === 'CHECKING';
+    if (isLoadingPositions) {
+      return (
+        <div className={`${PANEL_CLASS} flex items-center gap-3 text-sm text-white/70`}>
+          <span className="loader-dot" />
+          <span>Scanning for sigils in your wallet…</span>
+        </div>
+      );
+    }
     if (positions.length === 0) {
       return null;
     }
@@ -2732,6 +2741,14 @@ function MiniAppPageInner() {
     const allPositions = (lpGateState.lpPositions ?? []).filter((position) =>
       filter ? position.bandType === filter : true
     );
+
+    if (lpGateState.lpStatus === 'CHECKING') {
+      return (
+        <div className={`${PANEL_CLASS} text-sm opacity-70 text-center`}>
+          Scanning for sigils in your wallet…
+        </div>
+      );
+    }
 
     if (allPositions.length === 0) {
       if (emptyLabel) {
