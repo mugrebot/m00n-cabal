@@ -2263,29 +2263,24 @@ function MiniAppPageInner() {
 
   const SHOW_LP_SOURCE_DIAGNOSTICS = false;
 
-  const PANEL_CLASS =
-    'bg-black/45 border border-[var(--monad-purple)] rounded-2xl p-[5px] sm:px-8 sm:py-6 backdrop-blur';
+  const PANEL_CLASS = 'lunar-card px-6 py-5 text-white/90';
 
   const renderSessionCard = (fid?: number, wallet?: string | null, extraClass = '') => (
-    <div
-      className={`grid grid-cols-1 md:grid-cols-2 gap-8 text-sm ${PANEL_CLASS} ${extraClass} [&>div]:space-y-2`}
-    >
+    <div className={`${PANEL_CLASS} grid grid-cols-1 gap-7 text-sm md:grid-cols-2 ${extraClass}`}>
       <div>
-        <p className="uppercase text-[var(--moss-green)] text-[11px] tracking-[0.4em]">
-          Connected FID
-        </p>
-        <p className="font-mono text-lg leading-tight">{fid ?? '—'}</p>
+        <p className="lunar-heading">Connected FID</p>
+        <p className="lunar-value font-mono">{fid ?? '—'}</p>
       </div>
       <div>
-        <p className="uppercase text-[var(--moss-green)] text-[11px] tracking-[0.4em]">Wallet</p>
-        <div className="flex items-center gap-3 font-mono text-lg leading-tight">
-          <span className="break-all">
+        <p className="lunar-heading">Wallet</p>
+        <div className="flex items-center gap-3 font-mono text-base leading-tight">
+          <span className="break-all text-white/80">
             {wallet ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : '—'}
           </span>
           {wallet && (
             <button
               onClick={() => handleCopyWallet(wallet)}
-              className="pixel-font text-[10px] px-3 py-1 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
+              className="cta-ghost px-4 py-2 text-[10px] font-semibold tracking-[0.3em]"
             >
               {copiedWallet ? 'COPIED' : 'COPY'}
             </button>
@@ -3669,20 +3664,21 @@ function MiniAppPageInner() {
   };
 
   const renderShell = (content: ReactNode) => (
-    <div className="relative min-h-screen overflow-x-hidden">
+    <div className="relative min-h-screen overflow-hidden">
       {renderAdminPanel()}
       <BackgroundOrbs />
       <StickerRain />
       {!isObservationDeckOpen && lpPortalMode === 'closed' && userData && (
-        <div className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 w-[min(420px,90vw)] px-[5px]">
-          <div className="rounded-3xl border border-white/20 bg-black/80 backdrop-blur p-[5px] text-center space-y-2">
+        <div className="fixed bottom-5 left-1/2 z-40 w-[min(440px,92vw)] -translate-x-1/2 px-4">
+          <div className="lunar-card rounded-3xl border border-white/15 bg-black/70 px-6 py-4 text-center shadow-2xl">
             <button
               type="button"
               onClick={handleObservationDeckRequest}
-              className="w-full pixel-font text-[11px] tracking-[0.35em] rounded-2xl border border-white/30 text-white bg-black/60 hover:bg-white/10 transition-colors flex flex-col items-center justify-center gap-1 px-[5px] py-[5px] disabled:opacity-40"
+              className="cta-primary w-full flex-col gap-1 px-6 py-3 text-[11px] tracking-[0.35em] disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!observationDeckEligible}
             >
               <span className="text-xs uppercase">Observation Deck</span>
-              <span className="text-[10px] opacity-75">
+              <span className="text-[10px] leading-tight tracking-[0.1em] opacity-70">
                 {observationDeckEligible
                   ? 'Tap to view live LP telemetry'
                   : 'Hold ≥ 1M m00n on connected wallet'}
@@ -3691,7 +3687,9 @@ function MiniAppPageInner() {
           </div>
         </div>
       )}
-      <div className="pb-36 pt-4">{content}</div>
+      <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pb-40 pt-6 sm:px-6 lg:px-8">
+        <div className="space-y-6">{content}</div>
+      </main>
       {toast && (
         <div
           className={`fixed top-6 left-1/2 z-50 -translate-x-1/2 px-4 py-2 rounded-full border backdrop-blur ${
@@ -3720,24 +3718,19 @@ function MiniAppPageInner() {
   const renderContractCard = (options?: { showClaimButton?: boolean }) => {
     const showClaimButton = options?.showClaimButton ?? true;
     return (
-      <div className="bg-black/40 border border-[var(--monad-purple)] rounded-2xl p-6 space-y-4 text-left backdrop-blur">
+      <div className={`${PANEL_CLASS} space-y-4`}>
         <div>
-          <p className="uppercase text-[var(--moss-green)] text-xs tracking-widest mb-2">
-            m00n contract
-          </p>
-          <p className="font-mono text-sm break-all px-1">{TOKEN_ADDRESS}</p>
+          <p className="lunar-heading mb-2">m00n contract</p>
+          <p className="font-mono text-sm text-white/80 break-all">{TOKEN_ADDRESS}</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <button
-            onClick={handleCopyContract}
-            className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-all"
-          >
+          <button onClick={handleCopyContract} className="cta-ghost text-[10px] tracking-[0.3em]">
             {copiedContract ? 'COPIED' : 'COPY CA'}
           </button>
           {showClaimButton && (
             <button
               onClick={handleOpenClaimSite}
-              className="pixel-font text-xs px-4 py-2 border border-[var(--moss-green)] rounded text-[var(--moss-green)] hover:bg-[var(--moss-green)] hover:text-black transition-all"
+              className="cta-primary text-[10px] tracking-[0.3em]"
             >
               OPEN CLAIM SITE
             </button>
