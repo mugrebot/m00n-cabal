@@ -3099,11 +3099,13 @@ function MiniAppPageInner() {
     const renderBandActions = (band: 'crash_band' | 'upside_band') => {
       const isCrash = band === 'crash_band';
       const hasBand = isCrash ? hasCrashBand : hasSkyBand;
+      const isCurrentBand = band === preferredBand;
       return (
         <div className={`${PANEL_CLASS} flex flex-wrap items-center gap-3`}>
           <button
             type="button"
             onClick={() => handleOpenLpClaimModal(isCrash ? 'backstop' : 'moon_upside')}
+            disabled={!isCurrentBand}
             className="pixel-font px-5 py-3 border border-white/20 rounded-2xl text-xs tracking-[0.35em] hover:bg-white/10 transition-colors"
           >
             {isCrash ? 'DEPLOY CRASH BAND' : 'DEPLOY SKY BAND'}
