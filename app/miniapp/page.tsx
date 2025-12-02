@@ -482,9 +482,6 @@ function MiniAppPageInner() {
   const [solarCanvasSize, setSolarCanvasSize] = useState(420);
   const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
   const [isSigilManagerVisible, setIsSigilManagerVisible] = useState(true);
-  const [activeBandView, setActiveBandView] = useState<'crash' | 'sky'>(() =>
-    personaHint === 'claimed_bought_more' ? 'sky' : 'crash'
-  );
   const [solarSystemRefreshNonce, setSolarSystemRefreshNonce] = useState(0);
   const viewerAddressLabels = useMemo(() => {
     const pool = new Set<string>();
@@ -557,13 +554,6 @@ function MiniAppPageInner() {
   );
   const hasCrashBand = crashBandCount > 0;
   const hasSkyBand = skyBandCount > 0;
-
-  useEffect(() => {
-    if (personaHint === 'claimed_bought_more') {
-      setActiveBandView('sky');
-    }
-  }, [personaHint]);
-
   const showToast = useCallback((kind: 'info' | 'success' | 'error', message: string) => {
     setToast({ kind, message });
   }, []);
@@ -3055,9 +3045,14 @@ function MiniAppPageInner() {
       ? 'Deck access unlocked'
       : 'Hold ≥ 1M m00n on this wallet to unlock VIP telemetry';
     const deckStatusTone = observationDeckEligible ? 'text-[var(--moss-green)]' : 'text-yellow-300';
-    const activeBand = activeBandView === 'crash' ? 'crash_band' : 'upside_band';
+    const preferredBand: 'crash_band' | 'upside_band' =
+      effectivePersona === 'claimed_bought_more' || personaHint === 'claimed_bought_more'
+        ? 'upside_band'
+        : hasSkyBand && !hasCrashBand
+          ? 'upside_band'
+          : 'crash_band';
     const bandCopy =
-      activeBand === 'crash_band'
+      preferredBand === 'crash_band'
         ? {
             title: 'Crash Band Console',
             subtitle: 'Deploy or monitor WMON crash backstops.'
@@ -3229,43 +3224,11 @@ function MiniAppPageInner() {
             </div>
           </div>
           {renderSolarSystem()}
-          <div className={`${PANEL_CLASS} space-y-3`}>
-            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.4em] text-white/60">{bandCopy.title}</p>
-                <p className="text-sm opacity-75">{bandCopy.subtitle}</p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveBandView('crash')}
-                  className={`px-4 py-2 rounded-full text-xs tracking-[0.35em] border ${
-                    activeBand === 'crash_band'
-                      ? 'bg-white text-black border-white'
-                      : 'border-white/30 text-white/70 hover:bg-white/10'
-                  }`}
-                >
-                  Crash Band
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveBandView('sky')}
-                  className={`px-4 py-2 rounded-full text-xs tracking-[0.35em] border ${
-                    activeBand === 'upside_band'
-                      ? 'bg-white text-black border-white'
-                      : 'border-white/30 text-white/70 hover:bg-white/10'
-                  }`}
-                >
-                  Sky Band
-                </button>
-              </div>
-            </div>
+          <div className={`${PANEL_CLASS} space-y-1`}>
+            <p className="text-xs uppercase tracking-[0.4em] text-white/60">{bandCopy.title}</p>
+            <p className="text-sm opacity-75">{bandCopy.subtitle}</p>
           </div>
-          <div className="space-y-4">
-            {activeBand === 'crash_band'
-              ? renderBandInventory('crash_band')
-              : renderBandInventory('upside_band')}
-          </div>
+          <div className="space-y-4">{renderBandInventory(preferredBand)}</div>
           {hasAnyLp &&
             renderSigilPreview({
               title: 'Your LP Sigils',
