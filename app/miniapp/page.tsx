@@ -3045,12 +3045,13 @@ function MiniAppPageInner() {
       ? 'Deck access unlocked'
       : 'Hold ≥ 1M m00n on this wallet to unlock VIP telemetry';
     const deckStatusTone = observationDeckEligible ? 'text-[var(--moss-green)]' : 'text-yellow-300';
+    const wantsSkyBand =
+      effectivePersona === 'claimed_bought_more' ||
+      effectivePersona === 'emoji_chat' ||
+      personaHint === 'claimed_bought_more' ||
+      personaHint === 'emoji_chat';
     const preferredBand: 'crash_band' | 'upside_band' =
-      effectivePersona === 'claimed_bought_more' || personaHint === 'claimed_bought_more'
-        ? 'upside_band'
-        : hasSkyBand && !hasCrashBand
-          ? 'upside_band'
-          : 'crash_band';
+      wantsSkyBand || (hasSkyBand && !hasCrashBand) ? 'upside_band' : 'crash_band';
     const bandCopy =
       preferredBand === 'crash_band'
         ? {
@@ -3113,10 +3114,10 @@ function MiniAppPageInner() {
           <button
             type="button"
             onClick={() => handleShareBand(isCrash ? 'crash_band' : 'upside_band')}
-            disabled={!hasBand}
+            disabled={!hasBand || !isCurrentBand}
             className="pixel-font px-5 py-3 border border-white/20 rounded-2xl text-xs tracking-[0.35em] hover:bg-white/10 transition-colors disabled:opacity-40"
           >
-            {hasBand ? 'SHARE DEPLOYED BAND' : 'DEPLOY TO SHARE'}
+            {hasBand && isCurrentBand ? 'SHARE DEPLOYED BAND' : 'DEPLOY TO SHARE'}
           </button>
           <button
             type="button"
@@ -3271,20 +3272,23 @@ function MiniAppPageInner() {
             >
               LAUNCH m00nLANDER
             </button>
-            <button
-              type="button"
-              onClick={() => handleOpenLpClaimModal('moon_upside')}
-              className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
-            >
-              DEPLOY SKY BAND
-            </button>
-            <button
-              type="button"
-              onClick={() => handleOpenLpClaimModal('backstop')}
-              className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
-            >
-              DEPLOY CRASH BAND
-            </button>
+            {preferredBand === 'upside_band' ? (
+              <button
+                type="button"
+                onClick={() => handleOpenLpClaimModal('moon_upside')}
+                className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
+              >
+                DEPLOY SKY BAND
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleOpenLpClaimModal('backstop')}
+                className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
+              >
+                DEPLOY CRASH BAND
+              </button>
+            )}
           </div>
           <ManifestoHint />
         </div>
