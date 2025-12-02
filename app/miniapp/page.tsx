@@ -4015,7 +4015,7 @@ function MiniAppPageInner() {
   };
 
   const renderShell = (content: ReactNode) => (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="relative min-h-screen">
       {renderAdminPanel()}
       <BackgroundOrbs />
       <StickerRain />
