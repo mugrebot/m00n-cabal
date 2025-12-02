@@ -741,16 +741,6 @@ function MiniAppPageInner() {
     return primaryAddressMoonBalanceWei >= MOON_EMOJI_THRESHOLD_WEI;
   }, [primaryAddressMoonBalanceWei, primaryBalanceStatus]);
 
-  const handleObservationDeckRequest = useCallback(() => {
-    if (!observationDeckEligible) {
-      const suffix = balanceProbeAddress ? ` (${truncateAddress(balanceProbeAddress)})` : '';
-      showToast('info', `Observation deck requires ≥ 1M m00n on the connected wallet${suffix}.`);
-      return;
-    }
-    setLpPortalMode('closed');
-    setIsObservationDeckOpen(true);
-  }, [balanceProbeAddress, observationDeckEligible, showToast]);
-
   const handleCloseObservationDeck = useCallback(() => {
     setIsObservationDeckOpen(false);
   }, []);
@@ -839,10 +829,9 @@ function MiniAppPageInner() {
   const canAccessLpFeatures = personaBadge === 'moon_boy' || personaBadge === 'keeper';
 
   const handleOpenLpGate = useCallback(() => {
-    if (!canAccessLpFeatures) return;
     setIsObservationDeckOpen(false);
     setLpPortalMode('gate');
-  }, [canAccessLpFeatures]);
+  }, []);
 
   const handleOpenLpManager = useCallback(() => {
     if (!canAccessLpFeatures) return;
@@ -2672,19 +2661,15 @@ function MiniAppPageInner() {
     );
   };
 
-  const renderObservationDeckInlineButton = () => {
-    if (isObservationDeckOpen) return null;
-    return (
-      <button
-        type="button"
-        onClick={handleObservationDeckRequest}
-        disabled={!observationDeckEligible}
-        className="cta-ghost text-[10px] tracking-[0.3em] px-6 py-3 disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {observationDeckEligible ? 'OPEN OBSERVATION DECK' : 'Hold ≥ 1M m00n to unlock deck'}
-      </button>
-    );
-  };
+  const renderLpGateInlineButton = () => (
+    <button
+      type="button"
+      onClick={handleOpenLpGate}
+      className="cta-ghost text-[10px] tracking-[0.3em] px-6 py-3"
+    >
+      OPEN NO CLAIM + LP
+    </button>
+  );
 
   const renderLpDiagnostics = () => {
     if (!SHOW_LP_SOURCE_DIAGNOSTICS || !lpGateState.walletAddress) return null;
@@ -2734,7 +2719,6 @@ function MiniAppPageInner() {
             <NeonHaloLogo size={140} />
           </div>
           <h1 className="pixel-font text-2xl glow-purple">{copy.title}</h1>
-          <div className="flex justify-center">{renderObservationDeckInlineButton()}</div>
           {renderCopyBody(copy.body)}
           {truncatedWallet && lpStatus === 'HAS_LP' && (
             <p className="text-xs opacity-60">Wallet: {truncatedWallet}</p>
@@ -2933,7 +2917,7 @@ function MiniAppPageInner() {
               <p className="text-xs opacity-70">m00n-only ladder ~20% above tick</p>
             </div>
           </div>
-          <div className="flex justify-end">{renderObservationDeckInlineButton()}</div>
+          <div className="flex justify-end">{renderLpGateInlineButton()}</div>
           <div className="grid md:grid-cols-2 gap-6 items-start">
             <div className={`${PANEL_CLASS} space-y-4`}>
               <div>
@@ -2990,7 +2974,7 @@ function MiniAppPageInner() {
               )}
             </div>
           )}
-          <div className="flex justify-end">{renderObservationDeckInlineButton()}</div>
+          <div className="flex justify-end">{renderLpGateInlineButton()}</div>
           {leaderboardStatus === 'loaded' && leaderboardData
             ? renderLeaderboardVisualizer(leaderboardData.upsideBand, {
                 title: 'Sky Ladder Leaderboard',
@@ -3023,7 +3007,7 @@ function MiniAppPageInner() {
               <p className="text-xs opacity-70">WMON crash band ~20% below tick</p>
             </div>
           </div>
-          <div className="flex justify-end">{renderObservationDeckInlineButton()}</div>
+          <div className="flex justify-end">{renderLpGateInlineButton()}</div>
           <div className="grid md:grid-cols-2 gap-6 items-start">
             <div className={`${PANEL_CLASS} space-y-4 text-left`}>
               <p className="text-sm opacity-85">{preset.description}</p>
@@ -3077,7 +3061,7 @@ function MiniAppPageInner() {
               )}
             </div>
           )}
-          <div className="flex justify-end">{renderObservationDeckInlineButton()}</div>
+          <div className="flex justify-end">{renderLpGateInlineButton()}</div>
           {leaderboardStatus === 'loaded' && leaderboardData
             ? renderLeaderboardVisualizer(leaderboardData.crashBand, {
                 title: 'Crash Backstop Leaderboard',
@@ -3177,14 +3161,16 @@ function MiniAppPageInner() {
       const isCurrentBand = band === preferredBand;
       return (
         <div className={`${PANEL_CLASS} flex flex-wrap items-center gap-3`}>
-          <button
-            type="button"
-            onClick={() => handleOpenLpClaimModal(isCrash ? 'backstop' : 'moon_upside')}
-            disabled={!isCurrentBand}
-            className="pixel-font px-5 py-3 border border-white/20 rounded-2xl text-xs tracking-[0.35em] hover:bg-white/10 transition-colors"
-          >
-            {isCrash ? 'DEPLOY CRASH BAND' : 'DEPLOY SKY BAND'}
-          </button>
+          {!hasAnyLp && (
+            <button
+              type="button"
+              onClick={() => handleOpenLpClaimModal(isCrash ? 'backstop' : 'moon_upside')}
+              disabled={!isCurrentBand}
+              className="pixel-font px-5 py-3 border border-white/20 rounded-2xl text-xs tracking-[0.35em] hover:bg-white/10 transition-colors"
+            >
+              {isCrash ? 'DEPLOY CRASH BAND' : 'DEPLOY SKY BAND'}
+            </button>
+          )}
           <button
             type="button"
             onClick={handleOpenLpGate}
@@ -3324,6 +3310,7 @@ function MiniAppPageInner() {
               <p className="text-[11px] uppercase tracking-[0.35em] text-white/60">
                 Earn LP sigils to unlock deployment controls.
               </p>
+              <div className="flex justify-center">{renderLpGateInlineButton()}</div>
             </div>
           )}
           {renderObservationLeaderboard(`deck-${preferredBand}`, deckLeaderboardEntries, {
@@ -3348,15 +3335,13 @@ function MiniAppPageInner() {
             >
               LAUNCH m00nLANDER
             </button>
-            {canAccessLpFeatures && hasAnyLp && (
-              <button
-                type="button"
-                onClick={handleOpenLpGate}
-                className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
-              >
-                OPEN LP LOUNGE
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleOpenLpGate}
+              className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
+            >
+              OPEN NO CLAIM + LP
+            </button>
           </div>
         </div>
       </div>
@@ -3671,27 +3656,6 @@ function MiniAppPageInner() {
       {renderAdminPanel()}
       <BackgroundOrbs />
       <StickerRain />
-      {!isObservationDeckOpen && lpPortalMode === 'closed' && userData && (
-        <div className="fixed right-3 top-24 z-40 w-[min(320px,85vw)] px-3 sm:right-5 sm:top-1/2 sm:-translate-y-1/2 sm:px-0">
-          <div className="lunar-card rounded-3xl border border-white/15 bg-black/70 px-5 py-4 shadow-2xl text-left space-y-2">
-            <p className="text-xs uppercase tracking-[0.35em] text-white/70">Observation Deck</p>
-            <p className="text-[11px] text-white/65 leading-relaxed">
-              {observationDeckEligible
-                ? 'View LP telemetry, personas, and sigils.'
-                : 'Hold ≥ 1M m00n on your connected wallet to unlock live telemetry.'}
-            </p>
-            <button
-              type="button"
-              onClick={handleObservationDeckRequest}
-              className="cta-primary w-full justify-between px-4 py-3 text-[10px] tracking-[0.3em] disabled:cursor-not-allowed disabled:opacity-40"
-              disabled={!observationDeckEligible}
-            >
-              <span>{observationDeckEligible ? 'Enter deck' : 'Locked'}</span>
-              <span className="text-[9px] tracking-[0.4em] opacity-80">→</span>
-            </button>
-          </div>
-        </div>
-      )}
       <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pb-40 pt-6 sm:px-6 lg:px-8">
         <div className="space-y-6">{content}</div>
       </main>
