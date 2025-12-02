@@ -3546,7 +3546,6 @@ function MiniAppPageInner() {
           <span className="pixel-font text-xs tracking-[0.3em]">{toast.message}</span>
         </div>
       )}
-      {content}
       {isLpClaimModalOpen && renderLpClaimModal()}
       {isManifestoOpen && renderManifestoModal()}
     </div>
