@@ -30,7 +30,7 @@ const monad = defineChain({
 });
 
 export const POSITION_MANAGER_ADDRESS = '0x5b7eC4a94fF9beDb700fb82aB09d5846972F4016' as const;
-const POSITION_MANAGER_ABI = [
+const POSITION_MANAGER_SIM_ABI = [
   {
     name: 'modifyLiquidities',
     type: 'function',
@@ -711,7 +711,7 @@ export async function getPositionFeesPreview(
     const deadline = BigInt(Math.floor(Date.now() / 1000) + FEE_DEADLINE_BUFFER_SECONDS);
     const simulation = await publicClient.simulateContract({
       address: POSITION_MANAGER_ADDRESS,
-      abi: POSITION_MANAGER_ABI,
+      abi: POSITION_MANAGER_SIM_ABI,
       functionName: 'modifyLiquidities',
       args: [unlockData, deadline],
       account: owner
