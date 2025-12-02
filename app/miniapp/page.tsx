@@ -515,6 +515,19 @@ function MiniAppPageInner() {
     });
   }, [solarSystemData?.positions, viewerAddressLabels, viewerLabel]);
 
+  const activeSolarPositions = useMemo(() => {
+    if (solarSystemStatus !== 'loaded') return [];
+    return personalizedSolarPositions ?? solarSystemData?.positions ?? [];
+  }, [personalizedSolarPositions, solarSystemData?.positions, solarSystemStatus]);
+
+  const totalSolarNotionalUsd = useMemo(() => {
+    if (!activeSolarPositions.length) return null;
+    return activeSolarPositions.reduce(
+      (acc, position) => acc + Math.max(position.notionalUsd ?? 0, 0),
+      0
+    );
+  }, [activeSolarPositions]);
+
   const handleLpAmountChange = useCallback(
     (rawValue: string) => {
       const stripped = rawValue.replace(/[^\d.,]/g, '');
@@ -3035,18 +3048,6 @@ function MiniAppPageInner() {
             minute: '2-digit'
           })
         : null;
-    const activeSolarPositions =
-      solarSystemStatus === 'loaded'
-        ? (personalizedSolarPositions ?? solarSystemData?.positions ?? [])
-        : [];
-    const totalSolarNotionalUsd =
-      solarSystemStatus === 'loaded' && activeSolarPositions.length
-        ? activeSolarPositions.reduce(
-            (acc, position) => acc + Math.max(position.notionalUsd ?? 0, 0),
-            0
-          )
-        : null;
-
     const renderSolarSystem = () => {
       if (solarSystemStatus === 'loaded' && activeSolarPositions.length) {
         return (
