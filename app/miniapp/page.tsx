@@ -2484,11 +2484,13 @@ function MiniAppPageInner() {
   const renderPositionManager = ({
     title,
     subtitle,
-    filter
+    filter,
+    allowFeeRefresh = true
   }: {
     title: string;
     subtitle?: string;
     filter?: 'crash_band' | 'upside_band';
+    allowFeeRefresh?: boolean;
   }) => {
     const { token0TotalSupply, token0CirculatingSupply, poolWmonUsdPrice } = lpGateState;
     const positions = (lpGateState.lpPositions ?? []).filter((position) =>
@@ -2865,7 +2867,7 @@ function MiniAppPageInner() {
       onClick={handleOpenLpGate}
       className="cta-ghost text-[10px] tracking-[0.3em] px-6 py-3"
     >
-      OPEN NO CLAIM + LP
+      LP MANAGER
     </button>
   );
 
@@ -3541,7 +3543,7 @@ function MiniAppPageInner() {
               onClick={handleOpenLpGate}
               className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
             >
-              OPEN NO CLAIM + LP
+              LP MANAGER
             </button>
           </div>
         </div>
