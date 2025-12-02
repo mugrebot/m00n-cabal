@@ -320,19 +320,27 @@ interface CsvPersonaRecord {
   latestInteraction?: string | null;
 }
 
-type PersonaBadge = 'm00nboy' | 'trial' | 'fader';
+type PersonaBadge = 'moon_boy' | 'keeper' | 'believer' | 'newcomer' | 'fader';
 
 const PERSONA_BADGE_COPY: Record<PersonaBadge, { label: string; description: string }> = {
-  m00nboy: {
-    label: 'm00nboy',
-    description: 'LP believer — active sigils detected in the m00n / W-MON pool.'
+  moon_boy: {
+    label: 'Moon Boy',
+    description: 'Sky band loyalist — claimed and held their m00n allocation.'
   },
-  trial: {
-    label: 'trial',
-    description: 'Active cabalist without an LP sigil yet. Trialing the rituals.'
+  keeper: {
+    label: 'Keeper',
+    description: 'Crash band sentinel — claimed and bought more to defend the floor.'
+  },
+  believer: {
+    label: 'Believer',
+    description: 'Didn’t receive a claim but bought m00n on secondary to join the cabal.'
+  },
+  newcomer: {
+    label: 'Newcomer',
+    description: 'Freshly synced wallet with the required m00n balance for deck access.'
   },
   fader: {
-    label: 'fader',
+    label: 'Fader',
     description: 'Listed in NautyNice with 0 m00n balance remaining.'
   }
 };
@@ -527,14 +535,11 @@ function MiniAppPageInner() {
     );
   }, [activeSolarPositions]);
 
-  const handleLpAmountChange = useCallback(
-    (rawValue: string) => {
-      const stripped = rawValue.replace(/[^\d.,]/g, '');
-      const normalized = stripped.replace(/,/g, '.');
-      setLpClaimAmount(normalized);
-    },
-    [leaderboardRefreshNonce]
-  );
+  const handleLpAmountChange = useCallback((rawValue: string) => {
+    const stripped = rawValue.replace(/[^\d.,]/g, '');
+    const normalized = stripped.replace(/,/g, '.');
+    setLpClaimAmount(normalized);
+  }, []);
 
   const hasAnyLp = useMemo(
     () => (lpGateState.lpPositions?.length ?? 0) > 0,
@@ -729,32 +734,6 @@ function MiniAppPageInner() {
     return null;
   }, [personaHint]);
 
-  const personaBadge = useMemo<PersonaBadge>(() => {
-    const hasLpSigil =
-      lpGateState.lpStatus === 'HAS_LP' &&
-      ((lpGateState.lpPositions?.length ?? 0) > 0 ||
-        lpGateState.hasLpFromOnchain ||
-        lpGateState.hasLpFromSubgraph);
-    if (hasLpSigil) {
-      return 'm00nboy';
-    }
-    if (
-      personaRecord &&
-      personaRecord.totalEstimatedBalance !== undefined &&
-      personaRecord.totalEstimatedBalance !== null &&
-      personaRecord.totalEstimatedBalance <= 0
-    ) {
-      return 'fader';
-    }
-    return 'trial';
-  }, [
-    lpGateState.hasLpFromOnchain,
-    lpGateState.hasLpFromSubgraph,
-    lpGateState.lpPositions,
-    lpGateState.lpStatus,
-    personaRecord
-  ]);
-
   const observationDeckEligible = useMemo(() => {
     if (primaryBalanceStatus !== 'loaded') return false;
     if (!primaryAddressMoonBalanceWei) return false;
@@ -818,6 +797,32 @@ function MiniAppPageInner() {
       ['lp_gate', 'claimed_held', 'claimed_bought_more', 'emoji_chat'].includes(effectivePersona),
     [effectivePersona]
   );
+
+  const personaBadge = useMemo<PersonaBadge>(() => {
+    if (effectivePersona === 'claimed_bought_more') {
+      return 'keeper';
+    }
+    if (effectivePersona === 'claimed_held') {
+      return 'moon_boy';
+    }
+    if (effectivePersona === 'emoji_chat') {
+      return 'believer';
+    }
+    if (effectivePersona === 'eligible_holder' || effectivePersona === 'lp_gate') {
+      return 'newcomer';
+    }
+    if (
+      personaRecord &&
+      personaRecord.totalEstimatedBalance !== undefined &&
+      personaRecord.totalEstimatedBalance !== null &&
+      personaRecord.totalEstimatedBalance <= 0
+    ) {
+      return 'fader';
+    }
+    return 'newcomer';
+  }, [effectivePersona, personaRecord]);
+  const canAccessLpFeatures = personaBadge === 'moon_boy' || personaBadge === 'keeper';
+
   const openManifesto = useCallback(() => setIsManifestoOpen(true), []);
 
   useEffect(() => {
@@ -1421,12 +1426,14 @@ function MiniAppPageInner() {
   };
 
   const handleEnterLpLounge = () => {
+    if (!canAccessLpFeatures) return;
     if (lpGateState.lpStatus === 'HAS_LP') {
       setIsLpLoungeOpen(true);
     }
   };
 
   const handleOpenLpClaimModal = (preset: LpClaimPreset = 'backstop') => {
+    if (!canAccessLpFeatures) return;
     setLpClaimPreset(preset);
     setLpClaimError(null);
     setLpClaimAmount('');
@@ -1675,7 +1682,9 @@ function MiniAppPageInner() {
       setLpDebugLog((prev) => `${prev}\n✅ LP claim batch sent to wallet successfully.`);
       setTimeout(() => {
         refreshPersonalSigils();
-        setIsLpLoungeOpen(true);
+        if (canAccessLpFeatures) {
+          setIsLpLoungeOpen(true);
+        }
       }, 2000);
       setFundingRefreshNonce((prev) => prev + 1);
     } catch (err) {
@@ -1827,8 +1836,12 @@ function MiniAppPageInner() {
       ? personaActionHandlers[copy.secondaryCta.actionId]
       : undefined;
 
-    const shouldHidePrimary = copy.primaryCta?.actionId === 'lp_enter_lounge' && !hasLpNft;
-    const shouldHideSecondary = copy.secondaryCta?.actionId === 'lp_enter_lounge' && !hasLpNft;
+    const shouldHidePrimary =
+      (copy.primaryCta?.actionId === 'lp_enter_lounge' && (!hasLpNft || !canAccessLpFeatures)) ||
+      (copy.primaryCta?.actionId === 'lp_become_lp' && !canAccessLpFeatures);
+    const shouldHideSecondary =
+      (copy.secondaryCta?.actionId === 'lp_enter_lounge' && (!hasLpNft || !canAccessLpFeatures)) ||
+      (copy.secondaryCta?.actionId === 'lp_become_lp' && !canAccessLpFeatures);
 
     return (
       <div className="flex flex-col sm:flex-row sm:justify-center gap-3">
@@ -3114,6 +3127,9 @@ function MiniAppPageInner() {
     };
 
     const renderBandActions = (band: 'crash_band' | 'upside_band') => {
+      if (!canAccessLpFeatures) {
+        return null;
+      }
       const isCrash = band === 'crash_band';
       const hasBand = isCrash ? hasCrashBand : hasSkyBand;
       const isCurrentBand = band === preferredBand;
@@ -3248,13 +3264,20 @@ function MiniAppPageInner() {
             <p className="text-sm opacity-75">{bandCopy.subtitle}</p>
           </div>
           <div className="space-y-4">{renderBandInventory(preferredBand)}</div>
-          {hasAnyLp &&
+          {personaLookupStatus === 'loading' && (
+            <p className="text-center text-xs text-yellow-300">Syncing cabal dossier…</p>
+          )}
+          {personaLookupStatus === 'error' && (
+            <p className="text-center text-xs text-red-300">CSV dossier temporarily unavailable.</p>
+          )}
+          {canAccessLpFeatures &&
+            hasAnyLp &&
             renderSigilPreview({
               title: 'Your LP Sigils',
               subtitle: 'Active sigils granting access to the deck.',
               limit: 3
             })}
-          {hasAnyLp && (
+          {canAccessLpFeatures && hasAnyLp && (
             <>
               <div
                 className={`${PANEL_CLASS} flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between`}
@@ -3288,22 +3311,28 @@ function MiniAppPageInner() {
             >
               LAUNCH m00nLANDER
             </button>
-            {preferredBand === 'upside_band' ? (
-              <button
-                type="button"
-                onClick={() => handleOpenLpClaimModal('moon_upside')}
-                className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
-              >
-                DEPLOY SKY BAND
-              </button>
+            {canAccessLpFeatures ? (
+              preferredBand === 'upside_band' ? (
+                <button
+                  type="button"
+                  onClick={() => handleOpenLpClaimModal('moon_upside')}
+                  className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  DEPLOY SKY BAND
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleOpenLpClaimModal('backstop')}
+                  className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  DEPLOY CRASH BAND
+                </button>
+              )
             ) : (
-              <button
-                type="button"
-                onClick={() => handleOpenLpClaimModal('backstop')}
-                className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
-              >
-                DEPLOY CRASH BAND
-              </button>
+              <p className="text-xs uppercase tracking-[0.35em] text-white/60 text-center">
+                View-only deck access unlocked — LP deployment reserved for Moon Boys & Keepers.
+              </p>
             )}
           </div>
           <ManifestoHint />
@@ -3837,6 +3866,10 @@ function MiniAppPageInner() {
 
   if (effectivePersona === 'eligible_holder' && airdropData?.eligible) {
     return renderEligibleHolderPanel();
+  }
+
+  if (!observationDeckEligible) {
+    return renderLockedOutPanel();
   }
 
   return renderObservationDeckPortal();
