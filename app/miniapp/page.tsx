@@ -9,6 +9,7 @@ import {
   type ReactNode
 } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import sdk from '@farcaster/miniapp-sdk';
 import { encodeFunctionData, erc20Abi, formatUnits, parseUnits } from 'viem';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -3530,6 +3531,7 @@ function MiniAppPageInner() {
           </div>
         </div>
       )}
+      <div className="pb-36 pt-4">{content}</div>
       {toast && (
         <div
           className={`fixed top-6 left-1/2 z-50 -translate-x-1/2 px-4 py-2 rounded-full border backdrop-blur ${
@@ -3583,6 +3585,206 @@ function MiniAppPageInner() {
             </button>
           )}
         </div>
+      </div>
+    );
+  };
+
+  const renderStatusSummaryCard = () => {
+    const badgeCopy = PERSONA_BADGE_COPY[personaBadge];
+    const lpStatusLabel =
+      lpGateState.lpStatus === 'HAS_LP'
+        ? `${lpGateState.lpPositions?.length ?? 0} active sigil${
+            (lpGateState.lpPositions?.length ?? 0) === 1 ? '' : 's'
+          }`
+        : 'No verified LP yet';
+
+    return (
+      <section className={`${PANEL_CLASS} space-y-4`}>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="text-left space-y-1">
+            <p className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">Persona</p>
+            <p className="text-2xl font-semibold text-white">{badgeCopy.label}</p>
+            <p className="text-sm text-white/80 max-w-xl">{badgeCopy.description}</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleSignIn}
+            disabled={!statusState.actionable}
+            className="self-start md:self-auto pixel-font px-5 py-2 rounded-full border border-white/20 text-xs tracking-[0.3em] hover:bg-white/10 transition-colors disabled:opacity-40"
+          >
+            {statusState.label}
+          </button>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <p className="text-xs uppercase tracking-[0.4em] text-white/60">LP status</p>
+            <p className="text-sm text-white">{lpStatusLabel}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.4em] text-white/60">Deck access</p>
+            <p className="text-sm text-white">
+              {observationDeckEligible ? 'Unlocked' : 'Need ≥ 1M m00n on connected wallet'}
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  };
+
+  const renderDeckCard = () => {
+    const sigilCount = activeSolarPositions.length;
+    const totalNotionalDisplay =
+      totalSolarNotionalUsd !== null ? formatUsd(totalSolarNotionalUsd) : '—';
+    return (
+      <section className={`${PANEL_CLASS} space-y-3`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.4em] text-white/60">Observation Deck</p>
+            <p className="text-lg font-semibold text-white">Solar telemetry</p>
+          </div>
+          <span className="text-sm text-white/70">
+            {sigilCount} sigil{sigilCount === 1 ? '' : 's'}
+          </span>
+        </div>
+        <p className="text-sm text-white/70">
+          Total LP notional:{' '}
+          <span className="text-white font-semibold">{totalNotionalDisplay}</span>
+        </p>
+        <button
+          type="button"
+          onClick={handleObservationDeckRequest}
+          className="pixel-font w-full px-4 py-2 rounded-lg border border-white/25 text-xs tracking-[0.3em] hover:bg-white/10 transition-colors"
+        >
+          OPEN OBSERVATION DECK
+        </button>
+      </section>
+    );
+  };
+
+  const renderLpCard = () => {
+    const hasLp = lpGateState.lpStatus === 'HAS_LP';
+    const sigilCount = lpGateState.lpPositions?.length ?? 0;
+    return (
+      <section className={`${PANEL_CLASS} space-y-3`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.4em] text-white/60">LP Lounge</p>
+            <p className="text-lg font-semibold text-white">
+              {hasLp ? `${sigilCount} active sigil${sigilCount === 1 ? '' : 's'}` : 'No LP yet'}
+            </p>
+          </div>
+          <Link
+            href="/lp-advanced"
+            className="pixel-font text-[10px] px-3 py-1 rounded-full border border-white/20 hover:bg-white/10 transition-colors"
+          >
+            LP LAB
+          </Link>
+        </div>
+        <p className="text-sm text-white/70">
+          Deploy single-sided bands, rescan sigils, and monitor the pool from your wallet.
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setIsLpLoungeOpen(true)}
+            className="pixel-font px-4 py-2 rounded-lg border border-white/25 text-xs tracking-[0.3em] hover:bg-white/10 transition-colors"
+          >
+            {hasLp ? 'OPEN LP LOUNGE' : 'SCAN FOR LP'}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleOpenLpClaimModal('backstop')}
+            className="pixel-font px-4 py-2 rounded-lg border border-white/25 text-xs tracking-[0.3em] hover:bg-white/10 transition-colors"
+          >
+            DEPLOY CRASH BAND
+          </button>
+        </div>
+      </section>
+    );
+  };
+
+  const renderClaimCard = () => {
+    if (!airdropData?.eligible) return null;
+    return (
+      <section className={`${PANEL_CLASS} space-y-3`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">Claim</p>
+            <p className="text-lg font-semibold text-white">
+              {formatAmount(airdropData.amount!)} m00n ready
+            </p>
+          </div>
+          <span className="text-xs text-white/60">
+            {claimCountdown.totalSeconds > 0 ? 'Unlocks soon' : 'Window active'}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+          {countdownUnits.map((unit) => (
+            <div key={unit.label} className="rounded-lg border border-white/10 py-2">
+              <p className="text-xl font-mono">{formatCountdownValue(unit.value)}</p>
+              <p className="tracking-[0.3em] text-white/60">{unit.label}</p>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={handleOpenClaimSite}
+          className="pixel-font w-full px-4 py-2 rounded-lg bg-[var(--monad-purple)] text-white text-xs tracking-[0.3em] hover:bg-opacity-90 transition-colors"
+        >
+          OPEN CLAIM SITE
+        </button>
+      </section>
+    );
+  };
+
+  const renderLeaderboardPreview = () => {
+    if (leaderboardStatus !== 'loaded' || !leaderboardData?.overall?.length) {
+      return null;
+    }
+    const topEntries = leaderboardData.overall.slice(0, 3);
+    return (
+      <section className={`${PANEL_CLASS} space-y-3`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.4em] text-white/60">Leaderboard</p>
+            <p className="text-lg font-semibold text-white">Top LP sigils</p>
+          </div>
+          <span className="text-xs text-white/60">{leaderboardData.overall.length} tracked</span>
+        </div>
+        <div className="space-y-2">
+          {topEntries.map((entry, index) => (
+            <div
+              key={`${entry.tokenId}-${entry.owner}`}
+              className="flex items-center justify-between rounded-xl border border-white/10 px-3 py-2 text-sm"
+            >
+              <div>
+                <p className="font-semibold">
+                  #{index + 1}{' '}
+                  <span className="text-white/70">
+                    {entry.label ?? truncateAddress(entry.owner)}
+                  </span>
+                </p>
+                <p className="text-white/60">{entry.bandType?.replace('_', ' ')}</p>
+              </div>
+              <p className="font-mono">{formatUsd(entry.valueUsd)}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  };
+
+  const renderDashboard = () => {
+    return renderShell(
+      <div className="mx-auto w-full max-w-5xl space-y-6 px-4 pt-6">
+        {renderStatusSummaryCard()}
+        <div className="grid gap-4 md:grid-cols-2">
+          {renderDeckCard()}
+          {renderLpCard()}
+        </div>
+        {renderClaimCard()}
+        {renderPersonaStatsCard()}
+        {renderLeaderboardPreview()}
       </div>
     );
   };
@@ -3745,26 +3947,7 @@ function MiniAppPageInner() {
     }
   }
 
-  switch (effectivePersona) {
-    case 'claimed_sold':
-      return renderClaimedSoldPortal();
-    case 'claimed_held':
-      return renderClaimedHeldPortal();
-    case 'claimed_bought_more':
-      return renderClaimedBoughtMorePortal();
-    case 'emoji_chat':
-      return renderObservationDeckPortal();
-    case 'lp_gate':
-      if (isLpLoungeOpen && lpGateState.lpStatus === 'HAS_LP') {
-        return renderLpLoungePanel();
-      }
-      return renderLpGatePanel();
-    case 'eligible_holder':
-      return renderEligibleHolderPanel();
-    case 'locked_out':
-    default:
-      return renderLockedOutPanel();
-  }
+  return renderDashboard();
 }
 
 export default function MiniAppPage() {
