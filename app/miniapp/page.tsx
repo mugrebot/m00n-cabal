@@ -482,6 +482,7 @@ function MiniAppPageInner() {
   const [solarCanvasSize, setSolarCanvasSize] = useState(420);
   const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
   const [isSigilManagerVisible, setIsSigilManagerVisible] = useState(true);
+  const [preferredBand, setPreferredBand] = useState<'crash_band' | 'upside_band' | null>(null);
   const [solarSystemRefreshNonce, setSolarSystemRefreshNonce] = useState(0);
   const viewerAddressLabels = useMemo(() => {
     const pool = new Set<string>();
@@ -818,6 +819,17 @@ function MiniAppPageInner() {
     [effectivePersona]
   );
   const openManifesto = useCallback(() => setIsManifestoOpen(true), []);
+
+  useEffect(() => {
+    const wantsSkyBand =
+      effectivePersona === 'claimed_bought_more' ||
+      effectivePersona === 'emoji_chat' ||
+      personaHint === 'claimed_bought_more' ||
+      personaHint === 'emoji_chat';
+    const nextPreferred: 'crash_band' | 'upside_band' =
+      wantsSkyBand || (hasSkyBand && !hasCrashBand) ? 'upside_band' : 'crash_band';
+    setPreferredBand(nextPreferred);
+  }, [effectivePersona, personaHint, hasCrashBand, hasSkyBand]);
 
   useEffect(() => {
     if (!isAdmin && adminPortalView !== 'default') {
@@ -3045,13 +3057,17 @@ function MiniAppPageInner() {
       ? 'Deck access unlocked'
       : 'Hold ≥ 1M m00n on this wallet to unlock VIP telemetry';
     const deckStatusTone = observationDeckEligible ? 'text-[var(--moss-green)]' : 'text-yellow-300';
-    const wantsSkyBand =
-      effectivePersona === 'claimed_bought_more' ||
-      effectivePersona === 'emoji_chat' ||
-      personaHint === 'claimed_bought_more' ||
-      personaHint === 'emoji_chat';
-    const preferredBand: 'crash_band' | 'upside_band' =
-      wantsSkyBand || (hasSkyBand && !hasCrashBand) ? 'upside_band' : 'crash_band';
+    if (!preferredBand) {
+      return renderShell(
+        <div className="min-h-screen flex items-center justify-center p-6 relative z-10">
+          <div className={`${PANEL_CLASS} text-center space-y-2`}>
+            <p className="pixel-font text-xl">Calibrating persona</p>
+            <p className="text-sm text-white/70">Synchronizing cabal dossier…</p>
+          </div>
+        </div>
+      );
+    }
+
     const bandCopy =
       preferredBand === 'crash_band'
         ? {
