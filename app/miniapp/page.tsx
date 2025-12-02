@@ -437,7 +437,7 @@ function MiniAppPageInner() {
   const [copiedContract, setCopiedContract] = useState(false);
   const [copiedWallet, setCopiedWallet] = useState(false);
   const [lpGateState, setLpGateState] = useState<LpGateState>({ lpStatus: 'DISCONNECTED' });
-  const [isLpLoungeOpen, setIsLpLoungeOpen] = useState(false);
+  const [lpPortalMode, setLpPortalMode] = useState<'closed' | 'gate' | 'lounge'>('closed');
   const [lpRefreshNonce, setLpRefreshNonce] = useState(0);
   const [adminPortalView, setAdminPortalView] = useState<AdminPortalView>('default');
   const [hasZeroPoints, setHasZeroPoints] = useState(false);
@@ -445,7 +445,6 @@ function MiniAppPageInner() {
     Math.max(CLAIM_UNLOCK_TIMESTAMP_MS - Date.now(), 0)
   );
   const [isLpClaimModalOpen, setIsLpClaimModalOpen] = useState(false);
-  const [isManifestoOpen, setIsManifestoOpen] = useState(false);
   const [isObservationDeckOpen, setIsObservationDeckOpen] = useState(false);
   const [lpClaimAmount, setLpClaimAmount] = useState('');
   const [lpClaimPreset, setLpClaimPreset] = useState<LpClaimPreset>('backstop');
@@ -748,6 +747,7 @@ function MiniAppPageInner() {
       showToast('info', `Observation deck requires ≥ 1M m00n on the connected wallet${suffix}.`);
       return;
     }
+    setLpPortalMode('closed');
     setIsObservationDeckOpen(true);
   }, [balanceProbeAddress, observationDeckEligible, showToast]);
 
@@ -838,7 +838,20 @@ function MiniAppPageInner() {
   }, [effectivePersona, personaRecord]);
   const canAccessLpFeatures = personaBadge === 'moon_boy' || personaBadge === 'keeper';
 
-  const openManifesto = useCallback(() => setIsManifestoOpen(true), []);
+  const handleOpenLpGate = useCallback(() => {
+    if (!canAccessLpFeatures) return;
+    setIsObservationDeckOpen(false);
+    setLpPortalMode('gate');
+  }, [canAccessLpFeatures]);
+
+  const handleOpenLpManager = useCallback(() => {
+    if (!canAccessLpFeatures) return;
+    setLpPortalMode('lounge');
+  }, [canAccessLpFeatures]);
+
+  const handleCloseLpPortal = useCallback(() => {
+    setLpPortalMode('closed');
+  }, []);
 
   useEffect(() => {
     const personaWantsSky =
@@ -933,9 +946,7 @@ function MiniAppPageInner() {
 
   useEffect(() => {
     if (!personaNeedsLpData) {
-      if (effectivePersona !== 'lp_gate') {
-        setIsLpLoungeOpen(false);
-      }
+      setLpPortalMode('closed');
       return;
     }
 
@@ -1455,11 +1466,6 @@ function MiniAppPageInner() {
     refreshPersonalSigils();
   };
 
-  const handleEnterLpLounge = () => {
-    if (!canAccessLpFeatures) return;
-    setIsLpLoungeOpen(true);
-  };
-
   const handleOpenLpClaimModal = (preset: LpClaimPreset = 'backstop') => {
     if (!canAccessLpFeatures) return;
     setLpClaimPreset(preset);
@@ -1711,7 +1717,7 @@ function MiniAppPageInner() {
       setTimeout(() => {
         refreshPersonalSigils();
         if (canAccessLpFeatures) {
-          setIsLpLoungeOpen(true);
+          setLpPortalMode('gate');
         }
       }, 2000);
       setFundingRefreshNonce((prev) => prev + 1);
@@ -1834,7 +1840,7 @@ function MiniAppPageInner() {
     lp_become_lp: () => handleOpenLpClaimModal('backstop'),
     lp_open_docs: handleOpenLpDocs,
     lp_try_again: handleRetryLpStatus,
-    lp_enter_lounge: handleEnterLpLounge,
+    lp_enter_lounge: handleOpenLpManager,
     open_claim: handleOpenClaimSite,
     open_chat: handleOpenHolderChat,
     open_heaven_mode: handleOpenHeavenMode,
@@ -2255,36 +2261,6 @@ function MiniAppPageInner() {
     });
   };
 
-  const handleShareBand = useCallback(
-    async (band: 'upside_band' | 'crash_band') => {
-      try {
-        const positions = (lpGateState.lpPositions ?? []).filter(
-          (position) => position.bandType === band
-        );
-        const quantity = positions.length;
-        const bandLabel = band === 'upside_band' ? 'm00n ladder' : 'WMON crash backstop';
-        const headline = quantity
-          ? `I just deployed ${quantity} ${bandLabel} ${quantity === 1 ? 'band' : 'bands'} in the m00n cabal.`
-          : `I'm staging a ${bandLabel} band inside the m00n cabal.`;
-        const primary = positions[0];
-        const rangeDetails =
-          primary && Number.isFinite(primary.tickLower) && Number.isFinite(primary.tickUpper)
-            ? ` Range ${primary.tickLower} ↔ ${primary.tickUpper}.`
-            : '';
-        const text = `${headline}${rangeDetails}\n\n${SHARE_URL}`;
-        await sdk.actions.composeCast({
-          text,
-          embeds: [SHARE_URL]
-        });
-        showToast('success', 'Cast composer opened in Warpcast.');
-      } catch (err) {
-        console.error('Failed to share LP band', err);
-        showToast('error', 'Unable to open the share composer right now.');
-      }
-    },
-    [lpGateState.lpPositions, showToast]
-  );
-
   const SHOW_LP_SOURCE_DIAGNOSTICS = false;
 
   const PANEL_CLASS =
@@ -2316,18 +2292,6 @@ function MiniAppPageInner() {
           )}
         </div>
       </div>
-    </div>
-  );
-
-  const ManifestoHint = ({ align = 'right' }: { align?: 'left' | 'right' }) => (
-    <div className={`flex ${align === 'left' ? 'justify-start' : 'justify-end'}`}>
-      <button
-        type="button"
-        onClick={() => setIsManifestoOpen(true)}
-        className="pixel-font text-[10px] tracking-[0.4em] opacity-30 hover:opacity-90 transition-all"
-      >
-        VIEW MANIFESTO
-      </button>
     </div>
   );
 
@@ -2713,30 +2677,6 @@ function MiniAppPageInner() {
     );
   };
 
-  const renderManifestoModal = () => (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur">
-      <div className="max-w-2xl w-full bg-black/75 border border-[var(--monad-purple)] rounded-[32px] p-6 space-y-6 shadow-[0_0_60px_rgba(133,118,255,0.35)]">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 text-center md:text-left">
-          <p className="pixel-font text-[8px] tracking-[0.35em] text-[var(--moss-green)] w-full text-center uppercase">
-            MANIFESTO
-          </p>
-          <button
-            type="button"
-            onClick={() => setIsManifestoOpen(false)}
-            className="pixel-font text-[9px] border border-white/25 rounded-full px-3 py-1 tracking-[0.4em] hover:bg-white/10 transition-colors self-center md:self-auto"
-          >
-            CLOSE
-          </button>
-        </div>
-        <div className="space-y-2 text-center text-[10px] leading-relaxed text-white/80 max-h-[60vh] overflow-y-auto font-mono tracking-[0.25em]">
-          {MANIFESTO_LINES.map((line, idx) => (
-            <p key={`${line}-${idx}`}>{line}</p>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
   const renderObservationDeckInlineButton = () => (
     <button
       type="button"
@@ -2793,9 +2733,10 @@ function MiniAppPageInner() {
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
         <div className="max-w-2xl w-full space-y-6 text-center scanline bg-black/45 border border-[var(--monad-purple)] rounded-3xl px-8 py-10">
           <div className="flex justify-center">
-            <NeonHaloLogo size={140} onActivate={openManifesto} />
+            <NeonHaloLogo size={140} />
           </div>
           <h1 className="pixel-font text-2xl glow-purple">{copy.title}</h1>
+          <div className="flex justify-center">{renderObservationDeckInlineButton()}</div>
           {renderCopyBody(copy.body)}
           {truncatedWallet && lpStatus === 'HAS_LP' && (
             <p className="text-xs opacity-60">Wallet: {truncatedWallet}</p>
@@ -2831,7 +2772,15 @@ function MiniAppPageInner() {
             </button>
           </div>
           {renderLpDiagnostics()}
-          <ManifestoHint align="left" />
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={handleCloseLpPortal}
+              className="pixel-font text-xs px-4 py-2 border border-white/25 rounded-full hover:bg-white/10 transition-colors"
+            >
+              Back to live state
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -2855,7 +2804,7 @@ function MiniAppPageInner() {
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-4xl w-full space-y-8 scanline bg-black/50 border border-[var(--monad-purple)] rounded-3xl px-10 py-10">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <NeonHaloLogo size={150} onActivate={openManifesto} />
+            <NeonHaloLogo size={150} />
             <div className="text-right">
               <p className="pixel-font text-sm tracking-[0.5em] text-[var(--moss-green)]">
                 LP LOUNGE
@@ -2895,14 +2844,21 @@ function MiniAppPageInner() {
           {renderLpDiagnostics()}
 
           <div className="flex justify-end">
-            <button
-              onClick={() => setIsLpLoungeOpen(false)}
-              className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
-            >
-              Back to gate
-            </button>
+            <div className="flex flex-wrap gap-3 justify-center">
+              <button
+                onClick={() => setLpPortalMode('gate')}
+                className="pixel-font text-xs px-4 py-2 border border-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
+              >
+                Back to gate
+              </button>
+              <button
+                onClick={handleCloseLpPortal}
+                className="pixel-font text-xs px-4 py-2 border border-white/25 rounded hover:bg-white/10 transition-colors"
+              >
+                Exit to live state
+              </button>
+            </div>
           </div>
-          <ManifestoHint />
         </div>
       </div>
     );
@@ -2914,13 +2870,12 @@ function MiniAppPageInner() {
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-2xl w-full text-center space-y-6 scanline bg-black/55 border border-red-600 rounded-3xl px-8 py-12">
           <div className="flex justify-center">
-            <NeonHaloLogo size={140} onActivate={openManifesto} />
+            <NeonHaloLogo size={140} />
           </div>
           <h1 className="pixel-font text-3xl text-red-500">{copy.title}</h1>
           {renderCopyBody(copy.body)}
           {renderPersonaCtas(copy)}
           <div className="w-full">{renderBalanceButtons()}</div>
-          <ManifestoHint align="left" />
         </div>
       </div>
     );
@@ -2968,14 +2923,11 @@ function MiniAppPageInner() {
   const renderClaimedHeldPortal = () => {
     const preset = LP_PRESET_CONTENT.moon_upside;
     const showManager = hasAnyLp;
-    const moonBandCount =
-      lpGateState.lpPositions?.filter((pos) => pos.bandType === 'upside_band').length ?? 0;
-    const hasMoonBand = moonBandCount > 0;
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-4xl w-full space-y-8 scanline bg-black/45 border border-[var(--monad-purple)] rounded-3xl px-8 py-10">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <NeonHaloLogo size={140} onActivate={openManifesto} />
+            <NeonHaloLogo size={140} />
             <div className="text-right">
               <p className="pixel-font text-sm tracking-[0.5em] text-[var(--moss-green)]">
                 THE ONES WHO CAME ANYWAY
@@ -3032,7 +2984,7 @@ function MiniAppPageInner() {
               {canAccessLpFeatures && (
                 <button
                   type="button"
-                  onClick={handleEnterLpLounge}
+                  onClick={handleOpenLpGate}
                   className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
                 >
                   OPEN LP LOUNGE
@@ -3040,23 +2992,13 @@ function MiniAppPageInner() {
               )}
             </div>
           )}
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => handleShareBand('upside_band')}
-              disabled={!hasMoonBand}
-              className="pixel-font px-[5px] py-[5px] border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors disabled:opacity-30"
-            >
-              {hasMoonBand ? 'SHARE MOON BAND' : 'DEPLOY TO UNLOCK SHARE'}
-            </button>
-          </div>
+          <div className="flex justify-end">{renderObservationDeckInlineButton()}</div>
           {leaderboardStatus === 'loaded' && leaderboardData
             ? renderLeaderboardVisualizer(leaderboardData.upsideBand, {
                 title: 'Sky Ladder Leaderboard',
                 subtitle: 'Top 10 single-sided m00n positions across all wallets.'
               })
             : null}
-          <ManifestoHint />
         </div>
       </div>
     );
@@ -3065,9 +3007,6 @@ function MiniAppPageInner() {
   const renderClaimedBoughtMorePortal = () => {
     const preset = LP_PRESET_CONTENT.backstop;
     const showManager = hasAnyLp;
-    const crashBandCount =
-      lpGateState.lpPositions?.filter((pos) => pos.bandType === 'crash_band').length ?? 0;
-    const hasCrashBand = crashBandCount > 0;
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-4xl w-full space-y-8 scanline bg-black/45 border border-white/20 rounded-3xl px-8 py-10">
@@ -3132,29 +3071,21 @@ function MiniAppPageInner() {
               {canAccessLpFeatures && (
                 <button
                   type="button"
-                  onClick={handleEnterLpLounge}
+                  onClick={handleOpenLpGate}
                   className="pixel-font px-6 py-3 border border-white/30 text-white rounded-lg hover:bg-white/10 transition-colors"
                 >
                   OPEN LP LOUNGE
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => handleShareBand('crash_band')}
-                disabled={!hasCrashBand}
-                className="pixel-font px-[5px] py-[5px] border border-white/30 text-white rounded-lg hover:bg-white/10 transition-colors disabled:opacity-30"
-              >
-                {hasCrashBand ? 'SHARE CRASH BAND' : 'DEPLOY TO SHARE'}
-              </button>
             </div>
           )}
+          <div className="flex justify-end">{renderObservationDeckInlineButton()}</div>
           {leaderboardStatus === 'loaded' && leaderboardData
             ? renderLeaderboardVisualizer(leaderboardData.crashBand, {
                 title: 'Crash Backstop Leaderboard',
                 subtitle: 'Top 10 WMON single-sided bands keeping the floor alive.'
               })
             : null}
-          <ManifestoHint align="left" />
         </div>
       </div>
     );
@@ -3245,7 +3176,6 @@ function MiniAppPageInner() {
         return null;
       }
       const isCrash = band === 'crash_band';
-      const hasBand = isCrash ? hasCrashBand : hasSkyBand;
       const isCurrentBand = band === preferredBand;
       return (
         <div className={`${PANEL_CLASS} flex flex-wrap items-center gap-3`}>
@@ -3259,15 +3189,7 @@ function MiniAppPageInner() {
           </button>
           <button
             type="button"
-            onClick={() => handleShareBand(isCrash ? 'crash_band' : 'upside_band')}
-            disabled={!hasBand || !isCurrentBand}
-            className="pixel-font px-5 py-3 border border-white/20 rounded-2xl text-xs tracking-[0.35em] hover:bg-white/10 transition-colors disabled:opacity-40"
-          >
-            {hasBand && isCurrentBand ? 'SHARE DEPLOYED BAND' : 'DEPLOY TO SHARE'}
-          </button>
-          <button
-            type="button"
-            onClick={handleEnterLpLounge}
+            onClick={handleOpenLpGate}
             className="pixel-font px-5 py-3 border border-white/20 rounded-2xl text-xs tracking-[0.35em] hover:bg-white/10 transition-colors"
           >
             OPEN LP LOUNGE
@@ -3431,14 +3353,13 @@ function MiniAppPageInner() {
             {canAccessLpFeatures && hasAnyLp && (
               <button
                 type="button"
-                onClick={handleEnterLpLounge}
+                onClick={handleOpenLpGate}
                 className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
               >
                 OPEN LP LOUNGE
               </button>
             )}
           </div>
-          <ManifestoHint />
         </div>
       </div>
     );
@@ -3453,7 +3374,7 @@ function MiniAppPageInner() {
       <div className="min-h-screen flex flex-col items-center justify-center p-6 relative z-10">
         <div className="max-w-3xl w-full space-y-8 scanline p-10 bg-black/50 rounded-lg border-2 border-[var(--monad-purple)]">
           <div className="flex justify-center mb-2">
-            <NeonHaloLogo size={150} onActivate={openManifesto} />
+            <NeonHaloLogo size={150} />
           </div>
           <h1 className="pixel-font text-2xl text-center glow-purple">{copy.title}</h1>
           {renderCopyBody(copy.body)}
@@ -3558,7 +3479,6 @@ function MiniAppPageInner() {
           </div>
 
           {renderContractCard()}
-          <ManifestoHint />
         </div>
       </div>
     );
@@ -3570,7 +3490,7 @@ function MiniAppPageInner() {
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
         <div className="max-w-2xl w-full text-center space-y-6 scanline shake">
           <div className="flex justify-center">
-            <NeonHaloLogo size={160} onActivate={openManifesto} />
+            <NeonHaloLogo size={160} />
           </div>
 
           <h1 className="pixel-font text-2xl text-red-400">{copy.title}</h1>
@@ -3619,7 +3539,6 @@ function MiniAppPageInner() {
               {swapInFlight === 'moon' ? 'SWAPPING…' : 'BUY MORE m00n'}
             </button>
           </div>
-          <ManifestoHint />
         </div>
       </div>
     );
@@ -3754,7 +3673,7 @@ function MiniAppPageInner() {
       {renderAdminPanel()}
       <BackgroundOrbs />
       <StickerRain />
-      {!isObservationDeckOpen && userData && (
+      {!isObservationDeckOpen && lpPortalMode === 'closed' && userData && (
         <div className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 w-[min(420px,90vw)] px-[5px]">
           <div className="rounded-3xl border border-white/20 bg-black/80 backdrop-blur p-[5px] text-center space-y-2">
             <button
@@ -3787,7 +3706,6 @@ function MiniAppPageInner() {
         </div>
       )}
       {isLpClaimModalOpen && renderLpClaimModal()}
-      {isManifestoOpen && renderManifestoModal()}
     </div>
   );
 
@@ -3939,6 +3857,11 @@ function MiniAppPageInner() {
             <p className="text-xs opacity-70 px-2">{statusState.detail}</p>
             {error && <p className="text-red-400 px-2">{error}</p>}
           </div>
+          <div className="space-y-1 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-[10px] uppercase tracking-[0.35em] text-white/70 max-h-60 overflow-y-auto">
+            {MANIFESTO_LINES.map((line) => (
+              <p key={`manifesto-${line}`}>{line}</p>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -3964,8 +3887,12 @@ function MiniAppPageInner() {
     return renderObservationDeckPortal();
   }
 
-  if (isLpLoungeOpen) {
-    return lpGateState.lpStatus === 'HAS_LP' ? renderLpLoungePanel() : renderLpGatePanel();
+  if (lpPortalMode === 'gate') {
+    return renderLpGatePanel();
+  }
+
+  if (lpPortalMode === 'lounge') {
+    return renderLpLoungePanel();
   }
 
   if (isAdmin && adminPortalView !== 'default') {
@@ -3977,9 +3904,7 @@ function MiniAppPageInner() {
       case 'claimed_bought_more':
         return renderClaimedBoughtMorePortal();
       case 'lp_gate':
-        return isLpLoungeOpen && lpGateState.lpStatus === 'HAS_LP'
-          ? renderLpLoungePanel()
-          : renderLpGatePanel();
+        return renderLpGatePanel();
       case 'eligible_holder':
         return renderEligibleHolderPanel();
       case 'locked_out':
@@ -3999,9 +3924,7 @@ function MiniAppPageInner() {
     case 'emoji_chat':
       return observationDeckEligible ? renderObservationDeckPortal() : renderLockedOutPanel();
     case 'lp_gate':
-      return isLpLoungeOpen && lpGateState.lpStatus === 'HAS_LP'
-        ? renderLpLoungePanel()
-        : renderLpGatePanel();
+      return renderLpGatePanel();
     case 'eligible_holder':
       return airdropData?.eligible ? renderEligibleHolderPanel() : renderLockedOutPanel();
     case 'locked_out':
