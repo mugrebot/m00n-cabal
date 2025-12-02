@@ -826,13 +826,22 @@ function MiniAppPageInner() {
   const openManifesto = useCallback(() => setIsManifestoOpen(true), []);
 
   useEffect(() => {
-    const wantsSkyBand =
-      effectivePersona === 'claimed_bought_more' ||
+    const personaWantsSky =
+      effectivePersona === 'claimed_held' ||
       effectivePersona === 'emoji_chat' ||
-      personaHint === 'claimed_bought_more' ||
+      personaHint === 'claimed_held' ||
       personaHint === 'emoji_chat';
-    const nextPreferred: 'crash_band' | 'upside_band' =
-      wantsSkyBand || (hasSkyBand && !hasCrashBand) ? 'upside_band' : 'crash_band';
+
+    let nextPreferred: 'crash_band' | 'upside_band' = personaWantsSky
+      ? 'upside_band'
+      : 'crash_band';
+
+    if (hasCrashBand && !hasSkyBand) {
+      nextPreferred = 'crash_band';
+    } else if (hasSkyBand && !hasCrashBand) {
+      nextPreferred = 'upside_band';
+    }
+
     setPreferredBand(nextPreferred);
   }, [effectivePersona, personaHint, hasCrashBand, hasSkyBand]);
 
@@ -2926,13 +2935,15 @@ function MiniAppPageInner() {
               >
                 {swapInFlight === 'moon' ? 'SWAPPING…' : 'BUY MORE m00n'}
               </button>
-              <button
-                type="button"
-                onClick={() => setIsLpLoungeOpen(true)}
-                className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
-              >
-                OPEN LP LOUNGE
-              </button>
+              {canAccessLpFeatures && (
+                <button
+                  type="button"
+                  onClick={handleEnterLpLounge}
+                  className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  OPEN LP LOUNGE
+                </button>
+              )}
             </div>
           )}
           <div className="flex justify-end">
@@ -3023,13 +3034,15 @@ function MiniAppPageInner() {
               >
                 {swapInFlight === 'wmon' ? 'SWAPPING…' : 'BUY MORE WMON'}
               </button>
-              <button
-                type="button"
-                onClick={() => setIsLpLoungeOpen(true)}
-                className="pixel-font px-6 py-3 border border-white/30 text-white rounded-lg hover:bg-white/10 transition-colors"
-              >
-                OPEN LP LOUNGE
-              </button>
+              {canAccessLpFeatures && (
+                <button
+                  type="button"
+                  onClick={handleEnterLpLounge}
+                  className="pixel-font px-6 py-3 border border-white/30 text-white rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  OPEN LP LOUNGE
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => handleShareBand('crash_band')}
@@ -3061,7 +3074,6 @@ function MiniAppPageInner() {
           })
         : null;
     const personaCopy = PERSONA_BADGE_COPY[personaBadge];
-    const replyCountDisplay = engagementData?.replyCount ?? personaRecord?.replyCount ?? 0;
     const moonBalanceDisplay = primaryAddressMoonBalanceWei
       ? formatAmountDisplay(formatUnits(primaryAddressMoonBalanceWei, 18))
       : '0';
@@ -3151,13 +3163,15 @@ function MiniAppPageInner() {
           >
             {hasBand && isCurrentBand ? 'SHARE DEPLOYED BAND' : 'DEPLOY TO SHARE'}
           </button>
-          <button
-            type="button"
-            onClick={() => setIsLpLoungeOpen(true)}
-            className="pixel-font px-5 py-3 border border-white/20 rounded-2xl text-xs tracking-[0.35em] hover:bg-white/10 transition-colors"
-          >
-            OPEN LP LOUNGE
-          </button>
+          {hasAnyLp && (
+            <button
+              type="button"
+              onClick={handleEnterLpLounge}
+              className="pixel-font px-5 py-3 border border-white/20 rounded-2xl text-xs tracking-[0.35em] hover:bg-white/10 transition-colors"
+            >
+              OPEN LP LOUNGE
+            </button>
+          )}
         </div>
       );
     };
@@ -3217,7 +3231,7 @@ function MiniAppPageInner() {
             </div>
             <div className={`${PANEL_CLASS} space-y-2`}>
               <p className="text-xs uppercase tracking-[0.4em] text-white/60">Replies logged</p>
-              <p className="text-3xl font-mono">{replyCountDisplay}</p>
+              <p className="text-3xl font-mono">{repliesCount}</p>
               <p className="text-xs opacity-70">Synced from Warpcast channel activity</p>
             </div>
             <div className={`${PANEL_CLASS} space-y-2`}>
@@ -3259,11 +3273,25 @@ function MiniAppPageInner() {
             </div>
           </div>
           {renderSolarSystem()}
-          <div className={`${PANEL_CLASS} space-y-1`}>
-            <p className="text-xs uppercase tracking-[0.4em] text-white/60">{bandCopy.title}</p>
-            <p className="text-sm opacity-75">{bandCopy.subtitle}</p>
-          </div>
-          <div className="space-y-4">{renderBandInventory(preferredBand)}</div>
+          {canAccessLpFeatures ? (
+            <>
+              <div className={`${PANEL_CLASS} space-y-1`}>
+                <p className="text-xs uppercase tracking-[0.4em] text-white/60">{bandCopy.title}</p>
+                <p className="text-sm opacity-75">{bandCopy.subtitle}</p>
+              </div>
+              <div className="space-y-4">{renderBandInventory(preferredBand)}</div>
+            </>
+          ) : (
+            <div className={`${PANEL_CLASS} text-center space-y-2`}>
+              <p className="text-sm text-white/80">
+                View-only telemetry unlocked. Moon Boys & Keepers can deploy crash/sky bands from
+                this module.
+              </p>
+              <p className="text-[11px] uppercase tracking-[0.35em] text-white/60">
+                Earn LP sigils to unlock deployment controls.
+              </p>
+            </div>
+          )}
           {personaLookupStatus === 'loading' && (
             <p className="text-center text-xs text-yellow-300">Syncing cabal dossier…</p>
           )}
@@ -3311,30 +3339,21 @@ function MiniAppPageInner() {
             >
               LAUNCH m00nLANDER
             </button>
-            {canAccessLpFeatures ? (
-              preferredBand === 'upside_band' ? (
-                <button
-                  type="button"
-                  onClick={() => handleOpenLpClaimModal('moon_upside')}
-                  className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
-                >
-                  DEPLOY SKY BAND
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => handleOpenLpClaimModal('backstop')}
-                  className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
-                >
-                  DEPLOY CRASH BAND
-                </button>
-              )
-            ) : (
-              <p className="text-xs uppercase tracking-[0.35em] text-white/60 text-center">
-                View-only deck access unlocked — LP deployment reserved for Moon Boys & Keepers.
-              </p>
+            {canAccessLpFeatures && hasAnyLp && (
+              <button
+                type="button"
+                onClick={handleEnterLpLounge}
+                className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
+              >
+                OPEN LP LOUNGE
+              </button>
             )}
           </div>
+          {!canAccessLpFeatures && (
+            <p className="text-xs uppercase tracking-[0.35em] text-white/60 text-center">
+              View-only deck access unlocked — LP deployment reserved for Moon Boys & Keepers.
+            </p>
+          )}
           <ManifestoHint />
         </div>
       </div>
