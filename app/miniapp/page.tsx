@@ -3339,7 +3339,7 @@ function MiniAppPageInner() {
           {leaderboardStatus === 'loaded' && leaderboardData
             ? renderLeaderboardVisualizer(leaderboardData.upsideBand, {
                 title: 'Sky Ladder Leaderboard',
-                subtitle: 'Top 10 single-sided m00n positions across all wallets.'
+                subtitle: 'Top single-sided m00n positions across all wallets.'
               })
             : null}
         </div>
@@ -3428,7 +3428,7 @@ function MiniAppPageInner() {
           {leaderboardStatus === 'loaded' && leaderboardData
             ? renderLeaderboardVisualizer(leaderboardData.crashBand, {
                 title: 'Crash Backstop Leaderboard',
-                subtitle: 'Top 10 WMON single-sided bands keeping the floor alive.'
+                subtitle: 'Top WMON single-sided bands keeping the floor alive.'
               })
             : null}
         </div>
