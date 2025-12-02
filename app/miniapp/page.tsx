@@ -9,7 +9,6 @@ import {
   type ReactNode
 } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
 import sdk from '@farcaster/miniapp-sdk';
 import { encodeFunctionData, erc20Abi, formatUnits, parseUnits } from 'viem';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -482,8 +481,10 @@ function MiniAppPageInner() {
   >('idle');
   const [solarCanvasSize, setSolarCanvasSize] = useState(420);
   const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
-  const [isObservationManagerVisible, setIsObservationManagerVisible] = useState(false);
-  const [isObservationDeckOpen, setIsObservationDeckOpen] = useState(false);
+  const [isSigilManagerVisible, setIsSigilManagerVisible] = useState(true);
+  const [activeBandView, setActiveBandView] = useState<'crash' | 'sky'>(() =>
+    personaHint === 'claimed_bought_more' ? 'sky' : 'crash'
+  );
   const [solarSystemRefreshNonce, setSolarSystemRefreshNonce] = useState(0);
   const viewerAddressLabels = useMemo(() => {
     const pool = new Set<string>();
@@ -542,6 +543,26 @@ function MiniAppPageInner() {
     [lpGateState.lpPositions]
   );
   const hasLpNft = lpGateState.lpStatus === 'HAS_LP' || hasAnyLp;
+  const crashBandCount = useMemo(
+    () =>
+      (lpGateState.lpPositions ?? []).filter((position) => position.bandType === 'crash_band')
+        .length,
+    [lpGateState.lpPositions]
+  );
+  const skyBandCount = useMemo(
+    () =>
+      (lpGateState.lpPositions ?? []).filter((position) => position.bandType === 'upside_band')
+        .length,
+    [lpGateState.lpPositions]
+  );
+  const hasCrashBand = crashBandCount > 0;
+  const hasSkyBand = skyBandCount > 0;
+
+  useEffect(() => {
+    if (personaHint === 'claimed_bought_more') {
+      setActiveBandView('sky');
+    }
+  }, [personaHint]);
 
   const showToast = useCallback((kind: 'info' | 'success' | 'error', message: string) => {
     setToast({ kind, message });
@@ -749,23 +770,6 @@ function MiniAppPageInner() {
     return primaryAddressMoonBalanceWei >= MOON_EMOJI_THRESHOLD_WEI;
   }, [primaryAddressMoonBalanceWei, primaryBalanceStatus]);
 
-  const handleObservationDeckRequest = useCallback(() => {
-    if (primaryBalanceStatus !== 'loaded') {
-      showToast('info', 'Syncing wallet balance — try again in a moment.');
-      return;
-    }
-    if (!observationDeckEligible) {
-      const suffix = balanceProbeAddress ? ` on ${truncateAddress(balanceProbeAddress)}` : '';
-      showToast('error', `Observation deck needs ≥ 1M m00n${suffix}.`);
-      return;
-    }
-    setIsObservationDeckOpen(true);
-  }, [observationDeckEligible, primaryBalanceStatus, showToast, balanceProbeAddress]);
-
-  const handleCloseObservationDeck = useCallback(() => {
-    setIsObservationDeckOpen(false);
-  }, []);
-
   const personaFromLpPositions = useMemo<UserPersona | null>(() => {
     if (lpGateState.lpStatus !== 'HAS_LP') {
       return null;
@@ -826,22 +830,16 @@ function MiniAppPageInner() {
   const openManifesto = useCallback(() => setIsManifestoOpen(true), []);
 
   useEffect(() => {
-    if ((!isAdmin || isObservationDeckOpen) && adminPortalView !== 'default') {
+    if (!isAdmin && adminPortalView !== 'default') {
       setAdminPortalView('default');
     }
-  }, [isAdmin, adminPortalView, isObservationDeckOpen]);
+  }, [isAdmin, adminPortalView]);
 
   useEffect(() => {
-    if (!hasAnyLp && isObservationManagerVisible) {
-      setIsObservationManagerVisible(false);
+    if (!hasAnyLp && isSigilManagerVisible) {
+      setIsSigilManagerVisible(false);
     }
-  }, [hasAnyLp, isObservationManagerVisible]);
-
-  useEffect(() => {
-    if (!observationDeckEligible) {
-      setIsObservationDeckOpen(false);
-    }
-  }, [observationDeckEligible]);
+  }, [hasAnyLp, isSigilManagerVisible]);
 
   const fallingStickers = useMemo(
     () =>
@@ -3039,8 +3037,7 @@ function MiniAppPageInner() {
     );
   };
 
-  const renderObservationDeckPortal = (options?: { allowClose?: boolean }) => {
-    const allowClose = options?.allowClose ?? false;
+  const renderObservationDeckPortal = () => {
     const updatedStamp =
       solarSystemStatus === 'loaded' && solarSystemData?.updatedAt
         ? new Date(solarSystemData.updatedAt).toLocaleTimeString([], {
@@ -3048,6 +3045,28 @@ function MiniAppPageInner() {
             minute: '2-digit'
           })
         : null;
+    const personaCopy = PERSONA_BADGE_COPY[personaBadge];
+    const replyCountDisplay = engagementData?.replyCount ?? personaRecord?.replyCount ?? 0;
+    const moonBalanceDisplay = primaryAddressMoonBalanceWei
+      ? formatAmountDisplay(formatUnits(primaryAddressMoonBalanceWei, 18))
+      : '0';
+    const walletLabel = balanceProbeAddress ? truncateAddress(balanceProbeAddress) : null;
+    const deckStatusLabel = observationDeckEligible
+      ? 'Deck access unlocked'
+      : 'Hold ≥ 1M m00n on this wallet to unlock VIP telemetry';
+    const deckStatusTone = observationDeckEligible ? 'text-[var(--moss-green)]' : 'text-yellow-300';
+    const activeBand = activeBandView === 'crash' ? 'crash_band' : 'upside_band';
+    const bandCopy =
+      activeBand === 'crash_band'
+        ? {
+            title: 'Crash Band Console',
+            subtitle: 'Deploy or monitor WMON crash backstops.'
+          }
+        : {
+            title: 'Sky Band Console',
+            subtitle: 'Stagger m00n ladders up to the heavens.'
+          };
+
     const renderSolarSystem = () => {
       if (solarSystemStatus === 'loaded' && activeSolarPositions.length) {
         return (
@@ -3082,33 +3101,117 @@ function MiniAppPageInner() {
       );
     };
 
+    const renderBandActions = (band: 'crash_band' | 'upside_band') => {
+      const isCrash = band === 'crash_band';
+      const hasBand = isCrash ? hasCrashBand : hasSkyBand;
+      return (
+        <div className={`${PANEL_CLASS} flex flex-wrap items-center gap-3`}>
+          <button
+            type="button"
+            onClick={() => handleOpenLpClaimModal(isCrash ? 'backstop' : 'moon_upside')}
+            className="pixel-font px-5 py-3 border border-white/20 rounded-2xl text-xs tracking-[0.35em] hover:bg-white/10 transition-colors"
+          >
+            {isCrash ? 'DEPLOY CRASH BAND' : 'DEPLOY SKY BAND'}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleShareBand(isCrash ? 'crash_band' : 'upside_band')}
+            disabled={!hasBand}
+            className="pixel-font px-5 py-3 border border-white/20 rounded-2xl text-xs tracking-[0.35em] hover:bg-white/10 transition-colors disabled:opacity-40"
+          >
+            {hasBand ? 'SHARE DEPLOYED BAND' : 'DEPLOY TO SHARE'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsLpLoungeOpen(true)}
+            className="pixel-font px-5 py-3 border border-white/20 rounded-2xl text-xs tracking-[0.35em] hover:bg-white/10 transition-colors"
+          >
+            OPEN LP LOUNGE
+          </button>
+        </div>
+      );
+    };
+
+    const renderBandInventory = (band: 'crash_band' | 'upside_band') => {
+      const isCrash = band === 'crash_band';
+      return (
+        <>
+          {renderSigilPreview({
+            title: isCrash ? 'Crash Band Sigils' : 'Sky Band Sigils',
+            subtitle: isCrash
+              ? 'Single-sided WMON bands staged under spot.'
+              : 'Single-sided m00n ladders staged above spot.',
+            filter: band,
+            limit: 3,
+            emptyLabel: isCrash
+              ? 'No crash bands detected — deploy one to anchor the downside.'
+              : 'No sky bands detected — deploy one to climb higher.'
+          })}
+          {renderPositionManager({
+            title: isCrash ? 'Crash Band Manager' : 'Sky Band Manager',
+            subtitle: isCrash
+              ? 'Scale WMON into m00n roughly −10% from spot.'
+              : 'Scale m00n into WMON from 1.2× to 5× spot.',
+            filter: band
+          })}
+          {renderBandActions(band)}
+          {leaderboardStatus === 'loaded' && leaderboardData
+            ? renderLeaderboardVisualizer(
+                isCrash ? leaderboardData.crashBand : leaderboardData.upsideBand,
+                {
+                  title: isCrash ? 'Crash Band Leaderboard' : 'Sky Band Leaderboard',
+                  subtitle: isCrash
+                    ? 'Top 10 WMON crash backstops'
+                    : 'Top 10 m00n ladders pushing for upside'
+                }
+              )
+            : null}
+        </>
+      );
+    };
+
     return renderShell(
-      <div className="min-h-screen w-full flex flex-col items-center justify-start gap-6 p-6 pb-24 relative z-10">
-        <div className="max-w-4xl w-full space-y-8 scanline bg-black/50 border border-white/15 rounded-3xl px-8 py-10">
+      <div className="min-h-screen w-full flex flex-col items-center justify-start gap-6 p-4 pb-24 relative z-10">
+        <div className="max-w-5xl w-full space-y-6 scanline bg-black/40 border border-white/15 rounded-3xl px-6 py-8">
           <div className="text-center space-y-2">
             <p className="pixel-font text-2xl text-white">Observation Deck</p>
             <p className="text-sm opacity-75">
               The deck is live — broadcasting the m00n LP solar system telemetry in real time.
             </p>
           </div>
-          {allowClose && (
-            <div className="flex justify-center">
-              <button
-                type="button"
-                onClick={handleCloseObservationDeck}
-                className="pixel-font px-6 py-2 border border-white/25 text-white rounded-lg hover:bg-white/10 transition-colors text-xs tracking-[0.35em]"
-              >
-                EXIT OBSERVATION DECK
-              </button>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className={`${PANEL_CLASS} space-y-2`}>
+              <p className="text-xs uppercase tracking-[0.4em] text-white/60">Persona</p>
+              <p className="text-lg font-semibold">{personaCopy.label}</p>
+              <p className="text-sm opacity-80">{personaCopy.description}</p>
             </div>
-          )}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-[10px] uppercase tracking-[0.35em] text-white/70">
+            <div className={`${PANEL_CLASS} space-y-2`}>
+              <p className="text-xs uppercase tracking-[0.4em] text-white/60">Replies logged</p>
+              <p className="text-3xl font-mono">{replyCountDisplay}</p>
+              <p className="text-xs opacity-70">Synced from Warpcast channel activity</p>
+            </div>
+            <div className={`${PANEL_CLASS} space-y-2`}>
+              <p className="text-xs uppercase tracking-[0.4em] text-white/60">Connected wallet</p>
+              <p className="text-lg font-semibold">{walletLabel ?? 'Wallet pending'}</p>
+              <p className="text-sm">
+                <span className="font-mono text-xl">{moonBalanceDisplay}</span>
+                <span className="text-xs uppercase tracking-[0.35em] text-white/70 ml-2">m00n</span>
+              </p>
+              <p className={`text-xs ${deckStatusTone}`}>{deckStatusLabel}</p>
+            </div>
+          </div>
+          <div
+            className={`${PANEL_CLASS} flex flex-col gap-3 text-[11px] uppercase tracking-[0.35em] text-white/70`}
+          >
             <span>
               {updatedStamp
                 ? `Snapshot synced at ${updatedStamp}`
                 : 'Snapshot pending — refresh to fetch telemetry.'}
             </span>
-            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+            {totalSolarNotionalUsd !== null && (
+              <span>Total LP notional • {formatUsd(totalSolarNotionalUsd)}</span>
+            )}
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={handleRefreshTelemetry}
@@ -3125,36 +3228,77 @@ function MiniAppPageInner() {
               </button>
             </div>
           </div>
-          <div className={`${PANEL_CLASS} text-center space-y-2`}>
-            <p className="text-sm opacity-80">
-              These are the largest single-sided LP sigils in the Monad pool — the Clanker core plus
-              seven orbiting guardians.
-            </p>
-            {updatedStamp && (
-              <p className="text-[10px] uppercase tracking-[0.35em] text-[var(--moss-green)]">
-                Updated {updatedStamp}
-              </p>
-            )}
-            {totalSolarNotionalUsd !== null && (
-              <p className="text-xs font-semibold text-white/80">
-                Total LP Notional {formatUsd(totalSolarNotionalUsd)}
-              </p>
-            )}
-          </div>
           {renderSolarSystem()}
+          <div className={`${PANEL_CLASS} space-y-3`}>
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.4em] text-white/60">{bandCopy.title}</p>
+                <p className="text-sm opacity-75">{bandCopy.subtitle}</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveBandView('crash')}
+                  className={`px-4 py-2 rounded-full text-xs tracking-[0.35em] border ${
+                    activeBand === 'crash_band'
+                      ? 'bg-white text-black border-white'
+                      : 'border-white/30 text-white/70 hover:bg-white/10'
+                  }`}
+                >
+                  Crash Band
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveBandView('sky')}
+                  className={`px-4 py-2 rounded-full text-xs tracking-[0.35em] border ${
+                    activeBand === 'upside_band'
+                      ? 'bg-white text-black border-white'
+                      : 'border-white/30 text-white/70 hover:bg-white/10'
+                  }`}
+                >
+                  Sky Band
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-4">
+            {activeBand === 'crash_band'
+              ? renderBandInventory('crash_band')
+              : renderBandInventory('upside_band')}
+          </div>
           {hasAnyLp &&
             renderSigilPreview({
               title: 'Your LP Sigils',
-              subtitle: 'Hold tight — heaven’s gate recognizes your sigils.',
-              limit: 2
+              subtitle: 'Active sigils granting access to the deck.',
+              limit: 3
             })}
-          {personaLookupStatus === 'loading' && (
-            <p className="text-center text-xs text-yellow-300">Syncing cabal dossier…</p>
+          {hasAnyLp && (
+            <>
+              <div
+                className={`${PANEL_CLASS} flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between`}
+              >
+                <div>
+                  <p className="text-xs uppercase tracking-[0.35em] text-white/60">Sigil manager</p>
+                  <p className="text-sm opacity-75">
+                    Toggle the live positions powering your access.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSigilManagerVisible((prev) => !prev)}
+                  className="pixel-font px-5 py-2 border border-white/25 rounded-full text-xs tracking-[0.35em] hover:bg-white/10 transition-colors"
+                >
+                  {isSigilManagerVisible ? 'HIDE SIGILS' : 'SHOW SIGILS'}
+                </button>
+              </div>
+              {isSigilManagerVisible &&
+                renderPositionManager({
+                  title: 'Sigil Manager',
+                  subtitle: 'Manage every LP sigil tied to this wallet.'
+                })}
+            </>
           )}
-          {personaLookupStatus === 'error' && (
-            <p className="text-center text-xs text-red-300">CSV dossier temporarily unavailable.</p>
-          )}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <div className="flex flex-wrap gap-3 justify-center">
             <button
               type="button"
               onClick={handleOpenMoonLander}
@@ -3162,41 +3306,21 @@ function MiniAppPageInner() {
             >
               LAUNCH m00nLANDER
             </button>
-            {hasAnyLp ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setIsObservationManagerVisible((prev) => !prev)}
-                  className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
-                >
-                  {isObservationManagerVisible ? 'HIDE SIGIL MANAGER' : 'SHOW SIGIL MANAGER'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsLpLoungeOpen(true)}
-                  className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
-                >
-                  ENTER LP LOUNGE
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => handleOpenLpClaimModal('backstop')}
-                className="pixel-font px-6 py-3 border border-[var(--monad-purple)] text-[var(--monad-purple)] rounded-lg hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
-              >
-                DEPLOY CRASH BACKSTOP
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => handleOpenLpClaimModal('moon_upside')}
+              className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
+            >
+              DEPLOY SKY BAND
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenLpClaimModal('backstop')}
+              className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
+            >
+              DEPLOY CRASH BAND
+            </button>
           </div>
-          {hasAnyLp && isObservationManagerVisible && (
-            <div className="pt-2">
-              {renderPositionManager({
-                title: 'Sigil Manager',
-                subtitle: 'Manage the sigils currently granting access.'
-              })}
-            </div>
-          )}
           <ManifestoHint />
         </div>
       </div>
@@ -3437,7 +3561,7 @@ function MiniAppPageInner() {
   );
 
   const renderAdminPanel = () => {
-    if (!isAdmin || isObservationDeckOpen) return null;
+    if (!isAdmin) return null;
 
     const portals: { id: AdminPortalView; label: string }[] = [
       { id: 'default', label: 'Live state' },
@@ -3513,25 +3637,6 @@ function MiniAppPageInner() {
       {renderAdminPanel()}
       <BackgroundOrbs />
       <StickerRain />
-      {!isObservationDeckOpen && (
-        <div className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 w-[min(420px,90vw)] px-[5px]">
-          <div className="rounded-3xl border border-white/20 bg-black/80 backdrop-blur p-[5px] text-center space-y-2">
-            <button
-              type="button"
-              onClick={handleObservationDeckRequest}
-              className="w-full pixel-font text-[11px] tracking-[0.35em] rounded-2xl border border-white/30 text-white bg-black/60 hover:bg-white/10 transition-colors flex flex-col items-center justify-center gap-1 px-[5px] py-[5px]"
-            >
-              <span className="text-xs uppercase">Observation Deck</span>
-              <span className="text-[10px] opacity-75">
-                {observationDeckEligible
-                  ? 'Tap to view live LP telemetry'
-                  : 'Hold ≥ 1M m00n on connected wallet'}
-              </span>
-            </button>
-            {!observationDeckEligible && renderBalanceButtons({ layout: 'row' })}
-          </div>
-        </div>
-      )}
       <div className="pb-36 pt-4">{content}</div>
       {toast && (
         <div
@@ -3585,206 +3690,6 @@ function MiniAppPageInner() {
             </button>
           )}
         </div>
-      </div>
-    );
-  };
-
-  const renderStatusSummaryCard = () => {
-    const badgeCopy = PERSONA_BADGE_COPY[personaBadge];
-    const lpStatusLabel =
-      lpGateState.lpStatus === 'HAS_LP'
-        ? `${lpGateState.lpPositions?.length ?? 0} active sigil${
-            (lpGateState.lpPositions?.length ?? 0) === 1 ? '' : 's'
-          }`
-        : 'No verified LP yet';
-
-    return (
-      <section className={`${PANEL_CLASS} space-y-4`}>
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="text-left space-y-1">
-            <p className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">Persona</p>
-            <p className="text-2xl font-semibold text-white">{badgeCopy.label}</p>
-            <p className="text-sm text-white/80 max-w-xl">{badgeCopy.description}</p>
-          </div>
-          <button
-            type="button"
-            onClick={handleSignIn}
-            disabled={!statusState.actionable}
-            className="self-start md:self-auto pixel-font px-5 py-2 rounded-full border border-white/20 text-xs tracking-[0.3em] hover:bg-white/10 transition-colors disabled:opacity-40"
-          >
-            {statusState.label}
-          </button>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <p className="text-xs uppercase tracking-[0.4em] text-white/60">LP status</p>
-            <p className="text-sm text-white">{lpStatusLabel}</p>
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-[0.4em] text-white/60">Deck access</p>
-            <p className="text-sm text-white">
-              {observationDeckEligible ? 'Unlocked' : 'Need ≥ 1M m00n on connected wallet'}
-            </p>
-          </div>
-        </div>
-      </section>
-    );
-  };
-
-  const renderDeckCard = () => {
-    const sigilCount = activeSolarPositions.length;
-    const totalNotionalDisplay =
-      totalSolarNotionalUsd !== null ? formatUsd(totalSolarNotionalUsd) : '—';
-    return (
-      <section className={`${PANEL_CLASS} space-y-3`}>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.4em] text-white/60">Observation Deck</p>
-            <p className="text-lg font-semibold text-white">Solar telemetry</p>
-          </div>
-          <span className="text-sm text-white/70">
-            {sigilCount} sigil{sigilCount === 1 ? '' : 's'}
-          </span>
-        </div>
-        <p className="text-sm text-white/70">
-          Total LP notional:{' '}
-          <span className="text-white font-semibold">{totalNotionalDisplay}</span>
-        </p>
-        <button
-          type="button"
-          onClick={handleObservationDeckRequest}
-          className="pixel-font w-full px-4 py-2 rounded-lg border border-white/25 text-xs tracking-[0.3em] hover:bg-white/10 transition-colors"
-        >
-          OPEN OBSERVATION DECK
-        </button>
-      </section>
-    );
-  };
-
-  const renderLpCard = () => {
-    const hasLp = lpGateState.lpStatus === 'HAS_LP';
-    const sigilCount = lpGateState.lpPositions?.length ?? 0;
-    return (
-      <section className={`${PANEL_CLASS} space-y-3`}>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.4em] text-white/60">LP Lounge</p>
-            <p className="text-lg font-semibold text-white">
-              {hasLp ? `${sigilCount} active sigil${sigilCount === 1 ? '' : 's'}` : 'No LP yet'}
-            </p>
-          </div>
-          <Link
-            href="/lp-advanced"
-            className="pixel-font text-[10px] px-3 py-1 rounded-full border border-white/20 hover:bg-white/10 transition-colors"
-          >
-            LP LAB
-          </Link>
-        </div>
-        <p className="text-sm text-white/70">
-          Deploy single-sided bands, rescan sigils, and monitor the pool from your wallet.
-        </p>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => setIsLpLoungeOpen(true)}
-            className="pixel-font px-4 py-2 rounded-lg border border-white/25 text-xs tracking-[0.3em] hover:bg-white/10 transition-colors"
-          >
-            {hasLp ? 'OPEN LP LOUNGE' : 'SCAN FOR LP'}
-          </button>
-          <button
-            type="button"
-            onClick={() => handleOpenLpClaimModal('backstop')}
-            className="pixel-font px-4 py-2 rounded-lg border border-white/25 text-xs tracking-[0.3em] hover:bg-white/10 transition-colors"
-          >
-            DEPLOY CRASH BAND
-          </button>
-        </div>
-      </section>
-    );
-  };
-
-  const renderClaimCard = () => {
-    if (!airdropData?.eligible) return null;
-    return (
-      <section className={`${PANEL_CLASS} space-y-3`}>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.4em] text-[var(--moss-green)]">Claim</p>
-            <p className="text-lg font-semibold text-white">
-              {formatAmount(airdropData.amount!)} m00n ready
-            </p>
-          </div>
-          <span className="text-xs text-white/60">
-            {claimCountdown.totalSeconds > 0 ? 'Unlocks soon' : 'Window active'}
-          </span>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
-          {countdownUnits.map((unit) => (
-            <div key={unit.label} className="rounded-lg border border-white/10 py-2">
-              <p className="text-xl font-mono">{formatCountdownValue(unit.value)}</p>
-              <p className="tracking-[0.3em] text-white/60">{unit.label}</p>
-            </div>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={handleOpenClaimSite}
-          className="pixel-font w-full px-4 py-2 rounded-lg bg-[var(--monad-purple)] text-white text-xs tracking-[0.3em] hover:bg-opacity-90 transition-colors"
-        >
-          OPEN CLAIM SITE
-        </button>
-      </section>
-    );
-  };
-
-  const renderLeaderboardPreview = () => {
-    if (leaderboardStatus !== 'loaded' || !leaderboardData?.overall?.length) {
-      return null;
-    }
-    const topEntries = leaderboardData.overall.slice(0, 3);
-    return (
-      <section className={`${PANEL_CLASS} space-y-3`}>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.4em] text-white/60">Leaderboard</p>
-            <p className="text-lg font-semibold text-white">Top LP sigils</p>
-          </div>
-          <span className="text-xs text-white/60">{leaderboardData.overall.length} tracked</span>
-        </div>
-        <div className="space-y-2">
-          {topEntries.map((entry, index) => (
-            <div
-              key={`${entry.tokenId}-${entry.owner}`}
-              className="flex items-center justify-between rounded-xl border border-white/10 px-3 py-2 text-sm"
-            >
-              <div>
-                <p className="font-semibold">
-                  #{index + 1}{' '}
-                  <span className="text-white/70">
-                    {entry.label ?? truncateAddress(entry.owner)}
-                  </span>
-                </p>
-                <p className="text-white/60">{entry.bandType?.replace('_', ' ')}</p>
-              </div>
-              <p className="font-mono">{formatUsd(entry.valueUsd)}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-    );
-  };
-
-  const renderDashboard = () => {
-    return renderShell(
-      <div className="mx-auto w-full max-w-5xl space-y-6 px-4 pt-6">
-        {renderStatusSummaryCard()}
-        <div className="grid gap-4 md:grid-cols-2">
-          {renderDeckCard()}
-          {renderLpCard()}
-        </div>
-        {renderClaimCard()}
-        {renderPersonaStatsCard()}
-        {renderLeaderboardPreview()}
       </div>
     );
   };
@@ -3920,11 +3825,7 @@ function MiniAppPageInner() {
     );
   }
 
-  if (isObservationDeckOpen) {
-    return renderObservationDeckPortal({ allowClose: true });
-  }
-
-  if (isAdmin && adminPortalView !== 'default' && !isObservationDeckOpen) {
+  if (isAdmin && adminPortalView !== 'default') {
     switch (adminPortalView) {
       case 'claimed_sold':
         return renderClaimedSoldPortal();
@@ -3932,8 +3833,6 @@ function MiniAppPageInner() {
         return renderClaimedHeldPortal();
       case 'claimed_bought_more':
         return renderClaimedBoughtMorePortal();
-      case 'emoji_chat':
-        return renderObservationDeckPortal();
       case 'lp_gate':
         return isLpLoungeOpen && lpGateState.lpStatus === 'HAS_LP'
           ? renderLpLoungePanel()
@@ -3947,7 +3846,15 @@ function MiniAppPageInner() {
     }
   }
 
-  return renderDashboard();
+  if (effectivePersona === 'claimed_sold') {
+    return renderClaimedSoldPortal();
+  }
+
+  if (effectivePersona === 'eligible_holder' && airdropData?.eligible) {
+    return renderEligibleHolderPanel();
+  }
+
+  return renderObservationDeckPortal();
 }
 
 export default function MiniAppPage() {
