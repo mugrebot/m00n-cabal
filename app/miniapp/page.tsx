@@ -2672,16 +2672,19 @@ function MiniAppPageInner() {
     );
   };
 
-  const renderObservationDeckInlineButton = () => (
-    <button
-      type="button"
-      onClick={handleObservationDeckRequest}
-      disabled={!observationDeckEligible}
-      className="pixel-font px-4 py-2 border border-white/30 rounded-full text-xs tracking-[0.35em] text-white hover:bg-white/10 transition-colors disabled:opacity-40"
-    >
-      {observationDeckEligible ? 'OPEN OBSERVATION DECK' : 'Hold ≥ 1M m00n to unlock deck'}
-    </button>
-  );
+  const renderObservationDeckInlineButton = () => {
+    if (isObservationDeckOpen) return null;
+    return (
+      <button
+        type="button"
+        onClick={handleObservationDeckRequest}
+        disabled={!observationDeckEligible}
+        className="cta-ghost text-[10px] tracking-[0.3em] px-6 py-3 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {observationDeckEligible ? 'OPEN OBSERVATION DECK' : 'Hold ≥ 1M m00n to unlock deck'}
+      </button>
+    );
+  };
 
   const renderLpDiagnostics = () => {
     if (!SHOW_LP_SOURCE_DIAGNOSTICS || !lpGateState.walletAddress) return null;
@@ -3669,20 +3672,22 @@ function MiniAppPageInner() {
       <BackgroundOrbs />
       <StickerRain />
       {!isObservationDeckOpen && lpPortalMode === 'closed' && userData && (
-        <div className="fixed bottom-5 left-1/2 z-40 w-[min(440px,92vw)] -translate-x-1/2 px-4">
-          <div className="lunar-card rounded-3xl border border-white/15 bg-black/70 px-6 py-4 text-center shadow-2xl">
+        <div className="fixed right-3 top-24 z-40 w-[min(320px,85vw)] px-3 sm:right-5 sm:top-1/2 sm:-translate-y-1/2 sm:px-0">
+          <div className="lunar-card rounded-3xl border border-white/15 bg-black/70 px-5 py-4 shadow-2xl text-left space-y-2">
+            <p className="text-xs uppercase tracking-[0.35em] text-white/70">Observation Deck</p>
+            <p className="text-[11px] text-white/65 leading-relaxed">
+              {observationDeckEligible
+                ? 'View LP telemetry, personas, and sigils.'
+                : 'Hold ≥ 1M m00n on your connected wallet to unlock live telemetry.'}
+            </p>
             <button
               type="button"
               onClick={handleObservationDeckRequest}
-              className="cta-primary w-full flex-col gap-1 px-6 py-3 text-[11px] tracking-[0.35em] disabled:cursor-not-allowed disabled:opacity-40"
+              className="cta-primary w-full justify-between px-4 py-3 text-[10px] tracking-[0.3em] disabled:cursor-not-allowed disabled:opacity-40"
               disabled={!observationDeckEligible}
             >
-              <span className="text-xs uppercase">Observation Deck</span>
-              <span className="text-[10px] leading-tight tracking-[0.1em] opacity-70">
-                {observationDeckEligible
-                  ? 'Tap to view live LP telemetry'
-                  : 'Hold ≥ 1M m00n on connected wallet'}
-              </span>
+              <span>{observationDeckEligible ? 'Enter deck' : 'Locked'}</span>
+              <span className="text-[9px] tracking-[0.4em] opacity-80">→</span>
             </button>
           </div>
         </div>
