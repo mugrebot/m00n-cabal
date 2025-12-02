@@ -267,6 +267,12 @@ interface LpPosition {
   token1?: TokenBreakdown;
   priceLowerInToken1?: string;
   priceUpperInToken1?: string;
+  fees?: {
+    token0Wei: string;
+    token1Wei: string;
+    token0Formatted: string;
+    token1Formatted: string;
+  };
 }
 
 interface LeaderboardEntry {
@@ -2402,6 +2408,23 @@ function MiniAppPageInner() {
                   <p>{formatTokenDisplay(position.token1)}</p>
                 </div>
               </div>
+              {position.fees && (
+                <div className="rounded-2xl border border-white/5 bg-black/30 px-4 py-3 text-xs font-mono text-white/80 space-y-1">
+                  <p className="text-[10px] uppercase tracking-[0.35em] text-white/60">
+                    Unclaimed fees
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    <span>
+                      {position.fees.token0Formatted}{' '}
+                      {position.token0?.symbol ?? position.token0?.label ?? 'token0'}
+                    </span>
+                    <span>
+                      {position.fees.token1Formatted}{' '}
+                      {position.token1?.symbol ?? position.token1?.label ?? 'token1'}
+                    </span>
+                  </div>
+                </div>
+              )}
               {renderMoonMeter(position)}
               {(() => {
                 const fdvRange = formatMarketCapRange(
@@ -2504,6 +2527,23 @@ function MiniAppPageInner() {
                   <p>{formatTokenDisplay(position.token1)}</p>
                 </div>
               </div>
+              {position.fees && (
+                <div className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-[11px] font-mono text-white/80 space-y-1">
+                  <p className="text-[9px] uppercase tracking-[0.35em] text-white/60">
+                    Unclaimed fees
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    <span>
+                      {position.fees.token0Formatted}{' '}
+                      {position.token0?.symbol ?? position.token0?.label ?? 'token0'}
+                    </span>
+                    <span>
+                      {position.fees.token1Formatted}{' '}
+                      {position.token1?.symbol ?? position.token1?.label ?? 'token1'}
+                    </span>
+                  </div>
+                </div>
+              )}
               {(fdvRange !== '–' || circRange !== '–') && (
                 <div className="text-[10px] uppercase tracking-[0.35em] text-white/70 space-y-1">
                   {fdvRange !== '–' && (

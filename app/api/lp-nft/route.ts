@@ -3,6 +3,7 @@ import { formatUnits, type Address } from 'viem';
 import {
   getUserPositionsSummary,
   enrichManyPositionsWithAmounts,
+  getPositionFeesPreview,
   type PositionWithAmounts
 } from '../../lib/uniswapV4Positions';
 import { getWmonUsdPriceFromSubgraph } from '@/app/lib/pricing/monadPrices';
@@ -39,6 +40,12 @@ interface LpPositionApi {
   token1: TokenBreakdown;
   priceLowerInToken1: string;
   priceUpperInToken1: string;
+  fees?: {
+    token0Wei: string;
+    token1Wei: string;
+    token0Formatted: string;
+    token1Formatted: string;
+  };
 }
 
 const TOKEN_METADATA: Record<
@@ -173,6 +180,28 @@ export async function GET(request: NextRequest) {
 
     const enriched = await enrichManyPositionsWithAmounts(basePositions);
     const responsePositions = enriched.map(serializePosition);
+    const positionsWithFees: LpPositionApi[] = [];
+
+    for (const position of responsePositions) {
+      let fees: LpPositionApi['fees'] | undefined;
+      try {
+        const preview = await getPositionFeesPreview(BigInt(position.tokenId), owner);
+        if (preview) {
+          fees = {
+            token0Wei: preview.amount0.toString(),
+            token1Wei: preview.amount1.toString(),
+            token0Formatted: formatTokenAmount(preview.amount0, position.token0.decimals),
+            token1Formatted: formatTokenAmount(preview.amount1, position.token1.decimals)
+          };
+        }
+      } catch (error) {
+        console.warn('LP_NFT_ROUTE:fees_preview_failed', { tokenId: position.tokenId, error });
+      }
+      positionsWithFees.push({
+        ...position,
+        fees
+      });
+    }
 
     const poolCurrentTick = responsePositions[0]?.currentTick ?? 0;
     const poolSqrtPriceX96 = responsePositions[0]?.sqrtPriceX96 ?? '0';
@@ -198,7 +227,7 @@ export async function GET(request: NextRequest) {
         totalSupply: 100_000_000_000,
         circulatingSupply: 70_000_000_000
       },
-      lpPositions: responsePositions
+      lpPositions: positionsWithFees
     };
 
     console.log('LP_NFT_ROUTE:summary', payload);

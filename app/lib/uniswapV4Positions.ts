@@ -30,6 +30,24 @@ const monad = defineChain({
 });
 
 export const POSITION_MANAGER_ADDRESS = '0x5b7eC4a94fF9beDb700fb82aB09d5846972F4016' as const;
+const POSITION_MANAGER_ABI = [
+  {
+    name: 'modifyLiquidities',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'unlockData', type: 'bytes' },
+      { name: 'deadline', type: 'uint256' }
+    ],
+    outputs: [
+      { name: 'callerDelta', type: 'int256' },
+      { name: 'feesAccrued', type: 'int256' }
+    ]
+  }
+] as const;
+const ACTION_DECREASE_LIQUIDITY = '0x01';
+const BALANCE_DELTA_MASK = (BigInt(1) << BigInt(128)) - BigInt(1);
+const FEE_DEADLINE_BUFFER_SECONDS = 15 * 60;
 
 // StateView for Uniswap v4 on Monad (used to read sqrtPriceX96 + tick)
 const STATE_VIEW_ADDRESS = '0x77395f3b2e73ae90843717371294fa97cc419d64' as const;
@@ -655,6 +673,59 @@ export async function enrichManyPositionsWithAmounts(
   }
 
   return results;
+}
+
+function decodeBalanceDelta(delta: bigint): { amount0: bigint; amount1: bigint } {
+  const amount0 = BigInt.asIntN(128, delta >> BigInt(128));
+  const amount1 = BigInt.asIntN(128, delta & BALANCE_DELTA_MASK);
+  return { amount0, amount1 };
+}
+
+function buildFeeProbeUnlockData(tokenId: bigint): `0x${string}` {
+  const params = encodeAbiParameters(
+    [
+      { name: 'tokenId', type: 'uint256' },
+      { name: 'liquidity', type: 'uint256' },
+      { name: 'amount0Min', type: 'uint128' },
+      { name: 'amount1Min', type: 'uint128' },
+      { name: 'hookData', type: 'bytes' }
+    ],
+    [tokenId, BigInt(0), BigInt(0), BigInt(0), '0x']
+  );
+
+  return encodeAbiParameters(
+    [
+      { name: 'actions', type: 'bytes' },
+      { name: 'params', type: 'bytes[]' }
+    ],
+    [ACTION_DECREASE_LIQUIDITY, [params]]
+  );
+}
+
+export async function getPositionFeesPreview(
+  tokenId: bigint,
+  owner: Address
+): Promise<{ amount0: bigint; amount1: bigint } | null> {
+  try {
+    const unlockData = buildFeeProbeUnlockData(tokenId);
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + FEE_DEADLINE_BUFFER_SECONDS);
+    const simulation = await publicClient.simulateContract({
+      address: POSITION_MANAGER_ADDRESS,
+      abi: POSITION_MANAGER_ABI,
+      functionName: 'modifyLiquidities',
+      args: [unlockData, deadline],
+      account: owner
+    });
+    const [, feesAccrued] = simulation.result;
+    const decoded = decodeBalanceDelta(feesAccrued);
+    return {
+      amount0: decoded.amount0 < BigInt(0) ? -decoded.amount0 : BigInt(0),
+      amount1: decoded.amount1 < BigInt(0) ? -decoded.amount1 : BigInt(0)
+    };
+  } catch (error) {
+    console.warn('Failed to preview LP fees', { tokenId: tokenId.toString(), owner, error });
+    return null;
+  }
 }
 
 // -----------------------------
