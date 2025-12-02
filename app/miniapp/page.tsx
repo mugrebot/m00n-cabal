@@ -831,6 +831,7 @@ function MiniAppPageInner() {
       ['lp_gate', 'claimed_held', 'claimed_bought_more', 'emoji_chat'].includes(effectivePersona),
     [effectivePersona]
   );
+  const lpScanInProgress = personaNeedsLpData && lpGateState.lpStatus === 'CHECKING';
 
   const personaBadge = useMemo<PersonaBadge>(() => {
     if (effectivePersona === 'claimed_bought_more') {
@@ -901,12 +902,17 @@ function MiniAppPageInner() {
         adminPortalView
       );
       if (portalNeedsLp && miniWalletAddress && lpGateState.walletAddress !== miniWalletAddress) {
-        setLpGateState((prev) => ({
-          ...prev,
-          lpStatus: 'CHECKING',
-          walletAddress: miniWalletAddress,
-          lpPositions: []
-        }));
+        setLpGateState((prev) => {
+          if (prev.walletAddress === miniWalletAddress && prev.lpStatus === 'CHECKING') {
+            return prev;
+          }
+          return {
+            ...prev,
+            lpStatus: 'CHECKING',
+            walletAddress: miniWalletAddress,
+            lpPositions: []
+          };
+        });
         setLpRefreshNonce((prev) => prev + 1);
       }
     }
@@ -991,11 +997,17 @@ function MiniAppPageInner() {
     let cancelled = false;
     const walletAddress = miniWalletAddress;
     const runCheck = async () => {
-      setLpGateState((prev) => ({
-        ...prev,
-        lpStatus: 'CHECKING',
-        walletAddress
-      }));
+      setLpGateState((prev) => {
+        if (prev.walletAddress === walletAddress && prev.lpStatus === 'CHECKING') {
+          return prev;
+        }
+        return {
+          ...prev,
+          lpStatus: 'CHECKING',
+          walletAddress,
+          lpPositions: prev.walletAddress === walletAddress ? prev.lpPositions : []
+        };
+      });
 
       try {
         console.log('LP_GATE_FETCH:start', { walletAddress });
@@ -1075,7 +1087,7 @@ function MiniAppPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [personaNeedsLpData, effectivePersona, miniWalletAddress, lpRefreshNonce]);
+  }, [personaNeedsLpData, miniWalletAddress, lpRefreshNonce]);
 
   useEffect(() => {
     const tick = () => {
@@ -2883,6 +2895,21 @@ function MiniAppPageInner() {
     );
   };
 
+  const renderSigilScanGate = () =>
+    renderShell(
+      <div className="min-h-screen flex items-center justify-center p-6 relative z-10">
+        <div className={`${PANEL_CLASS} text-center space-y-3`}>
+          <p className="pixel-font text-2xl text-white">Calibrating your sigils…</p>
+          <p className="text-sm text-white/70">
+            We’re syncing your wallet positions to unlock the correct portal.
+          </p>
+          <div className="w-40 h-2 bg-white/10 rounded-full overflow-hidden mx-auto">
+            <div className="h-full bg-[var(--monad-purple)] animate-pulse" />
+          </div>
+        </div>
+      </div>
+    );
+
   const renderLeaderboardVisualizer = (
     entries: LeaderboardEntry[] | undefined,
     { title, subtitle, emptyLabel }: { title: string; subtitle?: string; emptyLabel?: string }
@@ -3437,6 +3464,9 @@ function MiniAppPageInner() {
   };
 
   const renderObservationDeckPortal = () => {
+    if (lpGateState.lpStatus === 'CHECKING') {
+      return renderSigilScanGate();
+    }
     const updatedStamp =
       solarSystemStatus === 'loaded' && solarSystemData?.updatedAt
         ? new Date(solarSystemData.updatedAt).toLocaleTimeString([], {
@@ -4206,6 +4236,10 @@ function MiniAppPageInner() {
         </div>
       </div>
     );
+  }
+
+  if (!isObservationDeckOpen && lpScanInProgress) {
+    return renderSigilScanGate();
   }
 
   if (isObservationDeckOpen) {
