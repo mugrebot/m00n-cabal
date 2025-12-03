@@ -278,13 +278,11 @@ function AdvancedLpContent() {
   const moonBalance = useBalance({
     address,
     token: TOKEN_MOON_ADDRESS,
-    watch: true,
     enabled: Boolean(address)
   });
   const wmonBalance = useBalance({
     address,
     token: TOKEN_WMON_ADDRESS,
-    watch: true,
     enabled: Boolean(address)
   });
 
