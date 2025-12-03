@@ -75,6 +75,7 @@ const queryClient = new QueryClient();
 
 const TICK_SPACING = 200;
 const HISTORY_POINTS = 48;
+const MOON_CIRC_SUPPLY = 95_000_000_000; // total m00n circulating supply used for market-cap math
 
 const snapDownToSpacing = (tick: number) => Math.floor(tick / TICK_SPACING) * TICK_SPACING;
 const snapUpToSpacing = (tick: number) => Math.ceil(tick / TICK_SPACING) * TICK_SPACING;
@@ -346,7 +347,7 @@ function AdvancedLpContent() {
   const [marketLoading, setMarketLoading] = useState(true);
   const [marketError, setMarketError] = useState<string | null>(null);
 
-  const moonSpotUsd = useMemo(() => {
+  const moonSpotPriceUsd = useMemo(() => {
     if (marketState?.moonUsdPrice && marketState.moonUsdPrice > 0) {
       return marketState.moonUsdPrice;
     }
@@ -361,7 +362,12 @@ function AdvancedLpContent() {
     return null;
   }, [marketState]);
 
-  const chartSeries = useMemo(() => generateMockSeries(moonSpotUsd), [moonSpotUsd]);
+  const moonMarketCapUsd = useMemo(() => {
+    if (!moonSpotPriceUsd) return null;
+    return moonSpotPriceUsd * MOON_CIRC_SUPPLY;
+  }, [moonSpotPriceUsd]);
+
+  const chartSeries = useMemo(() => generateMockSeries(moonMarketCapUsd), [moonMarketCapUsd]);
 
   const renderShell = useCallback(
     (children: ReactNode) => (
@@ -443,11 +449,11 @@ function AdvancedLpContent() {
   }, []);
 
   useEffect(() => {
-    if (!moonSpotUsd || rangeTouched) return;
+    if (!moonMarketCapUsd || rangeTouched) return;
     const pad = 0.2;
-    setRangeLowerUsd((moonSpotUsd * (1 - pad)).toFixed(0));
-    setRangeUpperUsd((moonSpotUsd * (1 + pad)).toFixed(0));
-  }, [moonSpotUsd, rangeTouched]);
+    setRangeLowerUsd((moonMarketCapUsd * (1 - pad)).toFixed(0));
+    setRangeUpperUsd((moonMarketCapUsd * (1 + pad)).toFixed(0));
+  }, [moonMarketCapUsd, rangeTouched]);
 
   const parsedLower = Number(rangeLowerUsd);
   const parsedUpper = Number(rangeUpperUsd);
@@ -468,9 +474,15 @@ function AdvancedLpContent() {
   const preview = useMemo(() => {
     if (!marketState || marketState.wmonUsdPrice === null) return null;
     if (rangeMin === null || rangeMax === null || rangeError) return null;
-    const lowerRatio = rangeMin / marketState.wmonUsdPrice;
-    const upperRatio = rangeMax / marketState.wmonUsdPrice;
-    if (lowerRatio <= 0 || upperRatio <= 0) return null;
+
+    const lowerPriceUsd = rangeMin / MOON_CIRC_SUPPLY;
+    const upperPriceUsd = rangeMax / MOON_CIRC_SUPPLY;
+
+    if (!Number.isFinite(lowerPriceUsd) || !Number.isFinite(upperPriceUsd)) return null;
+    if (lowerPriceUsd <= 0 || upperPriceUsd <= 0) return null;
+
+    const lowerRatio = lowerPriceUsd / marketState.wmonUsdPrice;
+    const upperRatio = upperPriceUsd / marketState.wmonUsdPrice;
 
     const tickLower = snapDownToSpacing(Math.floor(priceToTick(lowerRatio)));
     let tickUpper = snapUpToSpacing(Math.floor(priceToTick(upperRatio)));
@@ -479,8 +491,8 @@ function AdvancedLpContent() {
     return {
       tickLower,
       tickUpper,
-      priceLowerUsd: tickToPrice(tickLower) * marketState.wmonUsdPrice,
-      priceUpperUsd: tickToPrice(tickUpper) * marketState.wmonUsdPrice
+      priceLowerUsd: tickToPrice(tickLower) * marketState.wmonUsdPrice * MOON_CIRC_SUPPLY,
+      priceUpperUsd: tickToPrice(tickUpper) * marketState.wmonUsdPrice * MOON_CIRC_SUPPLY
     };
   }, [marketState, rangeMin, rangeMax, rangeError]);
 
@@ -519,11 +531,17 @@ function AdvancedLpContent() {
       setStatusMessage('Building calldata with V4 PositionManager…');
       setTxHash(null);
 
+      const lowerPriceUsd = rangeMin / MOON_CIRC_SUPPLY;
+      const upperPriceUsd = rangeMax / MOON_CIRC_SUPPLY;
+      if (!Number.isFinite(lowerPriceUsd) || !Number.isFinite(upperPriceUsd)) {
+        throw new Error('invalid_market_cap_range');
+      }
+
       const payload: Record<string, unknown> = {
         recipient: address,
         side: bandSide,
-        rangeLowerUsd: rangeMin,
-        rangeUpperUsd: rangeMax
+        rangeLowerUsd: lowerPriceUsd,
+        rangeUpperUsd: upperPriceUsd
       };
 
       if (bandSide === 'single') {
@@ -699,8 +717,8 @@ function AdvancedLpContent() {
               <p className="font-mono text-lg">{marketState?.tick ?? '—'}</p>
             </div>
             <div>
-              <p className="opacity-60">m00n price</p>
-              <p className="font-mono text-lg">{formatUsd(moonSpotUsd)}</p>
+              <p className="opacity-60">m00n market cap</p>
+              <p className="font-mono text-lg">{formatUsd(moonMarketCapUsd)}</p>
             </div>
             <div>
               <p className="opacity-60">W-MON price</p>
@@ -776,13 +794,13 @@ function AdvancedLpContent() {
         <div className="space-y-5">
           <RangeChart
             series={chartSeries}
-            currentUsd={moonSpotUsd}
+            currentUsd={moonMarketCapUsd}
             lowerUsd={rangeMin}
             upperUsd={rangeMax}
           />
           <p className="text-xs text-white/70 text-center">
-            Yellow trace = simulated m00n price anchored to spot. The ribbon highlights the USD band
-            you&apos;re about to mint.
+            Yellow trace = simulated m00n market cap anchored to spot. The ribbon highlights the USD
+            market-cap band you&apos;re about to mint.
           </p>
         </div>
 
