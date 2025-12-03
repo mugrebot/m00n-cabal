@@ -493,6 +493,7 @@ function MiniAppPageInner() {
   const [solarSystemData, setSolarSystemData] = useState<{
     positions: LeaderboardLpPosition[];
     updatedAt: string;
+    limit?: number;
   } | null>(null);
   const [solarSystemStatus, setSolarSystemStatus] = useState<
     'idle' | 'loading' | 'error' | 'loaded' | 'empty'
@@ -637,6 +638,7 @@ function MiniAppPageInner() {
         const data = (await response.json()) as {
           positions: LeaderboardLpPosition[];
           updatedAt: string;
+          limit?: number;
         };
         if (!cancelled) {
           const hasPositions = Array.isArray(data.positions) && data.positions.length > 0;
