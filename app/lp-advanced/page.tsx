@@ -450,10 +450,33 @@ function AdvancedLpContent() {
 
   useEffect(() => {
     if (!moonMarketCapUsd || rangeTouched) return;
+
     const pad = 0.2;
-    setRangeLowerUsd((moonMarketCapUsd * (1 - pad)).toFixed(0));
-    setRangeUpperUsd((moonMarketCapUsd * (1 + pad)).toFixed(0));
-  }, [moonMarketCapUsd, rangeTouched]);
+    let nextLower: string | null = null;
+    let nextUpper: string | null = null;
+
+    if (bandSide === 'double') {
+      nextLower = (moonMarketCapUsd * (1 - pad)).toFixed(0);
+      nextUpper = (moonMarketCapUsd * (1 + pad)).toFixed(0);
+    } else if (bandSide === 'single') {
+      if (depositAsset === 'moon') {
+        nextLower = moonMarketCapUsd.toFixed(0);
+        nextUpper = (moonMarketCapUsd * (1 + pad)).toFixed(0);
+      } else {
+        nextLower = (moonMarketCapUsd * (1 - pad)).toFixed(0);
+        nextUpper = moonMarketCapUsd.toFixed(0);
+      }
+    } else {
+      return;
+    }
+
+    if (nextLower !== null && nextLower !== rangeLowerUsd) {
+      setRangeLowerUsd(nextLower);
+    }
+    if (nextUpper !== null && nextUpper !== rangeUpperUsd) {
+      setRangeUpperUsd(nextUpper);
+    }
+  }, [moonMarketCapUsd, bandSide, depositAsset, rangeTouched, rangeLowerUsd, rangeUpperUsd]);
 
   const parsedLower = Number(rangeLowerUsd);
   const parsedUpper = Number(rangeUpperUsd);
@@ -471,30 +494,54 @@ function AdvancedLpContent() {
     return null;
   }, [hasValidRange, rangeMin, rangeMax]);
 
-  const preview = useMemo(() => {
-    if (!marketState || marketState.wmonUsdPrice === null) return null;
-    if (rangeMin === null || rangeMax === null || rangeError) return null;
+  const updateDoubleSidedAmounts = useCallback(
+    (changedSide: 'moon' | 'wmon', value: string) => {
+      if (changedSide === 'moon') setDoubleMoonAmount(value);
+      else setDoubleWmonAmount(value);
 
-    const lowerPriceUsd = rangeMin / MOON_CIRC_SUPPLY;
-    const upperPriceUsd = rangeMax / MOON_CIRC_SUPPLY;
+      if (bandSide !== 'double') return;
+      if (!value || !marketState || !marketState.wmonUsdPrice || !rangeMin || !rangeMax) return;
 
-    if (!Number.isFinite(lowerPriceUsd) || !Number.isFinite(upperPriceUsd)) return null;
-    if (lowerPriceUsd <= 0 || upperPriceUsd <= 0) return null;
+      const amountIn = parseFloat(value);
+      if (isNaN(amountIn) || amountIn <= 0) return;
 
-    const lowerRatio = lowerPriceUsd / marketState.wmonUsdPrice;
-    const upperRatio = upperPriceUsd / marketState.wmonUsdPrice;
+      const priceLowerWmon = rangeMin / MOON_CIRC_SUPPLY / marketState.wmonUsdPrice;
+      const priceUpperWmon = rangeMax / MOON_CIRC_SUPPLY / marketState.wmonUsdPrice;
+      const priceCurrentWmon = tickToPrice(marketState.tick);
 
-    const tickLower = snapDownToSpacing(Math.floor(priceToTick(lowerRatio)));
-    let tickUpper = snapUpToSpacing(Math.floor(priceToTick(upperRatio)));
-    if (tickUpper <= tickLower) tickUpper = tickLower + TICK_SPACING;
+      // Spot below range -> Only m00n needed
+      if (priceCurrentWmon < priceLowerWmon) {
+        if (changedSide === 'moon') setDoubleWmonAmount('0');
+        // If user types WMON, m00n would be infinite/undefined, so we leave it
+        return;
+      }
+      // Spot above range -> Only WMON needed
+      if (priceCurrentWmon > priceUpperWmon) {
+        if (changedSide === 'wmon') setDoubleMoonAmount('0');
+        return;
+      }
 
-    return {
-      tickLower,
-      tickUpper,
-      priceLowerUsd: tickToPrice(tickLower) * marketState.wmonUsdPrice * MOON_CIRC_SUPPLY,
-      priceUpperUsd: tickToPrice(tickUpper) * marketState.wmonUsdPrice * MOON_CIRC_SUPPLY
-    };
-  }, [marketState, rangeMin, rangeMax, rangeError]);
+      // In range -> Calculate ratio
+      const sqrtP = Math.sqrt(priceCurrentWmon);
+      const sqrtPa = Math.sqrt(priceLowerWmon);
+      const sqrtPb = Math.sqrt(priceUpperWmon);
+
+      const numerator = sqrtP * sqrtPb * (sqrtP - sqrtPa);
+      const denominator = sqrtPb - sqrtP;
+      if (denominator <= 0) return;
+
+      const ratio = numerator / denominator; // amount1 / amount0
+
+      if (changedSide === 'moon') {
+        const other = amountIn * ratio;
+        setDoubleWmonAmount(other.toFixed(6));
+      } else {
+        const other = amountIn / ratio;
+        setDoubleMoonAmount(other.toFixed(2));
+      }
+    },
+    [bandSide, marketState, rangeMin, rangeMax]
+  );
 
   const handleDeploy = useCallback(async () => {
     if (!address || !walletClient) {
@@ -687,337 +734,278 @@ function AdvancedLpContent() {
         </div>
       </header>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <article className="lunar-card space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="lunar-heading">Pool telemetry</p>
-            <button
-              type="button"
-              disabled={marketLoading}
-              onClick={() => {
-                setMarketLoading(true);
-                fetch('/api/pool-state')
-                  .then((res) => res.json())
-                  .then((data) => {
-                    setMarketState(data);
-                    setMarketError(null);
-                  })
-                  .catch(() => setMarketError('Unable to refresh pool state.'))
-                  .finally(() => setMarketLoading(false));
-              }}
-              className="text-[10px] px-3 py-1 border border-white/15 rounded-full uppercase tracking-[0.3em] hover:bg-white/10 disabled:opacity-40"
+      <section className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="space-y-4">
+          <div className="relative">
+            <p
+              className="absolute -left-8 top-1/2 -translate-y-1/2 -rotate-90 text-xs tracking-[0.2em] text-[var(--moss-green)] origin-center whitespace-nowrap hidden sm:block"
+              style={{ textShadow: '0 0 10px rgba(108, 229, 177, 0.5)' }}
             >
-              {marketLoading ? 'syncing…' : 'refresh'}
-            </button>
+              PRICE OF M00N
+            </p>
+            <RangeChart
+              series={chartSeries}
+              currentUsd={moonMarketCapUsd}
+              lowerUsd={rangeMin}
+              upperUsd={rangeMax}
+            />
           </div>
-          {marketError && <p className="text-sm text-red-300">{marketError}</p>}
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="opacity-60">Current tick</p>
-              <p className="font-mono text-lg">{marketState?.tick ?? '—'}</p>
-            </div>
-            <div>
-              <p className="opacity-60">m00n market cap</p>
-              <p className="font-mono text-lg">{formatUsd(moonMarketCapUsd)}</p>
-            </div>
-            <div>
-              <p className="opacity-60">W-MON price</p>
-              <p className="font-mono text-lg">{formatUsd(marketState?.wmonUsdPrice)}</p>
-            </div>
-            <div>
-              <p className="opacity-60">Last update</p>
-              <p className="text-xs">
-                {marketState?.updatedAt
-                  ? new Date(marketState.updatedAt).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })
-                  : '—'}
-              </p>
-            </div>
-          </div>
-        </article>
-
-        <article className="lunar-card space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="lunar-heading">Wallet status</p>
-            {isConnected && (
-              <button
-                type="button"
-                onClick={() => disconnect()}
-                className="text-[10px] px-3 py-1 border border-white/15 rounded-full uppercase tracking-[0.3em] hover:bg-white/10"
-              >
-                Disconnect
-              </button>
-            )}
-          </div>
-          {isConnected && address ? (
-            <>
-              <p className="font-semibold text-lg">{`${address.slice(0, 6)}…${address.slice(-4)}`}</p>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="opacity-60">m00n balance</p>
-                  <p className="font-mono text-lg">{moonBalanceDisplay}</p>
-                </div>
-                <div>
-                  <p className="opacity-60">W-MON balance</p>
-                  <p className="font-mono text-lg">{wmonBalanceDisplay}</p>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-white/70">
-                Connect a wallet capable of signing on Monad. MetaMask, Coinbase Wallet, and other
-                injected providers are supported.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                {connectors.map((connector) => (
-                  <button
-                    key={connector.id}
-                    onClick={() => connect({ connector })}
-                    className="px-4 py-2 border border-white/20 rounded-full text-sm hover:bg-white/10 transition disabled:opacity-40"
-                    disabled={!connector.ready || isPending}
-                  >
-                    {connector.name}
-                    {isPending && '…'}
-                  </button>
-                ))}
-              </div>
-              {connectError && <p className="text-sm text-red-300">{connectError.message}</p>}
-            </div>
-          )}
-        </article>
-      </section>
-
-      <section className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="space-y-5">
-          <RangeChart
-            series={chartSeries}
-            currentUsd={moonMarketCapUsd}
-            lowerUsd={rangeMin}
-            upperUsd={rangeMax}
-          />
-          <p className="text-xs text-white/70 text-center">
-            Yellow trace = simulated m00n market cap anchored to spot. The ribbon highlights the USD
-            market-cap band you&apos;re about to mint.
+          <p className="text-xs text-white/60 text-center max-w-lg mx-auto">
+            Yellow trace = simulated m00n market cap. The ribbon highlights the USD range you are
+            LPing into.
           </p>
+
+          <article className="lunar-card space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="lunar-heading">Wallet status</p>
+              {isConnected && (
+                <button
+                  type="button"
+                  onClick={() => disconnect()}
+                  className="text-[10px] px-3 py-1 border border-white/15 rounded-full uppercase tracking-[0.3em] hover:bg-white/10"
+                >
+                  Disconnect
+                </button>
+              )}
+            </div>
+            {isConnected && address ? (
+              <>
+                <p className="font-semibold text-lg">{`${address.slice(0, 6)}…${address.slice(-4)}`}</p>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="opacity-60">m00n balance</p>
+                    <p className="font-mono text-lg">{moonBalanceDisplay}</p>
+                  </div>
+                  <div>
+                    <p className="opacity-60">W-MON balance</p>
+                    <p className="font-mono text-lg">{wmonBalanceDisplay}</p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-white/70">
+                  Connect a wallet capable of signing on Monad.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  {connectors.map((connector) => (
+                    <button
+                      key={connector.id}
+                      onClick={() => connect({ connector })}
+                      className="px-4 py-2 border border-white/20 rounded-full text-sm hover:bg-white/10 transition disabled:opacity-40"
+                      disabled={!connector.ready || isPending}
+                    >
+                      {connector.name}
+                      {isPending && '…'}
+                    </button>
+                  ))}
+                </div>
+                {connectError && <p className="text-sm text-red-300">{connectError.message}</p>}
+              </div>
+            )}
+          </article>
         </div>
 
-        <div className="lunar-card space-y-6">
+        <div className="space-y-6">
           <div className="flex gap-2">
             <button
               type="button"
-              className={`flex-1 rounded-full border px-4 py-2 text-xs tracking-[0.3em] ${
+              className={`flex-1 rounded-full border px-2 py-3 text-[10px] tracking-[0.2em] font-bold uppercase transition ${
                 bandSide === 'single'
-                  ? 'border-[var(--moss-green)] bg-[var(--moss-green)]/10'
-                  : 'border-white/15'
+                  ? 'border-white bg-white text-black'
+                  : 'border-white/20 text-white/60 hover:bg-white/5'
               }`}
-              onClick={() => setBandSide('single')}
+              onClick={() => {
+                setBandSide('single');
+                setRangeTouched(false);
+              }}
             >
-              SINGLE-SIDED
+              <span className="block sm:inline">○ Single</span> Sided
             </button>
             <button
               type="button"
-              className={`flex-1 rounded-full border px-4 py-2 text-xs tracking-[0.3em] ${
-                bandSide === 'double' ? 'border-[#fdd65b] bg-[#fdd65b]/10' : 'border-white/15'
+              className={`flex-1 rounded-full border px-2 py-3 text-[10px] tracking-[0.2em] font-bold uppercase transition ${
+                bandSide === 'double'
+                  ? 'border-white bg-white text-black'
+                  : 'border-white/20 text-white/60 hover:bg-white/5'
               }`}
-              onClick={() => setBandSide('double')}
+              onClick={() => {
+                setBandSide('double');
+                setRangeTouched(false);
+              }}
             >
-              DOUBLE-SIDED
+              <span className="block sm:inline">● Double</span> Sided
             </button>
           </div>
 
-          {bandSide === 'single' && (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className={`flex-1 rounded-2xl border px-4 py-3 text-left transition ${
-                  depositAsset === 'moon'
-                    ? 'border-[var(--moss-green)] bg-[var(--moss-green)]/15'
-                    : 'border-white/15 hover:bg-white/5'
-                }`}
-                onClick={() => setDepositAsset('moon')}
-              >
-                <p className="font-semibold">Deposit m00n only</p>
-                <p className="text-xs text-white/70">Single-sided with upside exposure.</p>
-              </button>
-              <button
-                type="button"
-                className={`flex-1 rounded-2xl border px-4 py-3 text-left transition ${
-                  depositAsset === 'wmon'
-                    ? 'border-[#fdd65b] bg-[#fdd65b]/10'
-                    : 'border-white/15 hover:bg-white/5'
-                }`}
-                onClick={() => setDepositAsset('wmon')}
-              >
-                <p className="font-semibold">Deposit W-MON only</p>
-                <p className="text-xs text-white/70">Single-sided crash protection.</p>
-              </button>
-            </div>
-          )}
-
-          {bandSide === 'single' ? (
-            <div className="space-y-2">
-              <label className="lunar-heading">
-                Deposit amount ({depositAsset === 'moon' ? 'm00n' : 'W-MON'})
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={singleAmount}
-                onChange={(event) => setSingleAmount(event.target.value)}
-                placeholder="e.g. 1,000,000"
-                className="w-full rounded-2xl border border-white/20 bg-black/40 px-4 py-3 text-lg font-mono focus:outline-none focus:border-[var(--moss-green)]"
-              />
-              <div className="flex justify-between text-xs text-white/60">
-                <span>
-                  Balance: {depositAsset === 'moon' ? moonBalanceDisplay : wmonBalanceDisplay}{' '}
-                  {depositAsset === 'moon' ? 'm00n' : 'WMON'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const formatted =
-                      depositAsset === 'moon'
-                        ? moonBalance.data?.formatted
-                        : wmonBalance.data?.formatted;
-                    if (formatted) setSingleAmount(formatted);
-                  }}
-                  className="text-[var(--moss-green)] hover:underline disabled:opacity-30"
-                  disabled={!isConnected}
-                >
-                  Max
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="lunar-heading">m00n deposit</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={doubleMoonAmount}
-                  onChange={(event) => setDoubleMoonAmount(event.target.value)}
-                  placeholder="e.g. 500,000"
-                  className="w-full rounded-2xl border border-white/20 bg-black/40 px-4 py-3 text-lg font-mono focus:outline-none focus:border-[var(--moss-green)]"
-                />
-                <div className="flex justify-between text-xs text-white/60">
-                  <span>Balance: {moonBalanceDisplay} m00n</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (moonBalance.data?.formatted)
-                        setDoubleMoonAmount(moonBalance.data.formatted);
-                    }}
-                    className="text-[var(--moss-green)] hover:underline disabled:opacity-30"
-                    disabled={!isConnected}
-                  >
-                    Max
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="lunar-heading">W-MON deposit</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={doubleWmonAmount}
-                  onChange={(event) => setDoubleWmonAmount(event.target.value)}
-                  placeholder="e.g. 25"
-                  className="w-full rounded-2xl border border-white/20 bg-black/40 px-4 py-3 text-lg font-mono focus:outline-none focus:border-[var(--moss-green)]"
-                />
-                <div className="flex justify-between text-xs text-white/60">
-                  <span>Balance: {wmonBalanceDisplay} W-MON</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (wmonBalance.data?.formatted)
-                        setDoubleWmonAmount(wmonBalance.data.formatted);
-                    }}
-                    className="text-[var(--moss-green)] hover:underline disabled:opacity-30"
-                    disabled={!isConnected}
-                  >
-                    Max
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="lunar-heading">Lower bound (USD)</label>
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={rangeLowerUsd}
-                onChange={(event) => {
-                  setRangeLowerUsd(event.target.value);
-                  setRangeTouched(true);
-                }}
-                className="w-full rounded-2xl border border-white/20 bg-black/40 px-3 py-3 text-sm font-mono focus:outline-none focus:border-[var(--moss-green)]"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="lunar-heading">Upper bound (USD)</label>
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={rangeUpperUsd}
-                onChange={(event) => {
-                  setRangeUpperUsd(event.target.value);
-                  setRangeTouched(true);
-                }}
-                className="w-full rounded-2xl border border-white/20 bg-black/40 px-3 py-3 text-sm font-mono focus:outline-none focus:border-[var(--moss-green)]"
-              />
-            </div>
-          </div>
-          <p className="text-xs text-white/60">
-            Tip: Start with the ±20% defaults, then tighten or widen the USD bounds before minting.
-          </p>
-          {rangeError && <p className="text-sm text-red-300">{rangeError}</p>}
-
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-4 space-y-2 text-sm">
-            <p className="lunar-heading">Band preview</p>
-            {preview ? (
-              <>
-                <p className="flex justify-between">
-                  <span>Ticks</span>
-                  <span className="font-mono">
-                    {preview.tickLower} → {preview.tickUpper}
-                  </span>
-                </p>
-                <p className="flex justify-between">
-                  <span>Range (USD)</span>
-                  <span className="font-mono">
-                    {formatUsd(preview.priceLowerUsd)} → {formatUsd(preview.priceUpperUsd)}
-                  </span>
-                </p>
-              </>
+          <div className="border border-red-500/40 bg-red-500/10 p-4 rounded-xl text-center space-y-1 relative overflow-hidden">
+            <div
+              className={`absolute inset-0 bg-red-500/5 pointer-events-none ${marketLoading ? 'animate-pulse' : ''}`}
+            />
+            <p className="relative text-[9px] uppercase tracking-widest text-red-300 font-semibold">
+              Current tick (in terms of mkt cap of m00n in usd)
+            </p>
+            {marketError ? (
+              <p className="relative text-xs text-red-300 py-2">Telemetry unavailable</p>
             ) : (
-              <p className="text-white/60">Enter valid bounds to preview the exact ticks.</p>
+              <>
+                <p className="relative text-2xl font-mono text-white drop-shadow-lg">
+                  {marketLoading && !moonMarketCapUsd ? 'Syncing…' : formatUsd(moonMarketCapUsd)}
+                </p>
+                {marketState && (
+                  <p className="relative text-[10px] text-white/40 font-mono">
+                    Tick: {marketState.tick}
+                  </p>
+                )}
+              </>
             )}
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-2">
+            <label className="lunar-heading text-white/80">Set range (USD)</label>
+            <div className="space-y-3 bg-white/5 p-4 rounded-2xl border border-white/10">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-xs text-white/60 w-12">Min</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={rangeLowerUsd}
+                  onChange={(event) => {
+                    setRangeLowerUsd(event.target.value);
+                    setRangeTouched(true);
+                  }}
+                  className="flex-1 bg-transparent border-b border-white/20 py-1 text-right font-mono focus:outline-none focus:border-[var(--moss-green)]"
+                  placeholder="0.00"
+                />
+                <span className="text-xs text-white/40">USD</span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-xs text-white/60 w-12">Max</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={rangeUpperUsd}
+                  onChange={(event) => {
+                    setRangeUpperUsd(event.target.value);
+                    setRangeTouched(true);
+                  }}
+                  className="flex-1 bg-transparent border-b border-white/20 py-1 text-right font-mono focus:outline-none focus:border-[var(--moss-green)]"
+                  placeholder="0.00"
+                />
+                <span className="text-xs text-white/40">USD</span>
+              </div>
+            </div>
+            {rangeError && <p className="text-xs text-red-300 text-center">{rangeError}</p>}
+          </div>
+
+          <div className="space-y-2">
+            <label className="lunar-heading text-white/80">Amount</label>
+            <div className="space-y-3 bg-white/5 p-4 rounded-2xl border border-white/10">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-xs text-white/60 w-12">m00n</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={
+                    bandSide === 'single'
+                      ? depositAsset === 'moon'
+                        ? singleAmount
+                        : ''
+                      : doubleMoonAmount
+                  }
+                  disabled={bandSide === 'single' && depositAsset !== 'moon'}
+                  onChange={(e) => {
+                    if (bandSide === 'single') setSingleAmount(e.target.value);
+                    else updateDoubleSidedAmounts('moon', e.target.value);
+                  }}
+                  className="flex-1 bg-transparent border-b border-white/20 py-1 text-right font-mono focus:outline-none focus:border-[var(--moss-green)] disabled:opacity-30 disabled:cursor-not-allowed"
+                  placeholder="0"
+                />
+                <button
+                  onClick={() => {
+                    if (bandSide === 'single' && depositAsset === 'moon' && moonBalance.data) {
+                      setSingleAmount(moonBalance.data.formatted);
+                    } else if (bandSide === 'double' && moonBalance.data) {
+                      updateDoubleSidedAmounts('moon', moonBalance.data.formatted);
+                    }
+                  }}
+                  disabled={!isConnected || (bandSide === 'single' && depositAsset !== 'wmon')}
+                  className="text-[10px] text-[var(--moss-green)] hover:underline"
+                >
+                  MAX
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-xs text-white/60 w-12">WMON</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={
+                    bandSide === 'single'
+                      ? depositAsset === 'wmon'
+                        ? singleAmount
+                        : ''
+                      : doubleWmonAmount
+                  }
+                  disabled={bandSide === 'single' && depositAsset !== 'wmon'}
+                  onChange={(e) => {
+                    if (bandSide === 'single') setSingleAmount(e.target.value);
+                    else updateDoubleSidedAmounts('wmon', e.target.value);
+                  }}
+                  className="flex-1 bg-transparent border-b border-white/20 py-1 text-right font-mono focus:outline-none focus:border-[var(--moss-green)] disabled:opacity-30 disabled:cursor-not-allowed"
+                  placeholder="0"
+                />
+                <button
+                  onClick={() => {
+                    if (bandSide === 'single' && depositAsset === 'wmon' && wmonBalance.data) {
+                      setSingleAmount(wmonBalance.data.formatted);
+                    } else if (bandSide === 'double' && wmonBalance.data) {
+                      updateDoubleSidedAmounts('wmon', wmonBalance.data.formatted);
+                    }
+                  }}
+                  disabled={!isConnected || (bandSide === 'single' && depositAsset !== 'moon')}
+                  className="text-[10px] text-[var(--moss-green)] hover:underline"
+                >
+                  MAX
+                </button>
+              </div>
+            </div>
+
+            {bandSide === 'single' && (
+              <div className="flex gap-2 justify-center text-xs mt-2">
+                <button
+                  className={`px-3 py-1 rounded-full border ${depositAsset === 'moon' ? 'border-[var(--moss-green)] text-[var(--moss-green)]' : 'border-white/20 text-white/40'}`}
+                  onClick={() => setDepositAsset('moon')}
+                >
+                  Input m00n
+                </button>
+                <button
+                  className={`px-3 py-1 rounded-full border ${depositAsset === 'wmon' ? 'border-[var(--moss-green)] text-[var(--moss-green)]' : 'border-white/20 text-white/40'}`}
+                  onClick={() => setDepositAsset('wmon')}
+                >
+                  Input WMON
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="pt-4">
             <button
               type="button"
               onClick={handleDeploy}
               disabled={!isConnected || status === 'building'}
-              className="w-full cta-primary disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+              className="w-full cta-primary text-sm py-4 disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:shadow-none"
             >
-              {status === 'building' ? 'DEPLOYING…' : 'DEPLOY BAND ON MONAD'}
+              {status === 'building' ? 'DEPLOYING…' : 'DEPLOY BAND'}
             </button>
             {statusMessage && (
               <p
-                className={`text-sm ${status === 'error' ? 'text-red-300' : 'text-[var(--moss-green)]'}`}
+                className={`text-xs text-center mt-3 ${status === 'error' ? 'text-red-300' : 'text-[var(--moss-green)]'}`}
               >
                 {statusMessage}
               </p>
@@ -1027,7 +1015,7 @@ function AdvancedLpContent() {
                 href={`https://monadscan.com/tx/${txHash}`}
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-white/70 underline"
+                className="block text-center text-[10px] text-white/50 underline mt-2"
               >
                 View on Monadscan
               </a>
