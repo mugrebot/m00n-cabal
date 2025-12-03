@@ -184,8 +184,13 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
     .join(' ');
 
   const hasRange = lowerUsd !== null && upperUsd !== null;
-  const rangeY1 = hasRange ? scaleY(Math.max(lowerUsd!, upperUsd!)) : 0;
-  const rangeY2 = hasRange ? scaleY(Math.min(lowerUsd!, upperUsd!)) : 0;
+  const upperValue = hasRange ? Math.max(lowerUsd!, upperUsd!) : null;
+  const lowerValue = hasRange ? Math.min(lowerUsd!, upperUsd!) : null;
+  const upperY = upperValue !== null ? scaleY(upperValue) : null;
+  const lowerY = lowerValue !== null ? scaleY(lowerValue) : null;
+
+  const spotX = currentUsd ? scaleX(series.length - 1) : null;
+  const spotY = currentUsd ? scaleY(currentUsd) : null;
 
   return (
     <svg
@@ -208,12 +213,12 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
 
       <rect width={width} height={height} rx="28" fill="url(#telemetryGrid)" opacity="0.1" />
 
-      {hasRange && (
+      {hasRange && upperY !== null && lowerY !== null && (
         <rect
           x={scaleX(0)}
-          y={Math.min(rangeY1, rangeY2)}
+          y={Math.min(upperY, lowerY)}
           width={width}
-          height={Math.abs(rangeY2 - rangeY1) || 2}
+          height={Math.abs(lowerY - upperY) || 2}
           fill="rgba(108,229,177,0.08)"
           stroke="rgba(108,229,177,0.35)"
           strokeDasharray="6 8"
@@ -229,55 +234,70 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
         filter="url(#glow)"
       />
 
-      {currentUsd && (
+      {spotX !== null && spotY !== null && (
         <g>
           <line
-            x1={scaleX(series.length - 1)}
-            x2={scaleX(series.length - 1)}
-            y1={scaleY(currentUsd)}
+            x1={spotX}
+            x2={spotX}
+            y1={spotY}
             y2={height}
             stroke="rgba(255,255,255,0.25)"
             strokeDasharray="2 6"
           />
-          <circle
-            cx={scaleX(series.length - 1)}
-            cy={scaleY(currentUsd)}
-            r={7}
+          <circle cx={spotX} cy={spotY} r={7} fill="#fdd65b" stroke="#ffffff" strokeWidth={2} />
+          <text
+            x={spotX - 14}
+            y={Math.min(Math.max(spotY + 4, 16), height - 10)}
+            textAnchor="end"
+            fontFamily="var(--font-sans)"
+            fontSize="12"
             fill="#fdd65b"
-            stroke="#ffffff"
-            strokeWidth={2}
-          />
+          >
+            {formatUsd(currentUsd)}
+          </text>
         </g>
       )}
 
-      {hasRange && (
+      {hasRange && upperY !== null && lowerY !== null && (
         <>
+          <line
+            x1={scaleX(0)}
+            x2={scaleX(series.length - 1)}
+            y1={upperY}
+            y2={upperY}
+            stroke="rgba(255,255,255,0.12)"
+            strokeDasharray="4 6"
+          />
+          <line
+            x1={scaleX(0)}
+            x2={scaleX(series.length - 1)}
+            y1={lowerY}
+            y2={lowerY}
+            stroke="rgba(255,255,255,0.12)"
+            strokeDasharray="4 6"
+          />
           <text
             x={width - 12}
-            y={rangeY2 - 6}
+            y={upperY - 6}
             textAnchor="end"
             className="fill-white"
             fontSize="11"
             fontFamily="var(--font-sans)"
           >
-            Upper {formatUsd(Math.max(lowerUsd!, upperUsd!))}
+            Upper {formatUsd(upperValue!)}
           </text>
           <text
             x={width - 12}
-            y={rangeY1 + 18}
+            y={lowerY + 18}
             textAnchor="end"
             fontFamily="var(--font-sans)"
             fontSize="11"
             fill="rgba(255,255,255,0.65)"
           >
-            Lower {formatUsd(Math.min(lowerUsd!, upperUsd!))}
+            Lower {formatUsd(lowerValue!)}
           </text>
         </>
       )}
-
-      <text x={16} y={24} fontSize="11" letterSpacing="0.3em" fill="rgba(255,255,255,0.6)">
-        PRICE OF M00N
-      </text>
     </svg>
   );
 }
