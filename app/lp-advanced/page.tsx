@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import {
-  WagmiConfig,
+  WagmiProvider,
   createConfig,
   http,
   useAccount,
@@ -15,6 +15,7 @@ import {
 import { metaMask, injected, coinbaseWallet } from 'wagmi/connectors';
 import { formatUnits } from 'viem';
 import sdk from '@farcaster/miniapp-sdk';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 type BandMode = 'sky' | 'crash';
 type BandSide = 'single' | 'double';
@@ -50,20 +51,27 @@ const monadChain = {
   }
 };
 
+const createConnectors = () =>
+  typeof window === 'undefined'
+    ? []
+    : [
+        metaMask(),
+        injected({ shimDisconnect: true }),
+        coinbaseWallet({
+          appName: 'm00n advanced LP',
+          jsonRpcUrl: monadChain.rpcUrls.default.http[0]!
+        })
+      ];
+
 const wagmiConfig = createConfig({
   chains: [monadChain],
-  connectors: [
-    metaMask(),
-    injected({ shimDisconnect: true }),
-    coinbaseWallet({
-      appName: 'm00n advanced LP',
-      jsonRpcUrl: monadChain.rpcUrls.default.http[0]!
-    })
-  ],
+  connectors: createConnectors,
   transports: {
     [monadChain.id]: http(monadChain.rpcUrls.default.http[0]!)
   }
 });
+
+const queryClient = new QueryClient();
 
 const TICK_SPACING = 200;
 const HISTORY_POINTS = 48;
@@ -259,9 +267,11 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
 
 export default function LpAdvancedPage() {
   return (
-    <WagmiConfig config={wagmiConfig}>
-      <AdvancedLpContent />
-    </WagmiConfig>
+    <WagmiProvider config={wagmiConfig}>
+      <QueryClientProvider client={queryClient}>
+        <AdvancedLpContent />
+      </QueryClientProvider>
+    </WagmiProvider>
   );
 }
 
