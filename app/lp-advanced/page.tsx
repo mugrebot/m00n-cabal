@@ -271,7 +271,7 @@ function AdvancedLpContent() {
   const [miniAppError, setMiniAppError] = useState<string | null>(null);
 
   const { address, isConnected } = useAccount();
-  const { connect, connectors, error: connectError, isPending, pendingConnector } = useConnect();
+  const { connect, connectors, error: connectError, isPending } = useConnect();
   const { disconnect } = useDisconnect();
   const { data: walletClient } = useWalletClient();
 
@@ -689,7 +689,7 @@ function AdvancedLpContent() {
                     disabled={!connector.ready || isPending}
                   >
                     {connector.name}
-                    {isPending && pendingConnector?.id === connector.id && '…'}
+                    {isPending && '…'}
                   </button>
                 ))}
               </div>
