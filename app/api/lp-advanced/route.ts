@@ -29,9 +29,11 @@ const snapUpToSpacing = (tick: number) => Math.ceil(tick / TICK_SPACING) * TICK_
 export async function POST(request: NextRequest) {
   let body: {
     recipient?: string;
-    amount?: string;
-    mode?: 'sky' | 'crash';
     side?: 'single' | 'double';
+    singleDepositAsset?: 'moon' | 'wmon';
+    singleAmount?: string;
+    doubleMoonAmount?: string;
+    doubleWmonAmount?: string;
     rangeLowerUsd?: number;
     rangeUpperUsd?: number;
   };
@@ -42,22 +44,39 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'invalid_json' }, { status: 400 });
   }
 
-  const { recipient, amount, mode, side = 'single', rangeLowerUsd, rangeUpperUsd } = body ?? {};
+  const {
+    recipient,
+    side = 'single',
+    singleDepositAsset,
+    singleAmount,
+    doubleMoonAmount,
+    doubleWmonAmount,
+    rangeLowerUsd,
+    rangeUpperUsd
+  } = body ?? {};
 
   if (!recipient || !isAddress(recipient)) {
     return NextResponse.json({ error: 'invalid_recipient' }, { status: 400 });
   }
 
-  if (!amount || Number(amount) <= 0) {
-    return NextResponse.json({ error: 'invalid_amount' }, { status: 400 });
+  if (side !== 'single' && side !== 'double') {
+    return NextResponse.json({ error: 'invalid_side' }, { status: 400 });
   }
 
-  if (mode !== 'sky' && mode !== 'crash') {
-    return NextResponse.json({ error: 'invalid_mode' }, { status: 400 });
-  }
-
-  if (side !== 'single') {
-    return NextResponse.json({ error: 'double_sided_unavailable' }, { status: 400 });
+  if (side === 'single') {
+    if (singleDepositAsset !== 'moon' && singleDepositAsset !== 'wmon') {
+      return NextResponse.json({ error: 'invalid_single_asset' }, { status: 400 });
+    }
+    if (!singleAmount || Number(singleAmount) <= 0) {
+      return NextResponse.json({ error: 'invalid_single_amount' }, { status: 400 });
+    }
+  } else {
+    if (!doubleMoonAmount || Number(doubleMoonAmount) <= 0) {
+      return NextResponse.json({ error: 'invalid_double_moon_amount' }, { status: 400 });
+    }
+    if (!doubleWmonAmount || Number(doubleWmonAmount) <= 0) {
+      return NextResponse.json({ error: 'invalid_double_wmon_amount' }, { status: 400 });
+    }
   }
 
   if (rangeLowerUsd === undefined || rangeUpperUsd === undefined) {
@@ -67,7 +86,13 @@ export async function POST(request: NextRequest) {
   const lowerBound = Number(rangeLowerUsd);
   const upperBound = Number(rangeUpperUsd);
 
-  if (!Number.isFinite(lowerBound) || !Number.isFinite(upperBound)) {
+  if (
+    !Number.isFinite(lowerBound) ||
+    !Number.isFinite(upperBound) ||
+    lowerBound <= 0 ||
+    upperBound <= 0 ||
+    lowerBound === upperBound
+  ) {
     return NextResponse.json({ error: 'invalid_range' }, { status: 400 });
   }
 
@@ -98,7 +123,6 @@ export async function POST(request: NextRequest) {
       poolState.tick
     );
 
-    const amountWei = parseUnits(amount, 18);
     const [usdLower, usdUpper] =
       lowerBound < upperBound ? [lowerBound, upperBound] : [upperBound, lowerBound];
 
@@ -109,16 +133,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'invalid_range' }, { status: 400 });
     }
 
-    const currentUsd = Math.pow(1.0001, poolState.tick) * wmonUsdPrice;
-
-    if (mode === 'sky' && usdLower <= currentUsd) {
-      return NextResponse.json({ error: 'range_must_be_above_current' }, { status: 400 });
-    }
-
-    if (mode === 'crash' && usdUpper >= currentUsd) {
-      return NextResponse.json({ error: 'range_must_be_below_current' }, { status: 400 });
-    }
-
     const tickLower = snapDownToSpacing(Math.floor(priceToTick(lowerRatio)));
     let tickUpper = snapUpToSpacing(Math.floor(priceToTick(upperRatio)));
 
@@ -126,8 +140,25 @@ export async function POST(request: NextRequest) {
       tickUpper = tickLower + TICK_SPACING;
     }
 
-    const amount0Desired = mode === 'sky' ? amountWei.toString() : '0';
-    const amount1Desired = mode === 'crash' ? amountWei.toString() : '0';
+    let moonAmount = 0n;
+    let wmonAmount = 0n;
+
+    if (side === 'single') {
+      if (singleDepositAsset === 'moon') {
+        moonAmount = parseUnits(singleAmount!, 18);
+      } else {
+        wmonAmount = parseUnits(singleAmount!, 18);
+      }
+    } else {
+      moonAmount = parseUnits(doubleMoonAmount!, 18);
+      wmonAmount = parseUnits(doubleWmonAmount!, 18);
+    }
+
+    const moonAmountStr = moonAmount.toString();
+    const wmonAmountStr = wmonAmount.toString();
+
+    const amount0Desired = token0.address === moonToken.address ? moonAmountStr : wmonAmountStr;
+    const amount1Desired = token0.address === moonToken.address ? wmonAmountStr : moonAmountStr;
 
     const position = Position.fromAmounts({
       pool,

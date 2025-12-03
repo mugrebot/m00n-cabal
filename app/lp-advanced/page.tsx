@@ -17,7 +17,7 @@ import { formatUnits } from 'viem';
 import sdk from '@farcaster/miniapp-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-type BandMode = 'sky' | 'crash';
+type DepositAsset = 'moon' | 'wmon';
 type BandSide = 'single' | 'double';
 type DeployState = 'idle' | 'building' | 'success' | 'error';
 
@@ -100,7 +100,8 @@ function formatUsd(value?: number | null) {
 }
 
 function generateMockSeries(anchor: number | null): ChartPoint[] {
-  const base = anchor && anchor > 0 ? anchor : 50_000;
+  const finalValue = anchor && anchor > 0 ? anchor : 50_000;
+  const base = finalValue || 50_000;
   const points: ChartPoint[] = [];
   let value = base * 0.85;
   for (let i = 0; i < HISTORY_POINTS; i += 1) {
@@ -108,6 +109,11 @@ function generateMockSeries(anchor: number | null): ChartPoint[] {
     const noise = (Math.random() - 0.5) * base * 0.01;
     value = Math.max(base * 0.35, Math.min(base * 1.8, value + drift + noise));
     points.push({ x: i, y: value });
+  }
+  if (points.length) {
+    points[points.length - 1] = { x: HISTORY_POINTS - 1, y: finalValue };
+  } else {
+    points.push({ x: 0, y: finalValue });
   }
   return points;
 }
@@ -294,12 +300,14 @@ function AdvancedLpContent() {
     token: TOKEN_WMON_ADDRESS
   });
 
-  const [bandMode, setBandMode] = useState<BandMode>('sky');
   const [bandSide, setBandSide] = useState<BandSide>('single');
+  const [depositAsset, setDepositAsset] = useState<DepositAsset>('moon');
   const [rangeLowerUsd, setRangeLowerUsd] = useState('');
   const [rangeUpperUsd, setRangeUpperUsd] = useState('');
   const [rangeTouched, setRangeTouched] = useState(false);
-  const [amountInput, setAmountInput] = useState('');
+  const [singleAmount, setSingleAmount] = useState('');
+  const [doubleMoonAmount, setDoubleMoonAmount] = useState('');
+  const [doubleWmonAmount, setDoubleWmonAmount] = useState('');
   const [status, setStatus] = useState<DeployState>('idle');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -307,8 +315,22 @@ function AdvancedLpContent() {
   const [marketLoading, setMarketLoading] = useState(true);
   const [marketError, setMarketError] = useState<string | null>(null);
 
-  const marketUsdPrice = marketState?.moonUsdPrice ?? null;
-  const chartSeries = useMemo(() => generateMockSeries(marketUsdPrice), [marketUsdPrice]);
+  const moonSpotUsd = useMemo(() => {
+    if (marketState?.moonUsdPrice && marketState.moonUsdPrice > 0) {
+      return marketState.moonUsdPrice;
+    }
+    if (
+      marketState &&
+      typeof marketState.tick === 'number' &&
+      marketState.wmonUsdPrice &&
+      marketState.wmonUsdPrice > 0
+    ) {
+      return Math.pow(1.0001, marketState.tick) * marketState.wmonUsdPrice;
+    }
+    return null;
+  }, [marketState]);
+
+  const chartSeries = useMemo(() => generateMockSeries(moonSpotUsd), [moonSpotUsd]);
 
   const renderShell = useCallback(
     (children: ReactNode) => (
@@ -390,14 +412,11 @@ function AdvancedLpContent() {
   }, []);
 
   useEffect(() => {
-    if (!marketUsdPrice || rangeTouched) return;
-    const [low, high] =
-      bandMode === 'sky'
-        ? [marketUsdPrice * 1.2, marketUsdPrice * 4.5]
-        : [marketUsdPrice * 0.35, marketUsdPrice * 0.95];
-    setRangeLowerUsd(low.toFixed(0));
-    setRangeUpperUsd(high.toFixed(0));
-  }, [bandMode, marketUsdPrice, rangeTouched]);
+    if (!moonSpotUsd || rangeTouched) return;
+    const pad = 0.2;
+    setRangeLowerUsd((moonSpotUsd * (1 - pad)).toFixed(0));
+    setRangeUpperUsd((moonSpotUsd * (1 + pad)).toFixed(0));
+  }, [moonSpotUsd, rangeTouched]);
 
   const parsedLower = Number(rangeLowerUsd);
   const parsedUpper = Number(rangeUpperUsd);
@@ -411,15 +430,9 @@ function AdvancedLpContent() {
   const rangeError = useMemo(() => {
     if (!hasValidRange || rangeMin === null || rangeMax === null) return 'Enter both USD bounds.';
     if (rangeMin === rangeMax) return 'Bounds must differ.';
-    if (!marketUsdPrice) return null;
-    if (bandMode === 'sky' && rangeMin <= marketUsdPrice) {
-      return 'Sky ladders must start above current market cap.';
-    }
-    if (bandMode === 'crash' && rangeMax >= marketUsdPrice) {
-      return 'Crash backstops must sit below spot.';
-    }
+    if (rangeMin <= 0) return 'Bounds must be positive.';
     return null;
-  }, [bandMode, hasValidRange, rangeMin, rangeMax, marketUsdPrice]);
+  }, [hasValidRange, rangeMin, rangeMax]);
 
   const preview = useMemo(() => {
     if (!marketState || marketState.wmonUsdPrice === null) return null;
@@ -446,15 +459,23 @@ function AdvancedLpContent() {
       setStatusMessage('Connect a wallet on Monad first.');
       return;
     }
-    if (bandSide !== 'single') {
-      setStatus('error');
-      setStatusMessage('Double-sided deployment is coming soon.');
-      return;
-    }
-    if (!amountInput || Number(amountInput) <= 0) {
-      setStatus('error');
-      setStatusMessage('Enter a positive deposit amount.');
-      return;
+    if (bandSide === 'single') {
+      if (!singleAmount || Number(singleAmount) <= 0) {
+        setStatus('error');
+        setStatusMessage('Enter a positive deposit amount.');
+        return;
+      }
+    } else {
+      if (!doubleMoonAmount || Number(doubleMoonAmount) <= 0) {
+        setStatus('error');
+        setStatusMessage('Enter a positive m00n deposit.');
+        return;
+      }
+      if (!doubleWmonAmount || Number(doubleWmonAmount) <= 0) {
+        setStatus('error');
+        setStatusMessage('Enter a positive W-MON deposit.');
+        return;
+      }
     }
     if (rangeMin === null || rangeMax === null || rangeError) {
       setStatus('error');
@@ -467,22 +488,30 @@ function AdvancedLpContent() {
       setStatusMessage('Building calldata with V4 PositionManager…');
       setTxHash(null);
 
+      const payload: Record<string, unknown> = {
+        recipient: address,
+        side: bandSide,
+        rangeLowerUsd: rangeMin,
+        rangeUpperUsd: rangeMax
+      };
+
+      if (bandSide === 'single') {
+        payload.singleDepositAsset = depositAsset;
+        payload.singleAmount = singleAmount;
+      } else {
+        payload.doubleMoonAmount = doubleMoonAmount;
+        payload.doubleWmonAmount = doubleWmonAmount;
+      }
+
       const response = await fetch('/api/lp-advanced', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          recipient: address,
-          amount: amountInput,
-          mode: bandMode,
-          side: bandSide,
-          rangeLowerUsd: rangeMin,
-          rangeUpperUsd: rangeMax
-        })
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.error ?? 'lp_advanced_failed');
+        const responsePayload = await response.json().catch(() => ({}));
+        throw new Error(responsePayload.error ?? 'lp_advanced_failed');
       }
 
       const { to, data, value } = (await response.json()) as {
@@ -507,7 +536,18 @@ function AdvancedLpContent() {
       setStatus('error');
       setStatusMessage(error instanceof Error ? error.message : 'Unable to deploy band right now.');
     }
-  }, [address, walletClient, bandSide, amountInput, rangeMin, rangeMax, rangeError, bandMode]);
+  }, [
+    address,
+    walletClient,
+    bandSide,
+    singleAmount,
+    doubleMoonAmount,
+    doubleWmonAmount,
+    rangeMin,
+    rangeMax,
+    rangeError,
+    depositAsset
+  ]);
 
   const moonBalanceDisplay = formatTokenBalance(
     moonBalance.data?.value,
@@ -581,17 +621,13 @@ function AdvancedLpContent() {
     <>
       <header className="space-y-3 text-center">
         <p className="pixel-font text-xs tracking-[0.4em] text-[var(--moss-green)] uppercase">
-          LP Lab
+          ADVANCED LP
         </p>
-        <h1 className="text-3xl sm:text-4xl font-semibold">Advanced Single-Sided Deployment</h1>
-        <p className="text-sm text-white/80 max-w-2xl mx-auto">
-          Sculpt bespoke m00n / W-MON sigils with human-friendly controls. Set ranges in USD,
-          preview the orbit, then mint direct to Monad with one transaction.
-        </p>
+        <h1 className="text-3xl sm:text-4xl font-semibold">Advanced LP Lab</h1>
         <div className="flex flex-wrap gap-3 justify-center text-xs text-white/70">
           <span className="px-3 py-1 rounded-full border border-white/15">Monad chain #143</span>
           <span className="px-3 py-1 rounded-full border border-white/15">
-            Single-sided (LP-only)
+            Single + double sided bands
           </span>
           <Link
             href="/miniapp"
@@ -633,7 +669,7 @@ function AdvancedLpContent() {
             </div>
             <div>
               <p className="opacity-60">m00n price</p>
-              <p className="font-mono text-lg">{formatUsd(marketUsdPrice)}</p>
+              <p className="font-mono text-lg">{formatUsd(moonSpotUsd)}</p>
             </div>
             <div>
               <p className="opacity-60">W-MON price</p>
@@ -703,66 +739,23 @@ function AdvancedLpContent() {
             </div>
           )}
         </article>
-
-        <article className="lunar-card space-y-3 text-sm text-white/80">
-          <p className="lunar-heading">Checklist</p>
-          <ul className="space-y-2">
-            <li>• Single-sided deployment only. Double-sided coming soon.</li>
-            <li>• Calldata built with Uniswap V4 PositionManager.</li>
-            <li>• Gas and slippage guardrails baked in (5% tolerance).</li>
-            <li>• Keep a margin of MON for gas on Monad.</li>
-          </ul>
-        </article>
       </section>
 
       <section className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-5">
           <RangeChart
             series={chartSeries}
-            currentUsd={marketUsdPrice}
+            currentUsd={moonSpotUsd}
             lowerUsd={rangeMin}
             upperUsd={rangeMax}
           />
           <p className="text-xs text-white/70 text-center">
-            Yellow trace = live m00n price. Shaded ribbon shows where your sigil will orbit once
-            deployed.
+            Yellow trace = simulated m00n price anchored to spot. The ribbon highlights the USD band
+            you&apos;re about to mint.
           </p>
         </div>
 
         <div className="lunar-card space-y-6">
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setBandMode('sky');
-                setRangeTouched(false);
-              }}
-              className={`rounded-2xl border px-4 py-3 text-left transition ${
-                bandMode === 'sky'
-                  ? 'border-[var(--moss-green)] bg-[var(--moss-green)]/15'
-                  : 'border-white/15 hover:bg-white/5'
-              }`}
-            >
-              <p className="font-semibold">Sky ladder</p>
-              <p className="text-xs text-white/70">m00n-only. Range above spot.</p>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setBandMode('crash');
-                setRangeTouched(false);
-              }}
-              className={`rounded-2xl border px-4 py-3 text-left transition ${
-                bandMode === 'crash'
-                  ? 'border-[#fdd65b] bg-[#fdd65b]/10'
-                  : 'border-white/15 hover:bg-white/5'
-              }`}
-            >
-              <p className="font-semibold">Crash backstop</p>
-              <p className="text-xs text-white/70">WMON-only. Range below spot.</p>
-            </button>
-          </div>
-
           <div className="flex gap-2">
             <button
               type="button"
@@ -777,45 +770,135 @@ function AdvancedLpContent() {
             </button>
             <button
               type="button"
-              disabled
-              className="flex-1 rounded-full border px-4 py-2 text-xs tracking-[0.3em] border-white/15 text-white/40"
+              className={`flex-1 rounded-full border px-4 py-2 text-xs tracking-[0.3em] ${
+                bandSide === 'double' ? 'border-[#fdd65b] bg-[#fdd65b]/10' : 'border-white/15'
+              }`}
+              onClick={() => setBandSide('double')}
             >
-              DOUBLE (SOON)
+              DOUBLE-SIDED
             </button>
           </div>
 
-          <div className="space-y-2">
-            <label className="lunar-heading">
-              Deposit amount ({bandMode === 'sky' ? 'm00n' : 'W-MON'})
-            </label>
-            <input
-              type="number"
-              min="0"
-              step="any"
-              value={amountInput}
-              onChange={(event) => setAmountInput(event.target.value)}
-              placeholder="e.g. 1,000,000"
-              className="w-full rounded-2xl border border-white/20 bg-black/40 px-4 py-3 text-lg font-mono focus:outline-none focus:border-[var(--moss-green)]"
-            />
-            <div className="flex justify-between text-xs text-white/60">
-              <span>
-                Balance: {bandMode === 'sky' ? moonBalanceDisplay : wmonBalanceDisplay}{' '}
-                {bandMode === 'sky' ? 'm00n' : 'WMON'}
-              </span>
+          {bandSide === 'single' && (
+            <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  const formatted =
-                    bandMode === 'sky' ? moonBalance.data?.formatted : wmonBalance.data?.formatted;
-                  if (formatted) setAmountInput(formatted);
-                }}
-                className="text-[var(--moss-green)] hover:underline disabled:opacity-30"
-                disabled={!isConnected}
+                className={`flex-1 rounded-2xl border px-4 py-3 text-left transition ${
+                  depositAsset === 'moon'
+                    ? 'border-[var(--moss-green)] bg-[var(--moss-green)]/15'
+                    : 'border-white/15 hover:bg-white/5'
+                }`}
+                onClick={() => setDepositAsset('moon')}
               >
-                Max
+                <p className="font-semibold">Deposit m00n only</p>
+                <p className="text-xs text-white/70">Single-sided with upside exposure.</p>
+              </button>
+              <button
+                type="button"
+                className={`flex-1 rounded-2xl border px-4 py-3 text-left transition ${
+                  depositAsset === 'wmon'
+                    ? 'border-[#fdd65b] bg-[#fdd65b]/10'
+                    : 'border-white/15 hover:bg-white/5'
+                }`}
+                onClick={() => setDepositAsset('wmon')}
+              >
+                <p className="font-semibold">Deposit W-MON only</p>
+                <p className="text-xs text-white/70">Single-sided crash protection.</p>
               </button>
             </div>
-          </div>
+          )}
+
+          {bandSide === 'single' ? (
+            <div className="space-y-2">
+              <label className="lunar-heading">
+                Deposit amount ({depositAsset === 'moon' ? 'm00n' : 'W-MON'})
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={singleAmount}
+                onChange={(event) => setSingleAmount(event.target.value)}
+                placeholder="e.g. 1,000,000"
+                className="w-full rounded-2xl border border-white/20 bg-black/40 px-4 py-3 text-lg font-mono focus:outline-none focus:border-[var(--moss-green)]"
+              />
+              <div className="flex justify-between text-xs text-white/60">
+                <span>
+                  Balance: {depositAsset === 'moon' ? moonBalanceDisplay : wmonBalanceDisplay}{' '}
+                  {depositAsset === 'moon' ? 'm00n' : 'WMON'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const formatted =
+                      depositAsset === 'moon'
+                        ? moonBalance.data?.formatted
+                        : wmonBalance.data?.formatted;
+                    if (formatted) setSingleAmount(formatted);
+                  }}
+                  className="text-[var(--moss-green)] hover:underline disabled:opacity-30"
+                  disabled={!isConnected}
+                >
+                  Max
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="lunar-heading">m00n deposit</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={doubleMoonAmount}
+                  onChange={(event) => setDoubleMoonAmount(event.target.value)}
+                  placeholder="e.g. 500,000"
+                  className="w-full rounded-2xl border border-white/20 bg-black/40 px-4 py-3 text-lg font-mono focus:outline-none focus:border-[var(--moss-green)]"
+                />
+                <div className="flex justify-between text-xs text-white/60">
+                  <span>Balance: {moonBalanceDisplay} m00n</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (moonBalance.data?.formatted)
+                        setDoubleMoonAmount(moonBalance.data.formatted);
+                    }}
+                    className="text-[var(--moss-green)] hover:underline disabled:opacity-30"
+                    disabled={!isConnected}
+                  >
+                    Max
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="lunar-heading">W-MON deposit</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={doubleWmonAmount}
+                  onChange={(event) => setDoubleWmonAmount(event.target.value)}
+                  placeholder="e.g. 25"
+                  className="w-full rounded-2xl border border-white/20 bg-black/40 px-4 py-3 text-lg font-mono focus:outline-none focus:border-[var(--moss-green)]"
+                />
+                <div className="flex justify-between text-xs text-white/60">
+                  <span>Balance: {wmonBalanceDisplay} W-MON</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (wmonBalance.data?.formatted)
+                        setDoubleWmonAmount(wmonBalance.data.formatted);
+                    }}
+                    className="text-[var(--moss-green)] hover:underline disabled:opacity-30"
+                    disabled={!isConnected}
+                  >
+                    Max
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -848,8 +931,7 @@ function AdvancedLpContent() {
             </div>
           </div>
           <p className="text-xs text-white/60">
-            Tip: Sky ladders chase upside (above spot). Crash backstops defend downside (below
-            spot). Enter USD caps to match your thesis.
+            Tip: Start with the ±20% defaults, then tighten or widen the USD bounds before minting.
           </p>
           {rangeError && <p className="text-sm text-red-300">{rangeError}</p>}
 
