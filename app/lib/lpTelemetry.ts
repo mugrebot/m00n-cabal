@@ -33,15 +33,15 @@ export async function buildSolarSystemPayload(
 
 type BandType = 'crash_band' | 'upside_band' | 'in_range';
 
-const mapRangeToBand = (rangeStatus: 'below-range' | 'in-range' | 'above-range'): BandType => {
-  switch (rangeStatus) {
-    case 'below-range':
-      return 'upside_band';
-    case 'above-range':
-      return 'crash_band';
-    default:
-      return 'in_range';
-  }
+const classifyBandType = (position: LpPosition): BandType => {
+  const rangeStatus = position.rangeStatus ?? 'in-range';
+  if (rangeStatus === 'below-range') return 'upside_band';
+  if (rangeStatus === 'above-range') return 'crash_band';
+  const token0Value = position.notionalToken0 ?? 0;
+  const token1Value = position.notionalToken1 ?? 0;
+  if (token0Value > token1Value) return 'upside_band';
+  if (token1Value > token0Value) return 'crash_band';
+  return 'in_range';
 };
 
 const tickToPrice = (tick: number) => Math.pow(1.0001, tick);
@@ -93,7 +93,7 @@ export async function buildLeaderboardSnapshot(): Promise<LeaderboardSnapshot> {
       : null;
 
   const entries = positions.map((position) => {
-    const bandType = mapRangeToBand(position.rangeStatus ?? 'in-range');
+    const bandType = classifyBandType(position);
     const specialLabel = position.isClankerPool ? SPECIAL_CLANKER_LABEL : null;
     const ownerLabel = specialLabel ?? getAddressLabel(position.owner);
 
