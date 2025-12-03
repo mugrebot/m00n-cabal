@@ -92,10 +92,21 @@ function formatTokenBalance(value?: bigint, decimals = 18) {
 
 function formatUsd(value?: number | null) {
   if (value === undefined || value === null || Number.isNaN(value)) return '$0.00';
+  let digits = 2;
+  if (value >= 100) {
+    digits = 0;
+  } else if (value >= 1) {
+    digits = 2;
+  } else if (value >= 0.01) {
+    digits = 4;
+  } else {
+    digits = 6;
+  }
   return value.toLocaleString('en-US', {
     style: 'currency',
     currency: 'USD',
-    maximumFractionDigits: value >= 100 ? 0 : 2
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits
   });
 }
 
