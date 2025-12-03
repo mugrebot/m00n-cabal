@@ -277,13 +277,11 @@ function AdvancedLpContent() {
 
   const moonBalance = useBalance({
     address,
-    token: TOKEN_MOON_ADDRESS,
-    enabled: Boolean(address)
+    token: TOKEN_MOON_ADDRESS
   });
   const wmonBalance = useBalance({
     address,
-    token: TOKEN_WMON_ADDRESS,
-    enabled: Boolean(address)
+    token: TOKEN_WMON_ADDRESS
   });
 
   const [bandMode, setBandMode] = useState<BandMode>('sky');
