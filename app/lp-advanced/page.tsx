@@ -51,21 +51,21 @@ const monadChain = {
   }
 };
 
-const createConnectors = () =>
+const connectors =
   typeof window === 'undefined'
     ? []
-    : [
+    : ([
         metaMask(),
         injected({ shimDisconnect: true }),
         coinbaseWallet({
           appName: 'm00n advanced LP',
           jsonRpcUrl: monadChain.rpcUrls.default.http[0]!
         })
-      ];
+      ] as const);
 
 const wagmiConfig = createConfig({
   chains: [monadChain],
-  connectors: createConnectors,
+  connectors,
   transports: {
     [monadChain.id]: http(monadChain.rpcUrls.default.http[0]!)
   }
