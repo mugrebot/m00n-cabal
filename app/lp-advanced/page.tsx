@@ -250,15 +250,8 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
         </>
       )}
 
-      <text
-        x={16}
-        y={24}
-        fontSize="11"
-        letterSpacing="0.3em"
-        textTransform="uppercase"
-        fill="rgba(255,255,255,0.6)"
-      >
-        price of m00n
+      <text x={16} y={24} fontSize="11" letterSpacing="0.3em" fill="rgba(255,255,255,0.6)">
+        PRICE OF M00N
       </text>
     </svg>
   );
