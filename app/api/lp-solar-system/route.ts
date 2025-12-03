@@ -15,11 +15,6 @@ const withLabels = (payload: SolarSystemPayload): SolarSystemPayload => ({
   }))
 });
 
-const formatResponse = (payload: SolarSystemPayload, limit: number) => ({
-  updatedAt: payload.updatedAt,
-  positions: payload.positions.slice(0, limit)
-});
-
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const limitParam = Number(searchParams.get('limit') ?? `${SOLAR_DEFAULT_LIMIT}`);
@@ -48,11 +43,18 @@ export async function GET(request: NextRequest) {
 
     const enrichedPayload = withLabels(payload);
 
-    return NextResponse.json(formatResponse(enrichedPayload, limit), {
-      headers: {
-        'Cache-Control': 's-maxage=60, stale-while-revalidate=300'
+    return NextResponse.json(
+      {
+        updatedAt: enrichedPayload.updatedAt,
+        positions: enrichedPayload.positions,
+        limit
+      },
+      {
+        headers: {
+          'Cache-Control': 's-maxage=60, stale-while-revalidate=300'
+        }
       }
-    });
+    );
   } catch (error) {
     console.error('[lp-solar-system] failed to serve snapshot', error);
     return NextResponse.json({ error: 'lp_solar_system_failed' }, { status: 500 });
