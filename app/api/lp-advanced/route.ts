@@ -140,8 +140,8 @@ export async function POST(request: NextRequest) {
       tickUpper = tickLower + TICK_SPACING;
     }
 
-    let moonAmount = 0n;
-    let wmonAmount = 0n;
+    let moonAmount = BigInt(0);
+    let wmonAmount = BigInt(0);
 
     if (side === 'single') {
       if (singleDepositAsset === 'moon') {
