@@ -158,6 +158,16 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
     return max * 1.08;
   }, [series, currentUsd, lowerUsd, upperUsd]);
 
+  const [stars] = useState(() => {
+    return [...Array(40)].map((_, i) => ({
+      id: i,
+      x: Math.random(),
+      y: Math.random(),
+      size: Math.random() > 0.8 ? 2 : 1,
+      opacity: Math.random() * 0.5 + 0.1
+    }));
+  });
+
   const scaleY = useCallback(
     (value: number) => {
       const clamped = Math.min(Math.max(value, minValue), maxValue);
@@ -196,15 +206,20 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      className="w-full rounded-[32px] border border-white/10 bg-gradient-to-b from-[#090512] to-[#05030b] p-4"
+      className="w-full rounded-[32px] border border-white/10 bg-[#000000] p-4 relative overflow-hidden"
+      style={{
+        backgroundImage:
+          'radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.03) 1px, transparent 1px), radial-gradient(circle at 80% 40%, rgba(255, 255, 255, 0.03) 1px, transparent 1px), radial-gradient(circle at 40% 70%, rgba(255, 255, 255, 0.03) 1px, transparent 1px), radial-gradient(circle at 90% 10%, rgba(255, 255, 255, 0.03) 1px, transparent 1px)',
+        backgroundSize: '120px 120px'
+      }}
     >
       <defs>
         <linearGradient id="telemetryLine" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#fdd65b" />
-          <stop offset="100%" stopColor="#6ce5b1" />
+          <stop offset="100%" stopColor="#fdd65b" />
         </linearGradient>
         <filter id="glow">
-          <feGaussianBlur stdDeviation="3.5" result="coloredBlur" />
+          <feGaussianBlur stdDeviation="2.5" result="coloredBlur" />
           <feMerge>
             <feMergeNode in="coloredBlur" />
             <feMergeNode in="SourceGraphic" />
@@ -212,92 +227,98 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
         </filter>
       </defs>
 
-      <rect width={width} height={height} rx="28" fill="url(#telemetryGrid)" opacity="0.1" />
+      {stars.map((star) => (
+        <rect
+          key={star.id}
+          x={star.x * width}
+          y={star.y * height}
+          width={star.size}
+          height={star.size}
+          fill="white"
+          opacity={star.opacity}
+        />
+      ))}
 
       {hasRange && upperY !== null && lowerY !== null && (
-        <rect
-          x={scaleX(0)}
-          y={Math.min(upperY, lowerY)}
-          width={width}
-          height={Math.abs(lowerY - upperY) || 2}
-          fill="rgba(108,229,177,0.08)"
-          stroke="rgba(108,229,177,0.35)"
-          strokeDasharray="6 8"
-        />
+        <>
+          <line
+            x1={spotX ?? scaleX(series.length - 1)}
+            x2={spotX ?? scaleX(series.length - 1) + 60}
+            y1={upperY}
+            y2={upperY}
+            stroke="#4a6bfa"
+            strokeWidth={1}
+          />
+          <line
+            x1={spotX ?? scaleX(series.length - 1) + 60}
+            x2={spotX ?? scaleX(series.length - 1) + 60}
+            y1={upperY - 5}
+            y2={upperY + 5}
+            stroke="#4a6bfa"
+            strokeWidth={1}
+          />
+          <text
+            x={spotX ?? scaleX(series.length - 1) + 65}
+            y={upperY + 4}
+            fill="white"
+            fontSize="10"
+            fontFamily="monospace"
+          >
+            {formatUsd(upperValue!).replace('$', '')}
+          </text>
+
+          <line
+            x1={spotX ?? scaleX(series.length - 1)}
+            x2={spotX ?? scaleX(series.length - 1) + 60}
+            y1={lowerY}
+            y2={lowerY}
+            stroke="#4a6bfa"
+            strokeWidth={1}
+          />
+          <line
+            x1={spotX ?? scaleX(series.length - 1) + 60}
+            x2={spotX ?? scaleX(series.length - 1) + 60}
+            y1={lowerY - 5}
+            y2={lowerY + 5}
+            stroke="#4a6bfa"
+            strokeWidth={1}
+          />
+          <text
+            x={spotX ?? scaleX(series.length - 1) + 65}
+            y={lowerY + 4}
+            fill="white"
+            fontSize="10"
+            fontFamily="monospace"
+          >
+            {formatUsd(lowerValue!).replace('$', '')}
+          </text>
+
+          {/* Vertical bracket connecting range */}
+          <line
+            x1={spotX ?? scaleX(series.length - 1) + 40}
+            x2={spotX ?? scaleX(series.length - 1) + 40}
+            y1={upperY}
+            y2={lowerY}
+            stroke="#4a6bfa"
+            strokeWidth={1}
+            strokeDasharray="4 4"
+          />
+        </>
       )}
 
       <path
         d={pathD}
         fill="none"
         stroke="url(#telemetryLine)"
-        strokeWidth={4}
+        strokeWidth={3}
         strokeLinecap="round"
         filter="url(#glow)"
       />
 
       {spotX !== null && spotY !== null && (
         <g>
-          <line
-            x1={spotX}
-            x2={spotX}
-            y1={spotY}
-            y2={height}
-            stroke="rgba(255,255,255,0.25)"
-            strokeDasharray="2 6"
-          />
-          <circle cx={spotX} cy={spotY} r={7} fill="#fdd65b" stroke="#ffffff" strokeWidth={2} />
-          <text
-            x={spotX - 14}
-            y={Math.min(Math.max(spotY + 4, 16), height - 10)}
-            textAnchor="end"
-            fontFamily="var(--font-sans)"
-            fontSize="12"
-            fill="#fdd65b"
-          >
-            {formatUsd(currentUsd)}
-          </text>
+          <circle cx={spotX} cy={spotY} r={6} fill="#fdd65b" stroke="none" />
         </g>
-      )}
-
-      {hasRange && upperY !== null && lowerY !== null && (
-        <>
-          <line
-            x1={scaleX(0)}
-            x2={scaleX(series.length - 1)}
-            y1={upperY}
-            y2={upperY}
-            stroke="rgba(255,255,255,0.12)"
-            strokeDasharray="4 6"
-          />
-          <line
-            x1={scaleX(0)}
-            x2={scaleX(series.length - 1)}
-            y1={lowerY}
-            y2={lowerY}
-            stroke="rgba(255,255,255,0.12)"
-            strokeDasharray="4 6"
-          />
-          <text
-            x={width - 12}
-            y={upperY - 6}
-            textAnchor="end"
-            className="fill-white"
-            fontSize="11"
-            fontFamily="var(--font-sans)"
-          >
-            Upper {formatUsd(upperValue!)}
-          </text>
-          <text
-            x={width - 12}
-            y={lowerY + 18}
-            textAnchor="end"
-            fontFamily="var(--font-sans)"
-            fontSize="11"
-            fill="rgba(255,255,255,0.65)"
-          >
-            Lower {formatUsd(lowerValue!)}
-          </text>
-        </>
       )}
     </svg>
   );
@@ -737,11 +758,24 @@ function AdvancedLpContent() {
       <section className="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="space-y-4">
           <div className="relative">
+            <div className="absolute top-4 left-4 z-20 pointer-events-none">
+              <div className="border border-[#fdd65b] bg-[#fdd65b]/10 px-3 py-2 max-w-[200px]">
+                <p className="text-[10px] text-[#fdd65b] leading-tight">
+                  example -- current tick = {marketState?.tick ?? '-10400'} and corresponds to m00n
+                  mkt cap = {formatUsd(moonMarketCapUsd)}
+                </p>
+              </div>
+            </div>
+
+            <div className="absolute top-[-40px] -right-8 z-20 pointer-events-none scale-75">
+              <img src="/assets/m00nsvg.svg" alt="m00n" className="w-32 h-32 opacity-90" />
+            </div>
+
             <p
-              className="absolute -left-8 top-1/2 -translate-y-1/2 -rotate-90 text-xs tracking-[0.2em] text-[var(--moss-green)] origin-center whitespace-nowrap hidden sm:block"
-              style={{ textShadow: '0 0 10px rgba(108, 229, 177, 0.5)' }}
+              className="absolute -left-8 top-1/2 -translate-y-1/2 -rotate-90 text-xs tracking-[0.2em] text-[#fdd65b] origin-center whitespace-nowrap hidden sm:block font-bold"
+              style={{ textShadow: '0 0 10px rgba(253, 214, 91, 0.5)' }}
             >
-              PRICE OF M00N
+              Price of m00n
             </p>
             <RangeChart
               series={chartSeries}
@@ -807,38 +841,64 @@ function AdvancedLpContent() {
         </div>
 
         <div className="space-y-6">
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className={`flex-1 rounded-full border px-2 py-3 text-[10px] tracking-[0.2em] font-bold uppercase transition ${
-                bandSide === 'single'
-                  ? 'border-white bg-white text-black'
-                  : 'border-white/20 text-white/60 hover:bg-white/5'
-              }`}
-              onClick={() => {
-                setBandSide('single');
-                setRangeTouched(false);
-              }}
-            >
-              <span className="block sm:inline">○ Single</span> Sided
-            </button>
-            <button
-              type="button"
-              className={`flex-1 rounded-full border px-2 py-3 text-[10px] tracking-[0.2em] font-bold uppercase transition ${
-                bandSide === 'double'
-                  ? 'border-white bg-white text-black'
-                  : 'border-white/20 text-white/60 hover:bg-white/5'
-              }`}
-              onClick={() => {
-                setBandSide('double');
-                setRangeTouched(false);
-              }}
-            >
-              <span className="block sm:inline">● Double</span> Sided
-            </button>
+          <div>
+            <label className="lunar-heading text-[var(--moss-green)] text-lg block mb-4">
+              Input LP
+            </label>
+            <div className="space-y-4">
+              <button
+                type="button"
+                className="flex items-start gap-3 w-full text-left group"
+                onClick={() => {
+                  setBandSide('single');
+                  setRangeTouched(false);
+                }}
+              >
+                <div
+                  className={`mt-1 w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                    bandSide === 'single'
+                      ? 'border-white bg-white'
+                      : 'border-white/40 group-hover:border-white'
+                  }`}
+                >
+                  {bandSide === 'single' && <div className="w-2 h-2 rounded-full bg-black" />}
+                </div>
+                <div>
+                  <p className="font-bold text-sm uppercase tracking-wider">single sided</p>
+                  <p className="text-xs text-white/50 font-mono mt-1">
+                    (requires only m00n or wmon)
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                className="flex items-start gap-3 w-full text-left group"
+                onClick={() => {
+                  setBandSide('double');
+                  setRangeTouched(false);
+                }}
+              >
+                <div
+                  className={`mt-1 w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                    bandSide === 'double'
+                      ? 'border-white bg-white'
+                      : 'border-white/40 group-hover:border-white'
+                  }`}
+                >
+                  {bandSide === 'double' && <div className="w-2 h-2 rounded-full bg-black" />}
+                </div>
+                <div>
+                  <p className="font-bold text-sm uppercase tracking-wider">double-sided</p>
+                  <p className="text-xs text-white/50 font-mono mt-1">
+                    (requires both m00n + wmon depending on range set)
+                  </p>
+                </div>
+              </button>
+            </div>
           </div>
 
-          <div className="border border-red-500/40 bg-red-500/10 p-4 rounded-xl text-center space-y-1 relative overflow-hidden">
+          <div className="border border-red-500 bg-red-500/10 p-4 text-center space-y-1 relative overflow-hidden">
             <div
               className={`absolute inset-0 bg-red-500/5 pointer-events-none ${marketLoading ? 'animate-pulse' : ''}`}
             />
@@ -862,10 +922,9 @@ function AdvancedLpContent() {
           </div>
 
           <div className="space-y-2">
-            <label className="lunar-heading text-white/80">Set range (USD)</label>
-            <div className="space-y-3 bg-white/5 p-4 rounded-2xl border border-white/10">
+            <label className="lunar-heading text-white/80 text-center block">set range</label>
+            <div className="space-y-3 p-4 border border-[#4a6bfa] bg-transparent">
               <div className="flex items-center justify-between gap-4">
-                <span className="text-xs text-white/60 w-12">Min</span>
                 <input
                   type="number"
                   min="0"
@@ -875,13 +934,12 @@ function AdvancedLpContent() {
                     setRangeLowerUsd(event.target.value);
                     setRangeTouched(true);
                   }}
-                  className="flex-1 bg-transparent border-b border-white/20 py-1 text-right font-mono focus:outline-none focus:border-[var(--moss-green)]"
+                  className="flex-1 bg-white text-black py-2 px-3 text-right font-mono font-bold focus:outline-none"
                   placeholder="0.00"
                 />
-                <span className="text-xs text-white/40">USD</span>
+                <span className="text-xs text-white w-8 font-bold">usd</span>
               </div>
               <div className="flex items-center justify-between gap-4">
-                <span className="text-xs text-white/60 w-12">Max</span>
                 <input
                   type="number"
                   min="0"
@@ -891,20 +949,19 @@ function AdvancedLpContent() {
                     setRangeUpperUsd(event.target.value);
                     setRangeTouched(true);
                   }}
-                  className="flex-1 bg-transparent border-b border-white/20 py-1 text-right font-mono focus:outline-none focus:border-[var(--moss-green)]"
+                  className="flex-1 bg-white text-black py-2 px-3 text-right font-mono font-bold focus:outline-none"
                   placeholder="0.00"
                 />
-                <span className="text-xs text-white/40">USD</span>
+                <span className="text-xs text-white w-8 font-bold">usd</span>
               </div>
             </div>
             {rangeError && <p className="text-xs text-red-300 text-center">{rangeError}</p>}
           </div>
 
           <div className="space-y-2">
-            <label className="lunar-heading text-white/80">Amount</label>
-            <div className="space-y-3 bg-white/5 p-4 rounded-2xl border border-white/10">
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-xs text-white/60 w-12">m00n</span>
+            <label className="lunar-heading text-white/80 text-center block">amount</label>
+            <div className="space-y-3">
+              <div className="flex items-center justify-end gap-4">
                 <input
                   type="number"
                   min="0"
@@ -921,26 +978,13 @@ function AdvancedLpContent() {
                     if (bandSide === 'single') setSingleAmount(e.target.value);
                     else updateDoubleSidedAmounts('moon', e.target.value);
                   }}
-                  className="flex-1 bg-transparent border-b border-white/20 py-1 text-right font-mono focus:outline-none focus:border-[var(--moss-green)] disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="w-2/3 bg-white text-black py-2 px-3 text-right font-mono font-bold focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-white/50"
                   placeholder="0"
                 />
-                <button
-                  onClick={() => {
-                    if (bandSide === 'single' && depositAsset === 'moon' && moonBalance.data) {
-                      setSingleAmount(moonBalance.data.formatted);
-                    } else if (bandSide === 'double' && moonBalance.data) {
-                      updateDoubleSidedAmounts('moon', moonBalance.data.formatted);
-                    }
-                  }}
-                  disabled={!isConnected || (bandSide === 'single' && depositAsset !== 'wmon')}
-                  className="text-[10px] text-[var(--moss-green)] hover:underline"
-                >
-                  MAX
-                </button>
+                <span className="text-xs text-white w-12 font-bold">m00n</span>
               </div>
 
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-xs text-white/60 w-12">WMON</span>
+              <div className="flex items-center justify-end gap-4">
                 <input
                   type="number"
                   min="0"
@@ -957,35 +1001,37 @@ function AdvancedLpContent() {
                     if (bandSide === 'single') setSingleAmount(e.target.value);
                     else updateDoubleSidedAmounts('wmon', e.target.value);
                   }}
-                  className="flex-1 bg-transparent border-b border-white/20 py-1 text-right font-mono focus:outline-none focus:border-[var(--moss-green)] disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="w-2/3 bg-white text-black py-2 px-3 text-right font-mono font-bold focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-white/50"
                   placeholder="0"
                 />
-                <button
-                  onClick={() => {
-                    if (bandSide === 'single' && depositAsset === 'wmon' && wmonBalance.data) {
-                      setSingleAmount(wmonBalance.data.formatted);
-                    } else if (bandSide === 'double' && wmonBalance.data) {
-                      updateDoubleSidedAmounts('wmon', wmonBalance.data.formatted);
-                    }
-                  }}
-                  disabled={!isConnected || (bandSide === 'single' && depositAsset !== 'moon')}
-                  className="text-[10px] text-[var(--moss-green)] hover:underline"
-                >
-                  MAX
-                </button>
+                <span className="text-xs text-white w-12 font-bold">wmon</span>
               </div>
             </div>
+
+            <p className="text-[10px] text-white/60 leading-relaxed border border-white/20 p-2 mt-4">
+              the amount will calculate the other side based on the range set; depending on the
+              range we will disable one or the other, or allow a user to input one and calculate the
+              other required for a double sided position.
+            </p>
 
             {bandSide === 'single' && (
               <div className="flex gap-2 justify-center text-xs mt-2">
                 <button
-                  className={`px-3 py-1 rounded-full border ${depositAsset === 'moon' ? 'border-[var(--moss-green)] text-[var(--moss-green)]' : 'border-white/20 text-white/40'}`}
+                  className={`px-3 py-1 border ${
+                    depositAsset === 'moon'
+                      ? 'border-[var(--moss-green)] text-[var(--moss-green)]'
+                      : 'border-white/20 text-white/40'
+                  }`}
                   onClick={() => setDepositAsset('moon')}
                 >
                   Input m00n
                 </button>
                 <button
-                  className={`px-3 py-1 rounded-full border ${depositAsset === 'wmon' ? 'border-[var(--moss-green)] text-[var(--moss-green)]' : 'border-white/20 text-white/40'}`}
+                  className={`px-3 py-1 border ${
+                    depositAsset === 'wmon'
+                      ? 'border-[var(--moss-green)] text-[var(--moss-green)]'
+                      : 'border-white/20 text-white/40'
+                  }`}
                   onClick={() => setDepositAsset('wmon')}
                 >
                   Input WMON
