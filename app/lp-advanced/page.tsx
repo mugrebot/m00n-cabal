@@ -864,10 +864,6 @@ function AdvancedLpContent() {
         </p>
         <h1 className="text-3xl sm:text-4xl font-semibold">Advanced LP Lab</h1>
         <div className="flex flex-wrap gap-3 justify-center text-xs text-white/70">
-          <span className="px-3 py-1 rounded-full border border-white/15">Monad chain #143</span>
-          <span className="px-3 py-1 rounded-full border border-white/15">
-            Single + double sided bands
-          </span>
           <Link
             href="/miniapp"
             className="px-3 py-1 rounded-full border border-white/15 hover:bg-white/10 transition"
@@ -1026,14 +1022,16 @@ function AdvancedLpContent() {
               className={`absolute inset-0 bg-red-500/5 pointer-events-none ${marketLoading ? 'animate-pulse' : ''}`}
             />
             <p className="relative text-[9px] uppercase tracking-widest text-red-300 font-semibold">
-              Current price of m00n (USD)
+              Current m00n market cap (USD)
             </p>
             {marketError ? (
               <p className="relative text-xs text-red-300 py-2">Telemetry unavailable</p>
             ) : (
               <>
                 <p className="relative text-2xl font-mono text-white drop-shadow-lg">
-                  {marketLoading && !moonSpotPriceUsd ? 'Syncing…' : formatUsd(moonSpotPriceUsd)}
+                  {marketLoading && !moonSpotPriceUsd
+                    ? 'Syncing…'
+                    : formatUsd((moonSpotPriceUsd ?? 0) * 100_000_000_000)}
                 </p>
                 {marketState && (
                   <p className="relative text-[10px] text-white/40 font-mono">
