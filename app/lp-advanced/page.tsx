@@ -24,7 +24,6 @@ import {
   http as viemHttp
 } from 'viem';
 import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector';
-import { metaMask, injected, coinbaseWallet } from 'wagmi/connectors';
 import { formatUnits } from 'viem';
 import sdk from '@farcaster/miniapp-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -85,29 +84,32 @@ const monadChain = {
   }
 };
 
-const connectors =
-  typeof window === 'undefined'
-    ? []
-    : ([
-        miniAppConnector(),
-        metaMask(),
-        injected({ shimDisconnect: true }),
-        coinbaseWallet({
-          appName: 'm00n advanced LP',
-          jsonRpcUrl: monadChain.rpcUrls.default.http[0]!
-        })
-      ] as const);
-
-const wagmiConfig = createConfig({
-  chains: [monadChain],
-  connectors,
-  transports: {
-    [monadChain.id]: http(monadChain.rpcUrls.default.http[0]!)
-  }
-});
+type MiniAppState = 'unknown' | 'desktop' | 'miniapp';
 
 const queryClient = new QueryClient();
 const MINIAPP_CONNECTOR_ID = 'farcasterMiniApp';
+
+async function buildConnectors(state: MiniAppState) {
+  const base = [miniAppConnector()];
+  if (typeof window === 'undefined') return base;
+  if (state !== 'desktop') return base;
+
+  try {
+    const { metaMask, injected, coinbaseWallet } = await import('wagmi/connectors');
+    return [
+      ...base,
+      metaMask(),
+      injected({ shimDisconnect: true }),
+      coinbaseWallet({
+        appName: 'm00n advanced LP',
+        jsonRpcUrl: monadChain.rpcUrls.default.http[0]!
+      })
+    ] as const;
+  } catch (error) {
+    console.warn('ADV_LP:desktop_connectors_failed', error);
+    return base;
+  }
+}
 
 const HISTORY_POINTS = 48;
 const MOON_CIRC_SUPPLY = 100_000_000_000; // market cap conversion factor
@@ -378,23 +380,92 @@ export default function LpAdvancedPage() {
 
   const privyConfig: PrivyProviderProps['config'] = {
     // createOnLogin is available in Privy but not yet reflected in our types
-     
+
     appearance: { theme: 'dark' }
   };
 
-  return (
-    <PrivyProvider appId={PRIVY_APP_ID} config={privyConfig}>
-      <WagmiProvider config={wagmiConfig}>
-        <QueryClientProvider client={queryClient}>
-          <AdvancedLpContent />
-        </QueryClientProvider>
-      </WagmiProvider>
-    </PrivyProvider>
-  );
+  return <LpAdvancedProviders privyConfig={privyConfig} />;
 }
 
-function AdvancedLpContent() {
-  const [miniAppState, setMiniAppState] = useState<'unknown' | 'desktop' | 'miniapp'>('unknown');
+function LpAdvancedProviders({ privyConfig }: { privyConfig: PrivyProviderProps['config'] }) {
+  const [miniAppState, setMiniAppState] = useState<MiniAppState>('unknown');
+  const [wagmiConfig, setWagmiConfig] = useState<ReturnType<typeof createConfig> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const init = async () => {
+      let state: MiniAppState = 'desktop';
+      try {
+        state = (await sdk.isInMiniApp()) ? 'miniapp' : 'desktop';
+      } catch (error) {
+        console.warn('ADV_LP:miniapp_detect_outer_failed', error);
+      }
+      if (cancelled) return;
+      setMiniAppState(state);
+
+      try {
+        const connectors = await buildConnectors(state);
+        if (cancelled) return;
+        setWagmiConfig(
+          createConfig({
+            chains: [monadChain],
+            connectors,
+            transports: {
+              [monadChain.id]: http(monadChain.rpcUrls.default.http[0]!)
+            }
+          })
+        );
+      } catch (error) {
+        console.error('ADV_LP:wagmi_config_failed', error);
+        if (!cancelled) {
+          setWagmiConfig(
+            createConfig({
+              chains: [monadChain],
+              connectors: [miniAppConnector()],
+              transports: {
+                [monadChain.id]: http(monadChain.rpcUrls.default.http[0]!)
+              }
+            })
+          );
+        }
+      }
+    };
+
+    void init();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!wagmiConfig || miniAppState === 'unknown') {
+    return (
+      <main className="min-h-screen bg-black text-white flex items-center justify-center">
+        <span className="text-sm text-white/80">Loading LP planner…</span>
+      </main>
+    );
+  }
+
+  const content = (
+    <WagmiProvider config={wagmiConfig}>
+      <QueryClientProvider client={queryClient}>
+        <AdvancedLpContent forcedMiniAppState={miniAppState} />
+      </QueryClientProvider>
+    </WagmiProvider>
+  );
+
+  if (miniAppState === 'desktop' && PRIVY_APP_ID) {
+    return (
+      <PrivyProvider appId={PRIVY_APP_ID} config={privyConfig}>
+        {content}
+      </PrivyProvider>
+    );
+  }
+
+  return content;
+}
+
+function AdvancedLpContent({ forcedMiniAppState }: { forcedMiniAppState?: MiniAppState }) {
+  const [miniAppState, setMiniAppState] = useState<MiniAppState>(forcedMiniAppState ?? 'unknown');
   const [viewerFid, setViewerFid] = useState<number | null>(null);
   const [miniAppError, setMiniAppError] = useState<string | null>(null);
   const [privyError, setPrivyError] = useState<string | null>(null);
@@ -565,6 +636,11 @@ function AdvancedLpContent() {
   );
 
   useEffect(() => {
+    if (forcedMiniAppState && forcedMiniAppState !== 'unknown') {
+      setMiniAppState(forcedMiniAppState);
+      return;
+    }
+
     let cancelled = false;
     const detectMiniApp = async () => {
       try {
@@ -601,7 +677,7 @@ function AdvancedLpContent() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [forcedMiniAppState]);
 
   useEffect(() => {
     let mounted = true;
