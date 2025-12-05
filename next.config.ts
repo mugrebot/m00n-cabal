@@ -8,7 +8,8 @@ const nextConfig: NextConfig = {
       config.resolve.alias = {
         ...(config.resolve.alias || {}),
         pino: false,
-        'thread-stream': false
+        'thread-stream': false,
+        '@react-native-async-storage/async-storage': false
       };
     }
     return config;

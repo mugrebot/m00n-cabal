@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -4344,7 +4345,9 @@ export default function MiniAppPage() {
   return (
     <QueryClientProvider client={queryClient}>
       <WagmiConfig config={wagmiConfig}>
-        <MiniAppPageInner />
+        <Suspense fallback={null}>
+          <MiniAppPageInner />
+        </Suspense>
       </WagmiConfig>
     </QueryClientProvider>
   );
