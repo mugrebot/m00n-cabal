@@ -1692,7 +1692,12 @@ function MiniAppPageInner() {
   };
 
   const handleOpenAdvancedLp = async () => {
-    await openExternalUrl(ADVANCED_LP_URL);
+    try {
+      await sdk.actions.openMiniApp({ url: ADVANCED_LP_URL });
+    } catch (err) {
+      console.warn('openMiniApp advanced LP failed, falling back to openUrl', err);
+      await openExternalUrl(ADVANCED_LP_URL);
+    }
   };
 
   const handleRetryLpStatus = () => {
