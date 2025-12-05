@@ -149,8 +149,7 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
     if (lowerUsd) candidates.push(lowerUsd);
     if (upperUsd) candidates.push(upperUsd);
     const min = Math.min(...candidates, 1);
-    // Drop the floor significantly to allow "moon" ranges to breathe on log scale
-    return Math.max(min * 0.2, 1);
+    return Math.max(min * 0.8, 1);
   }, [series, currentUsd, lowerUsd, upperUsd]);
 
   const maxValue = useMemo(() => {
@@ -159,8 +158,7 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
     if (lowerUsd) candidates.push(lowerUsd);
     if (upperUsd) candidates.push(upperUsd);
     const max = Math.max(...candidates, 1);
-    // Ensure generous top headroom to center the trace on log scale (counter-balance floor drop)
-    return max * 5;
+    return max * 1.2;
   }, [series, currentUsd, lowerUsd, upperUsd]);
 
   const scaleY = useCallback(
