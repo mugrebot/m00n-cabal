@@ -781,12 +781,12 @@ function AdvancedLpContent() {
               </div>
             </div>
 
-            <div className="absolute top-[-40px] -right-8 z-20 pointer-events-none scale-75">
+            <div className="absolute top-2 right-2 z-20 pointer-events-none scale-75">
               <img src="/assets/m00nsvg.svg" alt="m00n" className="w-32 h-32 opacity-90" />
             </div>
 
             <p
-              className="absolute -left-8 top-1/2 -translate-y-1/2 -rotate-90 text-xs tracking-[0.2em] text-[#fdd65b] origin-center whitespace-nowrap hidden sm:block font-bold"
+              className="absolute -left-8 top-1/2 -translate-y-1/2 -rotate-90 text-xs tracking-[0.2em] text-[#fdd65b] origin-center whitespace-nowrap hidden sm:block font-bold z-20"
               style={{ textShadow: '0 0 10px rgba(253, 214, 91, 0.5)' }}
             >
               Price of m00n
