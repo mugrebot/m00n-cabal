@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Token, Percent } from '@uniswap/sdk-core';
 import { Pool, Position, V4PositionManager } from '@uniswap/v4-sdk';
-import { Address, isAddress, parseUnits } from 'viem';
+import { Address, getAddress, isAddress, parseUnits } from 'viem';
 
 import { getCurrentPoolState } from '@/app/lib/uniswapV4Positions';
 import { getWmonUsdPriceFromSubgraph } from '@/app/lib/pricing/monadPrices';
 
-const POSITION_MANAGER_ADDRESS = '0x5b7eC4a94fF9beDb700fb82aB09d5846972F4016';
-const TOKEN_MOON_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
-const TOKEN_WMON_ADDRESS = '0x3bd359C1119dA7Da1d913d1C4D2b7C461115433A';
-const HOOK_ADDRESS = '0x94f802a9efe4dd542fdbd77a25d9e69a6dc828cc';
+const POSITION_MANAGER_ADDRESS = getAddress('0x5b7eC4a94fF9beDb700fb82aB09d5846972F4016');
+const TOKEN_MOON_ADDRESS = getAddress('0x22cd99ec337a2811f594340a4a6e41e4a3022b07');
+const TOKEN_WMON_ADDRESS = getAddress('0x3bd359C1119dA7Da1d913d1C4D2b7C461115433A');
+const HOOK_ADDRESS = getAddress('0x94f802a9efe4dd542fdbd77a25d9e69a6dc828cc');
 const FEE = 8_388_608;
 const TICK_SPACING = 200;
 const MONAD_CHAIN_ID = Number(process.env.MONAD_CHAIN_ID ?? 143);
