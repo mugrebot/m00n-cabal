@@ -402,6 +402,7 @@ function AdvancedLpContent() {
   });
 
   const [swapInFlight, setSwapInFlight] = useState<'moon' | 'wmon' | null>(null);
+  const [manualWmonBalance, setManualWmonBalance] = useState<bigint | null>(null);
 
   const handleSwapToken = useCallback(
     async (target: 'moon' | 'wmon') => {
@@ -800,9 +801,6 @@ function AdvancedLpContent() {
         }
       };
 
-      const allowanceMoon = moonAllowance.data ?? BigInt(0);
-      const allowanceWmon = wmonAllowance.data ?? BigInt(0);
-
       const withBuffer = (amount: bigint) =>
         amount <= BigInt(0)
           ? BigInt(0)
@@ -811,10 +809,9 @@ function AdvancedLpContent() {
       const approveWithPermit2 = async (
         tokenAddress: `0x${string}`,
         label: 'm00n' | 'WMON',
-        required: bigint,
-        currentAllowance: bigint
+        required: bigint
       ) => {
-        if (required <= BigInt(0) || required <= currentAllowance) return currentAllowance;
+        if (required <= BigInt(0)) return;
         setStatusMessage(`Approving ${label}…`);
 
         const buffered = withBuffer(required);
@@ -847,26 +844,10 @@ function AdvancedLpContent() {
           chain: walletClient.chain ?? undefined
         });
         await waitForReceipt(approvePermitTx);
-
-        return buffered;
       };
 
-      await approveWithPermit2(TOKEN_MOON_ADDRESS, 'm00n', neededMoon, allowanceMoon);
-      await approveWithPermit2(TOKEN_WMON_ADDRESS, 'WMON', neededWmon, allowanceWmon);
-
-      const [freshMoonAllowance, freshWmonAllowance] = await Promise.all([
-        moonAllowance.refetch?.(),
-        wmonAllowance.refetch?.()
-      ]);
-
-      const finalMoonAllowance = freshMoonAllowance?.data ?? allowanceMoon;
-      const finalWmonAllowance = freshWmonAllowance?.data ?? allowanceWmon;
-
-      if (neededMoon > finalMoonAllowance || neededWmon > finalWmonAllowance) {
-        setStatus('error');
-        setStatusMessage('Insufficient allowance after approval. Please retry.');
-        return;
-      }
+      await approveWithPermit2(TOKEN_MOON_ADDRESS, 'm00n', neededMoon);
+      await approveWithPermit2(TOKEN_WMON_ADDRESS, 'WMON', neededWmon);
 
       setStatusMessage('Submitting transaction…');
       const tx = await walletClient.sendTransaction({
@@ -907,8 +888,6 @@ function AdvancedLpContent() {
     rangeError,
     depositAsset,
     publicClient,
-    moonAllowance,
-    wmonAllowance,
     moonBalance,
     wmonBalance
   ]);
@@ -946,9 +925,10 @@ function AdvancedLpContent() {
     moonBalance.data?.value,
     moonBalance.data?.decimals
   );
+  const wmonDecimals = wmonBalance.data?.decimals ?? 18;
   const wmonBalanceDisplay = formatTokenBalance(
-    wmonBalance.data?.value,
-    wmonBalance.data?.decimals
+    manualWmonBalance ?? wmonBalance.data?.value,
+    wmonDecimals
   );
 
   useEffect(() => {
@@ -958,6 +938,30 @@ function AdvancedLpContent() {
     void moonAllowance.refetch?.();
     void wmonAllowance.refetch?.();
   }, [isConnected, moonBalance, wmonBalance, moonAllowance, wmonAllowance]);
+
+  // Manual W-MON balance read (in case wagmi balance is stale/zero)
+  useEffect(() => {
+    if (!address || !publicClient) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const bal = await publicClient.readContract({
+          address: TOKEN_WMON_ADDRESS,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [address]
+        });
+        if (!cancelled) {
+          setManualWmonBalance(bal as bigint);
+        }
+      } catch (err) {
+        console.warn('ADV_LP:manual_wmon_balance_failed', err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, publicClient, wmonBalance.data?.value]);
 
   if (miniAppState === 'unknown') {
     return renderShell(
