@@ -1097,7 +1097,7 @@ function AdvancedLpContent() {
                   <div>
                     <p className="opacity-60">W-MON balance</p>
                     <p className="font-mono text-lg">
-                      {wmonBalance.data ? wmonBalanceDisplay : '—'}
+                      {manualWmonBalance !== null || wmonBalance.data ? wmonBalanceDisplay : '—'}
                     </p>
                   </div>
                 </div>
