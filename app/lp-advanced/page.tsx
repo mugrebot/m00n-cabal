@@ -138,8 +138,11 @@ interface RangeChartProps {
 }
 
 function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps) {
-  const width = 640;
+  const width = 800;
   const height = 320;
+  const paddingRight = 200;
+  const chartWidth = width - paddingRight;
+
   const minValue = useMemo(() => {
     const candidates = series.map((point) => point.y);
     if (currentUsd) candidates.push(currentUsd);
@@ -164,12 +167,12 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
       const ratio = (clamped - minValue) / (maxValue - minValue || 1);
       return height - ratio * height;
     },
-    [minValue, maxValue]
+    [minValue, maxValue, height]
   );
 
   const scaleX = useCallback(
-    (index: number) => (index / Math.max(series.length - 1, 1)) * width,
-    [series.length, width]
+    (index: number) => (index / Math.max(series.length - 1, 1)) * chartWidth,
+    [series.length, chartWidth]
   );
 
   if (series.length === 0) {
@@ -193,6 +196,11 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
   const spotX = currentUsd ? scaleX(series.length - 1) : null;
   const spotY = currentUsd ? scaleY(currentUsd) : null;
 
+  // Bracket geometry
+  const bracketStartX = (spotX ?? scaleX(series.length - 1)) + 15;
+  const bracketEndX = bracketStartX + 60;
+  const textX = bracketEndX + 10;
+
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
@@ -214,62 +222,70 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
 
       {hasRange && upperY !== null && lowerY !== null && (
         <>
+          {/* Top bracket arm */}
           <line
-            x1={spotX ?? scaleX(series.length - 1)}
-            x2={spotX ?? scaleX(series.length - 1) + 60}
+            x1={bracketStartX}
+            x2={bracketEndX}
             y1={upperY}
             y2={upperY}
             stroke="#4a6bfa"
-            strokeWidth={1}
+            strokeWidth={2}
           />
+          {/* Top bracket serif */}
           <line
-            x1={spotX ?? scaleX(series.length - 1) + 60}
-            x2={spotX ?? scaleX(series.length - 1) + 60}
-            y1={upperY - 5}
-            y2={upperY + 5}
+            x1={bracketEndX}
+            x2={bracketEndX}
+            y1={upperY - 8}
+            y2={upperY + 8}
             stroke="#4a6bfa"
-            strokeWidth={1}
+            strokeWidth={2}
           />
+          {/* Top Label */}
           <text
-            x={spotX ?? scaleX(series.length - 1) + 65}
-            y={upperY + 4}
+            x={textX}
+            y={upperY + 5}
             fill="white"
-            fontSize="10"
+            fontSize="14"
+            fontWeight="bold"
             fontFamily="monospace"
           >
             {formatUsd(upperValue!).replace('$', '')}
           </text>
 
+          {/* Bottom bracket arm */}
           <line
-            x1={spotX ?? scaleX(series.length - 1)}
-            x2={spotX ?? scaleX(series.length - 1) + 60}
+            x1={bracketStartX}
+            x2={bracketEndX}
             y1={lowerY}
             y2={lowerY}
             stroke="#4a6bfa"
-            strokeWidth={1}
+            strokeWidth={2}
           />
+          {/* Bottom bracket serif */}
           <line
-            x1={spotX ?? scaleX(series.length - 1) + 60}
-            x2={spotX ?? scaleX(series.length - 1) + 60}
-            y1={lowerY - 5}
-            y2={lowerY + 5}
+            x1={bracketEndX}
+            x2={bracketEndX}
+            y1={lowerY - 8}
+            y2={lowerY + 8}
             stroke="#4a6bfa"
-            strokeWidth={1}
+            strokeWidth={2}
           />
+          {/* Bottom Label */}
           <text
-            x={spotX ?? scaleX(series.length - 1) + 65}
-            y={lowerY + 4}
+            x={textX}
+            y={lowerY + 5}
             fill="white"
-            fontSize="10"
+            fontSize="14"
+            fontWeight="bold"
             fontFamily="monospace"
           >
             {formatUsd(lowerValue!).replace('$', '')}
           </text>
 
-          {/* Vertical bracket connecting range */}
+          {/* Vertical connecting line */}
           <line
-            x1={spotX ?? scaleX(series.length - 1) + 40}
-            x2={spotX ?? scaleX(series.length - 1) + 40}
+            x1={bracketStartX + 40}
+            x2={bracketStartX + 40}
             y1={upperY}
             y2={lowerY}
             stroke="#4a6bfa"
