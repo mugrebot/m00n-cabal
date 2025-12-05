@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { PrivyProvider, usePrivy, useWallets, type PrivyProviderProps } from '@privy-io/react-auth';
+import { PrivyProvider, usePrivy, type PrivyProviderProps } from '@privy-io/react-auth';
 import {
   WagmiProvider,
   createConfig,
@@ -115,7 +115,6 @@ const MOON_CIRC_SUPPLY = 100_000_000_000; // market cap conversion factor
 const POSITION_MANAGER_ADDRESS = getAddress('0x5b7eC4a94fF9beDb700fb82aB09d5846972F4016');
 const BUY_MOON_URL = process.env.NEXT_PUBLIC_BUY_MOON_URL ?? 'https://farcaster.xyz/miniapps';
 const BUY_WMON_URL = process.env.NEXT_PUBLIC_BUY_WMON_URL ?? 'https://farcaster.xyz/miniapps';
-const LP_MANAGER_PATH = '/miniapp?lp=manager';
 
 function openExternalUrl(url: string) {
   if (!url) return;
@@ -378,9 +377,11 @@ export default function LpAdvancedPage() {
   }
 
   const privyConfig: PrivyProviderProps['config'] = {
-    // createOnLogin is available in Privy but not yet reflected in our types
-
-    appearance: { theme: 'dark' }
+    loginMethods: ['wallet'],
+    appearance: {
+      theme: 'dark',
+      showWalletLoginFirst: true
+    }
   };
 
   return <LpAdvancedProviders privyConfig={privyConfig} />;
@@ -475,17 +476,14 @@ function LpAdvancedProviders({ privyConfig }: { privyConfig: PrivyProviderProps[
     );
   }
 
-  // Desktop: wrap with PrivyProvider, but keep our wagmi config
-  if (miniAppState === 'desktop' && PRIVY_APP_ID) {
-    return (
-      <PrivyProvider appId={PRIVY_APP_ID} config={privyConfig}>
-        <WagmiProvider config={wagmiConfig}>{baseChildren}</WagmiProvider>
-      </PrivyProvider>
-    );
-  }
+  // Always wrap with PrivyProvider to keep hooks safe; if app ID is missing, use a placeholder
+  const privyAppId = PRIVY_APP_ID || 'missing-privy-app-id';
 
-  // Mini-app or fallback
-  return <WagmiProvider config={wagmiConfig}>{baseChildren}</WagmiProvider>;
+  return (
+    <PrivyProvider appId={privyAppId} config={privyConfig}>
+      <WagmiProvider config={wagmiConfig}>{baseChildren}</WagmiProvider>
+    </PrivyProvider>
+  );
 }
 
 function AdvancedLpContent({
@@ -546,8 +544,7 @@ function AdvancedLpContent({
   const [swapInFlight, setSwapInFlight] = useState<'moon' | 'wmon' | null>(null);
   const [manualWmonBalance, setManualWmonBalance] = useState<bigint | null>(null);
 
-  const { ready: privyReady, login } = usePrivy();
-  const { wallets: privyWallets, ready: privyWalletsReady } = useWallets();
+  const { login } = usePrivy();
 
   const handleSwapToken = useCallback(
     async (target: 'moon' | 'wmon') => {
@@ -1147,12 +1144,11 @@ function AdvancedLpContent({
     };
   }, [address, effectivePublicClient, wmonBalance.data?.value]);
 
-  // Desktop-only: trigger Privy login; user still needs to pick a wallet via wagmi connectors
+  // Desktop-only: allow Privy login; button will be enabled once provider is present
   useEffect(() => {
     if (miniAppState !== 'desktop') return;
-    if (!privyReady || !privyWalletsReady) return;
     setPrivyActivating(false);
-  }, [miniAppState, privyReady, privyWalletsReady]);
+  }, [miniAppState]);
 
   const handleOpenLpManager = useCallback(async () => {
     const absolute =
@@ -1174,9 +1170,13 @@ function AdvancedLpContent({
 
   const handlePrivyLogin = useCallback(async () => {
     try {
+      setPrivyActivating(true);
+      setPrivyError(null);
       await login();
     } catch {
       setPrivyError('Privy login failed.');
+    } finally {
+      setPrivyActivating(false);
     }
   }, [login]);
 
@@ -1362,7 +1362,7 @@ function AdvancedLpContent({
                     <button
                       type="button"
                       onClick={handlePrivyLogin}
-                      disabled={!privyReady || privyActivating}
+                      disabled={privyActivating}
                       className="px-4 py-2 border border-white/40 rounded-full text-sm hover:bg-white/10 transition disabled:opacity-50"
                     >
                       {privyActivating ? 'Connecting…' : 'Connect with Privy'}
