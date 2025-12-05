@@ -14,7 +14,13 @@ import {
   useReadContract,
   usePublicClient
 } from 'wagmi';
-import { createPublicClient, erc20Abi, encodeFunctionData, http as viemHttp } from 'viem';
+import {
+  createPublicClient,
+  erc20Abi,
+  encodeFunctionData,
+  getAddress,
+  http as viemHttp
+} from 'viem';
 import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector';
 import { metaMask, injected, coinbaseWallet } from 'wagmi/connectors';
 import { formatUnits } from 'viem';
@@ -37,8 +43,8 @@ interface ChartPoint {
   y: number;
 }
 
-const TOKEN_MOON_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07' as const;
-const TOKEN_WMON_ADDRESS = '0x3bd359C1119dA7Da1d913d1C4D2b7C461115433A' as const;
+const TOKEN_MOON_ADDRESS = getAddress('0x22cd99ec337a2811f594340a4a6e41e4a3022b07');
+const TOKEN_WMON_ADDRESS = getAddress('0x3bd359C1119dA7Da1d913d1C4D2b7C461115433A');
 const ADMIN_FID = 9933;
 
 const CHAIN_CAIP = 'eip155:143';
@@ -47,7 +53,7 @@ const WMON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_WMON_ADDRESS.toLowerCase()}`;
 const MOON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_MOON_ADDRESS.toLowerCase()}`;
 const APPROVAL_BUFFER_BPS = BigInt(200); // 2% buffer to avoid edge under-approvals on large sizes
 const DEFAULT_MONAD_RPC = process.env.NEXT_PUBLIC_MONAD_RPC_URL ?? 'https://rpc.monad.xyz';
-const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3' as const;
+const PERMIT2_ADDRESS = getAddress('0x000000000022D473030F116dDEE9F6B43aC78BA3');
 const permit2Abi = [
   {
     type: 'function',
@@ -102,7 +108,7 @@ const MINIAPP_CONNECTOR_ID = 'farcasterMiniApp';
 
 const HISTORY_POINTS = 48;
 const MOON_CIRC_SUPPLY = 100_000_000_000; // market cap conversion factor
-const POSITION_MANAGER_ADDRESS = '0x5b7eC4a94fF9beDb700fb82aB09d5846972F4016';
+const POSITION_MANAGER_ADDRESS = getAddress('0x5b7eC4a94fF9beDb700fb82aB09d5846972F4016');
 const BUY_MOON_URL = process.env.NEXT_PUBLIC_BUY_MOON_URL ?? 'https://farcaster.xyz/miniapps';
 const BUY_WMON_URL = process.env.NEXT_PUBLIC_BUY_WMON_URL ?? 'https://farcaster.xyz/miniapps';
 
