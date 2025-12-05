@@ -806,8 +806,11 @@ function AdvancedLpContent({
       const amountIn = parseFloat(value);
       if (isNaN(amountIn) || amountIn <= 0) return;
 
-      const priceLowerWmon = rangeMin / marketState.wmonUsdPrice;
-      const priceUpperWmon = rangeMax / marketState.wmonUsdPrice;
+      // Convert market cap bounds to per-token USD, then to W-MON price space
+      const lowerPriceUsd = rangeMin / MOON_CIRC_SUPPLY;
+      const upperPriceUsd = rangeMax / MOON_CIRC_SUPPLY;
+      const priceLowerWmon = lowerPriceUsd / marketState.wmonUsdPrice;
+      const priceUpperWmon = upperPriceUsd / marketState.wmonUsdPrice;
       const priceCurrentWmon = tickToPrice(marketState.tick);
 
       // Clamp spot into the band to always derive a ratio (avoid zeroed counterpart)
