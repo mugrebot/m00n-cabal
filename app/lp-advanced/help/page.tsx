@@ -65,7 +65,7 @@ export default function HelpPage() {
           <h1 className="text-3xl font-semibold tracking-tight">Custom LP Planner — Guide</h1>
           <Link
             href="/lp-advanced"
-            className="text-sm px-3 py-1 rounded-full border border-white/80 bg-white/20 hover:bg-white/30 transition text-white font-semibold"
+            className="text-sm font-medium text-white hover:text-white/80 transition"
           >
             ← Back
           </Link>
@@ -76,14 +76,14 @@ export default function HelpPage() {
           carries risk.
         </p>
 
-        <div className="space-y-5">
+        <div className="space-y-3">
           {sections.map((section) => (
             <section
               key={section.title}
-              className="border border-white/50 rounded-2xl p-5 bg-black shadow-lg space-y-3"
+              className="rounded-3xl border border-white/30 bg-black/40 px-4 py-3 shadow-lg space-y-3"
             >
               <h2 className="text-lg font-semibold text-white">{section.title}</h2>
-              <ul className="list-disc list-inside space-y-3 text-sm text-white leading-relaxed">
+              <ul className="list-disc list-inside space-y-1 text-sm text-white leading-snug">
                 {section.bullets.map((item) => (
                   <li key={item} dangerouslySetInnerHTML={{ __html: item }} />
                 ))}
