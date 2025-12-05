@@ -11,7 +11,8 @@ import {
   useDisconnect,
   useWalletClient,
   useBalance,
-  useReadContract
+  useReadContract,
+  usePublicClient
 } from 'wagmi';
 import { erc20Abi, encodeFunctionData } from 'viem';
 import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector';
@@ -356,14 +357,19 @@ function AdvancedLpContent() {
   const { connect, connectors, error: connectError, isPending } = useConnect();
   const { disconnect } = useDisconnect();
   const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient({ chainId: monadChain.id });
 
   const moonBalance = useBalance({
     address,
-    token: TOKEN_MOON_ADDRESS
+    token: TOKEN_MOON_ADDRESS,
+    chainId: monadChain.id,
+    query: { enabled: Boolean(address), refetchInterval: 30000 }
   });
   const wmonBalance = useBalance({
     address,
-    token: TOKEN_WMON_ADDRESS
+    token: TOKEN_WMON_ADDRESS,
+    chainId: monadChain.id,
+    query: { enabled: Boolean(address), refetchInterval: 30000 }
   });
   const moonAllowance = useReadContract({
     address: TOKEN_MOON_ADDRESS,
@@ -380,23 +386,28 @@ function AdvancedLpContent() {
     query: { enabled: Boolean(address) }
   });
 
-  const handleSwapToken = useCallback(async (target: 'moon' | 'wmon') => {
-    setSwapInFlight(target);
-    try {
-      if (sdk?.actions?.swapToken) {
-        await sdk.actions.swapToken({
-          sellToken: MON_NATIVE_CAIP,
-          buyToken: target === 'wmon' ? WMON_CAIP : MOON_CAIP
-        });
-      } else {
-        openExternalUrl(target === 'wmon' ? BUY_WMON_URL : BUY_MOON_URL);
+  const [swapInFlight, setSwapInFlight] = useState<'moon' | 'wmon' | null>(null);
+
+  const handleSwapToken = useCallback(
+    async (target: 'moon' | 'wmon') => {
+      setSwapInFlight(target);
+      try {
+        if (sdk?.actions?.swapToken) {
+          await sdk.actions.swapToken({
+            sellToken: MON_NATIVE_CAIP,
+            buyToken: target === 'wmon' ? WMON_CAIP : MOON_CAIP
+          });
+        } else {
+          openExternalUrl(target === 'wmon' ? BUY_WMON_URL : BUY_MOON_URL);
+        }
+      } catch (error) {
+        console.error('ADV_LP_SWAP', error);
+      } finally {
+        setSwapInFlight((current) => (current === target ? null : current));
       }
-    } catch (error) {
-      console.error('ADV_LP_SWAP', error);
-    } finally {
-      setSwapInFlight((current) => (current === target ? null : current));
-    }
-  }, []);
+    },
+    [setSwapInFlight]
+  );
 
   const [bandSide, setBandSide] = useState<BandSide>('single');
   const [depositAsset, setDepositAsset] = useState<DepositAsset>('moon');
@@ -416,7 +427,6 @@ function AdvancedLpContent() {
   const [marketLoading, setMarketLoading] = useState(true);
   const [marketError, setMarketError] = useState<string | null>(null);
   const [miniAppConnectError, setMiniAppConnectError] = useState<string | null>(null);
-  const [swapInFlight, setSwapInFlight] = useState<'moon' | 'wmon' | null>(null);
 
   const moonSpotPriceUsd = useMemo(() => {
     if (marketState?.moonUsdPrice && marketState.moonUsdPrice > 0) {
@@ -767,8 +777,17 @@ function AdvancedLpContent() {
         return;
       }
 
-      const allowanceMoon = moonAllowance.data ?? BigInt(0);
-      const allowanceWmon = wmonAllowance.data ?? BigInt(0);
+      let allowanceMoon = moonAllowance.data ?? BigInt(0);
+      let allowanceWmon = wmonAllowance.data ?? BigInt(0);
+
+      const waitForReceipt = async (hash: `0x${string}`) => {
+        if (publicClient) {
+          await publicClient.waitForTransactionReceipt({ hash });
+        } else {
+          // fallback: small delay to allow remote node to index
+          await new Promise((resolve) => setTimeout(resolve, 4000));
+        }
+      };
 
       if (neededMoon > allowanceMoon) {
         setStatusMessage('Approving m00n…');
@@ -777,12 +796,15 @@ function AdvancedLpContent() {
           functionName: 'approve',
           args: [POSITION_MANAGER_ADDRESS, neededMoon]
         });
-        await walletClient.sendTransaction({
+        const approveMoonTx = await walletClient.sendTransaction({
           account: address,
           to: TOKEN_MOON_ADDRESS,
           data: approveMoonData,
           chain: walletClient.chain ?? undefined
         });
+        await waitForReceipt(approveMoonTx);
+        allowanceMoon = neededMoon;
+        void moonAllowance.refetch?.();
       }
 
       if (neededWmon > allowanceWmon) {
@@ -792,12 +814,15 @@ function AdvancedLpContent() {
           functionName: 'approve',
           args: [POSITION_MANAGER_ADDRESS, neededWmon]
         });
-        await walletClient.sendTransaction({
+        const approveWmonTx = await walletClient.sendTransaction({
           account: address,
           to: TOKEN_WMON_ADDRESS,
           data: approveWmonData,
           chain: walletClient.chain ?? undefined
         });
+        await waitForReceipt(approveWmonTx);
+        allowanceWmon = neededWmon;
+        void wmonAllowance.refetch?.();
       }
 
       setStatusMessage('Submitting transaction…');
@@ -808,6 +833,10 @@ function AdvancedLpContent() {
         value: value ? BigInt(value) : undefined,
         chain: walletClient.chain ?? undefined
       });
+
+      await waitForReceipt(tx);
+      void moonBalance.refetch?.();
+      void wmonBalance.refetch?.();
 
       setStatus('success');
       setStatusMessage('Transaction submitted. View on Monadscan below.');
@@ -834,10 +863,11 @@ function AdvancedLpContent() {
     rangeMax,
     rangeError,
     depositAsset,
-    moonBalance.data?.value,
-    wmonBalance.data?.value,
-    moonAllowance.data,
-    wmonAllowance.data
+    publicClient,
+    moonAllowance,
+    wmonAllowance,
+    moonBalance,
+    wmonBalance
   ]);
 
   useEffect(() => {
@@ -974,7 +1004,7 @@ function AdvancedLpContent() {
             <div className="mt-12">
               <RangeChart
                 series={chartSeries}
-                currentUsd={moonSpotPriceUsd}
+                currentUsd={moonMarketCapUsd}
                 lowerUsd={rangeMin}
                 upperUsd={rangeMax}
               />
