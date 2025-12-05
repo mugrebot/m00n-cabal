@@ -59,38 +59,43 @@ const sections = [
 
 export default function HelpPage() {
   return (
-    <main className="min-h-screen bg-black text-white px-4 py-8 max-w-3xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Custom LP Planner — Guide</h1>
-        <Link
-          href="/lp-advanced"
-          className="text-sm px-3 py-1 rounded-full border border-white/20 hover:bg-white/10 transition"
-        >
-          ← Back
-        </Link>
+    <main className="min-h-screen bg-black text-white">
+      <div className="max-w-3xl mx-auto px-5 py-8 space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-semibold tracking-tight">Custom LP Planner — Guide</h1>
+          <Link
+            href="/lp-advanced"
+            className="text-sm px-3 py-1 rounded-full border border-white/20 hover:bg-white/10 transition"
+          >
+            ← Back
+          </Link>
+        </div>
+
+        <p className="text-sm text-white/80 leading-relaxed">
+          Use this short guide to understand the Custom LP Planner and pick a position type. LPing
+          carries risk.
+        </p>
+
+        <div className="space-y-4">
+          {sections.map((section) => (
+            <section
+              key={section.title}
+              className="border border-white/10 rounded-xl p-4 bg-black/80 shadow-lg space-y-2"
+            >
+              <h2 className="text-lg font-semibold">{section.title}</h2>
+              <ul className="list-disc list-inside space-y-3 text-sm text-white/85 leading-relaxed">
+                {section.bullets.map((item) => (
+                  <li key={item} dangerouslySetInnerHTML={{ __html: item }} />
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+
+        <p className="text-xs text-white/70 leading-relaxed">
+          Nothing here is financial advice. Only deploy what you can afford to lose.
+        </p>
       </div>
-
-      <p className="text-sm text-white/70">
-        Use this cheat sheet to understand the Custom LP Planner and decide which position type fits
-        your outlook. Read carefully—LPing carries risk.
-      </p>
-
-      <div className="space-y-4">
-        {sections.map((section) => (
-          <section key={section.title} className="border border-white/10 rounded-xl p-4 bg-white/5">
-            <h2 className="text-lg font-semibold mb-2">{section.title}</h2>
-            <ul className="list-disc list-inside space-y-2 text-sm text-white/80">
-              {section.bullets.map((item) => (
-                <li key={item} dangerouslySetInnerHTML={{ __html: item }} />
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
-
-      <p className="text-xs text-white/60">
-        Remember: nothing here is financial advice. Only deploy what you can afford to lose.
-      </p>
     </main>
   );
 }
