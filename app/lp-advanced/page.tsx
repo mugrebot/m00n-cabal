@@ -359,6 +359,8 @@ function AdvancedLpContent() {
   const [status, setStatus] = useState<DeployState>('idle');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [requiredMoonWei, setRequiredMoonWei] = useState<string | null>(null);
+  const [requiredWmonWei, setRequiredWmonWei] = useState<string | null>(null);
   const [marketState, setMarketState] = useState<PoolState | null>(null);
   const [marketLoading, setMarketLoading] = useState(true);
   const [marketError, setMarketError] = useState<string | null>(null);
@@ -509,20 +511,21 @@ function AdvancedLpContent() {
   useEffect(() => {
     if (!moonMarketCapUsd || rangeTouched) return;
 
-    const pad = 0.2;
+    // Seed defaults: double-sided = ±20%; single-sided m00n = 2–8% above; single-sided WMON = 2–8% below.
     let nextLower: string | null = null;
     let nextUpper: string | null = null;
 
     if (bandSide === 'double') {
+      const pad = 0.2;
       nextLower = (moonMarketCapUsd * (1 - pad)).toFixed(0);
       nextUpper = (moonMarketCapUsd * (1 + pad)).toFixed(0);
     } else if (bandSide === 'single') {
       if (depositAsset === 'moon') {
-        nextLower = moonMarketCapUsd.toFixed(0);
-        nextUpper = (moonMarketCapUsd * (1 + pad)).toFixed(0);
+        nextLower = (moonMarketCapUsd * 1.02).toFixed(0);
+        nextUpper = (moonMarketCapUsd * 1.08).toFixed(0);
       } else {
-        nextLower = (moonMarketCapUsd * (1 - pad)).toFixed(0);
-        nextUpper = moonMarketCapUsd.toFixed(0);
+        nextLower = (moonMarketCapUsd * 0.92).toFixed(0);
+        nextUpper = (moonMarketCapUsd * 0.98).toFixed(0);
       }
     } else {
       return;
@@ -545,12 +548,27 @@ function AdvancedLpContent() {
       : [parsedUpper, parsedLower]
     : [null, null];
 
+  const singleRangeInvalid = useMemo(() => {
+    if (!hasValidRange || rangeMin === null || rangeMax === null || !moonMarketCapUsd) return false;
+    if (bandSide !== 'single') return false;
+    if (depositAsset === 'moon') {
+      return rangeMin <= moonMarketCapUsd || rangeMax <= moonMarketCapUsd;
+    }
+    // WMON single-sided: both bounds must be below spot
+    return rangeMax >= moonMarketCapUsd || rangeMin >= moonMarketCapUsd;
+  }, [bandSide, depositAsset, hasValidRange, rangeMin, rangeMax, moonMarketCapUsd]);
+
   const rangeError = useMemo(() => {
     if (!hasValidRange || rangeMin === null || rangeMax === null) return 'Enter both USD bounds.';
     if (rangeMin === rangeMax) return 'Bounds must differ.';
     if (rangeMin <= 0) return 'Bounds must be positive.';
+    if (singleRangeInvalid && bandSide === 'single') {
+      return depositAsset === 'moon'
+        ? 'For m00n-only, set both bounds above the current price.'
+        : 'For WMON-only, set both bounds below the current price.';
+    }
     return null;
-  }, [hasValidRange, rangeMin, rangeMax]);
+  }, [hasValidRange, rangeMin, rangeMax, singleRangeInvalid, bandSide, depositAsset]);
 
   const updateDoubleSidedAmounts = useCallback(
     (changedSide: 'moon' | 'wmon', value: string) => {
@@ -668,11 +686,22 @@ function AdvancedLpContent() {
         throw new Error(responsePayload.error ?? 'lp_advanced_failed');
       }
 
-      const { to, data, value } = (await response.json()) as {
+      const {
+        to,
+        data,
+        value,
+        requiredMoonWei: respRequiredMoonWei,
+        requiredWmonWei: respRequiredWmonWei
+      } = (await response.json()) as {
         to: `0x${string}`;
         data: `0x${string}`;
         value?: string;
+        requiredMoonWei?: string;
+        requiredWmonWei?: string;
       };
+
+      setRequiredMoonWei(respRequiredMoonWei ?? null);
+      setRequiredWmonWei(respRequiredWmonWei ?? null);
 
       const hash = await walletClient.sendTransaction({
         account: address,
@@ -1131,6 +1160,21 @@ function AdvancedLpContent() {
               >
                 {statusMessage}
               </p>
+            )}
+            {(requiredMoonWei || requiredWmonWei) && (
+              <div className="text-[11px] text-white/70 text-center space-y-1">
+                <p className="uppercase tracking-[0.2em] text-white/60">Required amounts</p>
+                {requiredMoonWei && (
+                  <p className="font-mono">
+                    m00n: {formatTokenBalance(BigInt(requiredMoonWei), 18)}
+                  </p>
+                )}
+                {requiredWmonWei && (
+                  <p className="font-mono">
+                    WMON: {formatTokenBalance(BigInt(requiredWmonWei), 18)}
+                  </p>
+                )}
+              </div>
             )}
             {txHash && (
               <a
