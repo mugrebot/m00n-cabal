@@ -14,6 +14,7 @@ const FEE = 8_388_608;
 const TICK_SPACING = 200;
 const MONAD_CHAIN_ID = Number(process.env.MONAD_CHAIN_ID ?? 143);
 const SLIPPAGE_BPS = 500;
+const MOON_CIRC_SUPPLY = 95_000_000_000; // market cap inputs need per-token conversion
 
 const POOL_KEY = {
   currency0: TOKEN_MOON_ADDRESS as Address,
@@ -126,8 +127,12 @@ export async function POST(request: NextRequest) {
     const [usdLower, usdUpper] =
       lowerBound < upperBound ? [lowerBound, upperBound] : [upperBound, lowerBound];
 
-    const lowerRatio = usdLower / wmonUsdPrice;
-    const upperRatio = usdUpper / wmonUsdPrice;
+    // Convert market-cap style USD inputs to per-token USD price
+    const lowerPriceUsd = usdLower / MOON_CIRC_SUPPLY;
+    const upperPriceUsd = usdUpper / MOON_CIRC_SUPPLY;
+
+    const lowerRatio = lowerPriceUsd / wmonUsdPrice;
+    const upperRatio = upperPriceUsd / wmonUsdPrice;
 
     if (lowerRatio <= 0 || upperRatio <= 0) {
       return NextResponse.json({ error: 'invalid_range' }, { status: 400 });
