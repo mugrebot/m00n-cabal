@@ -78,7 +78,7 @@ const MINIAPP_CONNECTOR_ID = 'farcasterMiniApp';
 
 const TICK_SPACING = 200;
 const HISTORY_POINTS = 48;
-// For advanced LP we work in per-token USD (no market-cap multiplication)
+const MOON_CIRC_SUPPLY = 100_000_000_000; // market cap conversion factor
 
 const snapDownToSpacing = (tick: number) => Math.floor(tick / TICK_SPACING) * TICK_SPACING;
 const snapUpToSpacing = (tick: number) => Math.ceil(tick / TICK_SPACING) * TICK_SPACING;
@@ -393,7 +393,12 @@ function AdvancedLpContent() {
     return null;
   }, [marketState]);
 
-  const chartSeries = useMemo(() => generateMockSeries(moonSpotPriceUsd), [moonSpotPriceUsd]);
+  const moonMarketCapUsd = useMemo(() => {
+    if (!moonSpotPriceUsd) return null;
+    return moonSpotPriceUsd * MOON_CIRC_SUPPLY;
+  }, [moonSpotPriceUsd]);
+
+  const chartSeries = useMemo(() => generateMockSeries(moonMarketCapUsd), [moonMarketCapUsd]);
 
   const [stars] = useState(() => {
     return [...Array(100)].map((_, i) => ({
@@ -516,23 +521,23 @@ function AdvancedLpContent() {
   }, []);
 
   useEffect(() => {
-    if (!moonSpotPriceUsd || rangeTouched) return;
+    if (!moonMarketCapUsd || rangeTouched) return;
 
-    // Seed defaults: double-sided = ±20%; single-sided m00n = 2–8% above; single-sided WMON = 2–8% below.
+    // Seed defaults in market-cap USD: double-sided = ±20%; single m00n = 2–8% above; single WMON = 2–8% below.
     let nextLower: string | null = null;
     let nextUpper: string | null = null;
 
     if (bandSide === 'double') {
       const pad = 0.2;
-      nextLower = (moonSpotPriceUsd * (1 - pad)).toFixed(6);
-      nextUpper = (moonSpotPriceUsd * (1 + pad)).toFixed(6);
+      nextLower = (moonMarketCapUsd * (1 - pad)).toFixed(0);
+      nextUpper = (moonMarketCapUsd * (1 + pad)).toFixed(0);
     } else if (bandSide === 'single') {
       if (depositAsset === 'moon') {
-        nextLower = (moonSpotPriceUsd * 1.02).toFixed(6);
-        nextUpper = (moonSpotPriceUsd * 1.08).toFixed(6);
+        nextLower = (moonMarketCapUsd * 1.02).toFixed(0);
+        nextUpper = (moonMarketCapUsd * 1.08).toFixed(0);
       } else {
-        nextLower = (moonSpotPriceUsd * 0.92).toFixed(6);
-        nextUpper = (moonSpotPriceUsd * 0.98).toFixed(6);
+        nextLower = (moonMarketCapUsd * 0.92).toFixed(0);
+        nextUpper = (moonMarketCapUsd * 0.98).toFixed(0);
       }
     } else {
       return;
@@ -544,7 +549,7 @@ function AdvancedLpContent() {
     if (nextUpper !== null && nextUpper !== rangeUpperUsd) {
       setRangeUpperUsd(nextUpper);
     }
-  }, [moonSpotPriceUsd, bandSide, depositAsset, rangeTouched, rangeLowerUsd, rangeUpperUsd]);
+  }, [moonMarketCapUsd, bandSide, depositAsset, rangeTouched, rangeLowerUsd, rangeUpperUsd]);
 
   const parsedLower = Number(rangeLowerUsd);
   const parsedUpper = Number(rangeUpperUsd);
@@ -556,14 +561,14 @@ function AdvancedLpContent() {
     : [null, null];
 
   const singleRangeInvalid = useMemo(() => {
-    if (!hasValidRange || rangeMin === null || rangeMax === null || !moonSpotPriceUsd) return false;
+    if (!hasValidRange || rangeMin === null || rangeMax === null || !moonMarketCapUsd) return false;
     if (bandSide !== 'single') return false;
     if (depositAsset === 'moon') {
-      return rangeMin <= moonSpotPriceUsd || rangeMax <= moonSpotPriceUsd;
+      return rangeMin <= moonMarketCapUsd || rangeMax <= moonMarketCapUsd;
     }
     // WMON single-sided: both bounds must be below spot
-    return rangeMax >= moonSpotPriceUsd || rangeMin >= moonSpotPriceUsd;
-  }, [bandSide, depositAsset, hasValidRange, rangeMin, rangeMax, moonSpotPriceUsd]);
+    return rangeMax >= moonMarketCapUsd || rangeMin >= moonMarketCapUsd;
+  }, [bandSide, depositAsset, hasValidRange, rangeMin, rangeMax, moonMarketCapUsd]);
 
   const rangeError = useMemo(() => {
     if (!hasValidRange || rangeMin === null || rangeMax === null) return 'Enter both USD bounds.';
@@ -662,8 +667,8 @@ function AdvancedLpContent() {
       setTxHash(null);
       setApprovalMessage(null);
 
-      const lowerPriceUsd = rangeMin;
-      const upperPriceUsd = rangeMax;
+      const lowerPriceUsd = rangeMin / MOON_CIRC_SUPPLY;
+      const upperPriceUsd = rangeMax / MOON_CIRC_SUPPLY;
       if (!Number.isFinite(lowerPriceUsd) || !Number.isFinite(upperPriceUsd)) {
         throw new Error('invalid_price_range');
       }
@@ -1029,9 +1034,7 @@ function AdvancedLpContent() {
             ) : (
               <>
                 <p className="relative text-2xl font-mono text-white drop-shadow-lg">
-                  {marketLoading && !moonSpotPriceUsd
-                    ? 'Syncing…'
-                    : formatUsd((moonSpotPriceUsd ?? 0) * 100_000_000_000)}
+                  {marketLoading && !moonMarketCapUsd ? 'Syncing…' : formatUsd(moonMarketCapUsd)}
                 </p>
                 {marketState && (
                   <p className="relative text-[10px] text-white/40 font-mono">
