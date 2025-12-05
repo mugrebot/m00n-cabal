@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
+import { PrivyProvider, usePrivy, useWallets } from '@privy-io/react-auth';
+import { useSetActiveWallet } from '@privy-io/wagmi';
 import {
   WagmiProvider,
   createConfig,
@@ -54,6 +56,7 @@ const MOON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_MOON_ADDRESS.toLowerCase()}`;
 const APPROVAL_BUFFER_BPS = BigInt(200); // 2% buffer to avoid edge under-approvals on large sizes
 const DEFAULT_MONAD_RPC = process.env.NEXT_PUBLIC_MONAD_RPC_URL ?? 'https://rpc.monad.xyz';
 const PERMIT2_ADDRESS = getAddress('0x000000000022D473030F116dDEE9F6B43aC78BA3');
+const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID ?? process.env.PRIVY_APP_ID ?? '';
 const permit2Abi = [
   {
     type: 'function',
@@ -368,12 +371,25 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
 }
 
 export default function LpAdvancedPage() {
+  if (!PRIVY_APP_ID) {
+    console.warn('PRIVY_APP_ID missing; Privy desktop connect will be disabled.');
+  }
+
   return (
-    <WagmiProvider config={wagmiConfig}>
-      <QueryClientProvider client={queryClient}>
-        <AdvancedLpContent />
-      </QueryClientProvider>
-    </WagmiProvider>
+    <PrivyProvider
+      appId={PRIVY_APP_ID}
+      config={{
+        embeddedWallets: { createOnLogin: false },
+        externalWallets: { coinbase: true, metamask: true, rainbow: true, walletConnect: true },
+        appearance: { theme: 'dark' }
+      }}
+    >
+      <WagmiProvider config={wagmiConfig}>
+        <QueryClientProvider client={queryClient}>
+          <AdvancedLpContent />
+        </QueryClientProvider>
+      </WagmiProvider>
+    </PrivyProvider>
   );
 }
 
@@ -381,6 +397,8 @@ function AdvancedLpContent() {
   const [miniAppState, setMiniAppState] = useState<'unknown' | 'desktop' | 'miniapp'>('unknown');
   const [viewerFid, setViewerFid] = useState<number | null>(null);
   const [miniAppError, setMiniAppError] = useState<string | null>(null);
+  const [privyError, setPrivyError] = useState<string | null>(null);
+  const [privyActivating, setPrivyActivating] = useState(false);
 
   const { address, isConnected } = useAccount();
   const { connect, connectors, error: connectError, isPending } = useConnect();
@@ -426,6 +444,10 @@ function AdvancedLpContent() {
 
   const [swapInFlight, setSwapInFlight] = useState<'moon' | 'wmon' | null>(null);
   const [manualWmonBalance, setManualWmonBalance] = useState<bigint | null>(null);
+
+  const { ready: privyReady, authenticated, login } = usePrivy();
+  const { wallets: privyWallets, ready: privyWalletsReady } = useWallets();
+  const setActiveWallet = useSetActiveWallet();
 
   const handleSwapToken = useCallback(
     async (target: 'moon' | 'wmon') => {
@@ -1019,6 +1041,23 @@ function AdvancedLpContent() {
     };
   }, [address, effectivePublicClient, wmonBalance.data?.value]);
 
+  // Desktop-only: sync Privy wallet into wagmi when available
+  useEffect(() => {
+    if (miniAppState !== 'desktop') return;
+    if (!privyReady || !privyWalletsReady) return;
+    if (isConnected) return;
+    const wallet = privyWallets[0];
+    if (!wallet) return;
+    setPrivyActivating(true);
+    setPrivyError(null);
+    setActiveWallet(wallet)
+      .catch((err) => {
+        console.error('PRIVY:setActiveWallet_failed', err);
+        setPrivyError('Unable to connect via Privy right now.');
+      })
+      .finally(() => setPrivyActivating(false));
+  }, [miniAppState, privyReady, privyWalletsReady, privyWallets, isConnected, setActiveWallet]);
+
   if (miniAppState === 'unknown') {
     return renderShell(
       <section className="flex flex-col items-center justify-center min-h-[60vh] space-y-4 text-center">
@@ -1181,7 +1220,7 @@ function AdvancedLpContent() {
                 <p className="text-sm text-white/70">
                   Connect a wallet capable of signing on Monad.
                 </p>
-                {miniAppState === 'miniapp' && (
+                {miniAppState === 'miniapp' ? (
                   <button
                     type="button"
                     onClick={handleMiniAppConnect}
@@ -1189,20 +1228,32 @@ function AdvancedLpContent() {
                   >
                     Connect Farcaster wallet
                   </button>
-                )}
-                <div className="flex flex-wrap gap-3">
-                  {connectors.map((connector) => (
+                ) : (
+                  <div className="flex flex-col gap-2">
                     <button
-                      key={connector.id}
-                      onClick={() => connect({ connector })}
-                      className="px-4 py-2 border border-white/20 rounded-full text-sm hover:bg-white/10 transition disabled:opacity-40"
-                      disabled={!connector.ready || isPending}
+                      type="button"
+                      onClick={() => login().catch(() => setPrivyError('Privy login failed.'))}
+                      disabled={!privyReady || privyActivating}
+                      className="px-4 py-2 border border-white/40 rounded-full text-sm hover:bg-white/10 transition disabled:opacity-50"
                     >
-                      {connector.name}
-                      {isPending && '…'}
+                      {privyActivating ? 'Connecting…' : 'Connect with Privy'}
                     </button>
-                  ))}
-                </div>
+                    <div className="flex flex-wrap gap-3">
+                      {connectors.map((connector) => (
+                        <button
+                          key={connector.id}
+                          onClick={() => connect({ connector })}
+                          className="px-4 py-2 border border-white/20 rounded-full text-sm hover:bg-white/10 transition disabled:opacity-40"
+                          disabled={!connector.ready || isPending}
+                        >
+                          {connector.name}
+                          {isPending && '…'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {privyError && <p className="text-sm text-red-300">{privyError}</p>}
                 {connectError && <p className="text-sm text-red-300">{connectError.message}</p>}
                 {miniAppConnectError && (
                   <p className="text-sm text-red-300">{miniAppConnectError}</p>
