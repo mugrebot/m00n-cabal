@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
         ...(config.resolve.alias || {}),
         pino: false,
         'thread-stream': false,
-        '@react-native-async-storage/async-storage': false
+        '@react-native-async-storage/async-storage': require.resolve('./empty-module.js')
       };
     }
     return config;
