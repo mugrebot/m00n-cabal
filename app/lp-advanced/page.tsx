@@ -1277,6 +1277,31 @@ function AdvancedLpContent() {
             )}
           </div>
 
+          {bandSide === 'single' && (
+            <div className="flex gap-2 justify-center text-xs mt-4">
+              <button
+                className={`px-3 py-1 border ${
+                  depositAsset === 'moon'
+                    ? 'border-[var(--moss-green)] text-[var(--moss-green)]'
+                    : 'border-white/20 text-white/40'
+                }`}
+                onClick={() => setDepositAsset('moon')}
+              >
+                Input m00n
+              </button>
+              <button
+                className={`px-3 py-1 border ${
+                  depositAsset === 'wmon'
+                    ? 'border-[var(--moss-green)] text-[var(--moss-green)]'
+                    : 'border-white/20 text-white/40'
+                }`}
+                onClick={() => setDepositAsset('wmon')}
+              >
+                Input WMON
+              </button>
+            </div>
+          )}
+
           <div className="space-y-2">
             <label className="lunar-heading text-white/80 text-center block">set range</label>
             <div className="space-y-3 p-4 border border-[#4a6bfa] bg-transparent">
@@ -1369,31 +1394,6 @@ function AdvancedLpContent() {
               range we disable one or the other, or allow a user to input one and calculate the
               other required for a double sided position.
             </p>
-
-            {bandSide === 'single' && (
-              <div className="flex gap-2 justify-center text-xs mt-2">
-                <button
-                  className={`px-3 py-1 border ${
-                    depositAsset === 'moon'
-                      ? 'border-[var(--moss-green)] text-[var(--moss-green)]'
-                      : 'border-white/20 text-white/40'
-                  }`}
-                  onClick={() => setDepositAsset('moon')}
-                >
-                  Input m00n
-                </button>
-                <button
-                  className={`px-3 py-1 border ${
-                    depositAsset === 'wmon'
-                      ? 'border-[var(--moss-green)] text-[var(--moss-green)]'
-                      : 'border-white/20 text-white/40'
-                  }`}
-                  onClick={() => setDepositAsset('wmon')}
-                >
-                  Input WMON
-                </button>
-              </div>
-            )}
           </div>
 
           <div className="pt-4 space-y-2 sticky bottom-0 bg-black/85 backdrop-blur border-t border-white/10 px-3 pb-4 md:static md:bg-transparent md:border-0 md:px-0 md:pb-0">
