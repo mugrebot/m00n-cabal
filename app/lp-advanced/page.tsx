@@ -74,6 +74,7 @@ const wagmiConfig = createConfig({
 });
 
 const queryClient = new QueryClient();
+const MINIAPP_CONNECTOR_ID = 'farcasterMiniApp';
 
 const TICK_SPACING = 200;
 const HISTORY_POINTS = 48;
@@ -361,6 +362,7 @@ function AdvancedLpContent() {
   const [marketState, setMarketState] = useState<PoolState | null>(null);
   const [marketLoading, setMarketLoading] = useState(true);
   const [marketError, setMarketError] = useState<string | null>(null);
+  const [miniAppConnectError, setMiniAppConnectError] = useState<string | null>(null);
 
   const moonSpotPriceUsd = useMemo(() => {
     if (marketState?.moonUsdPrice && marketState.moonUsdPrice > 0) {
@@ -704,15 +706,31 @@ function AdvancedLpContent() {
   useEffect(() => {
     if (miniAppState !== 'miniapp') return;
     if (isConnected) return;
-    const miniConnector = connectors.find((c) => c.id === 'farcasterMiniApp');
+    const miniConnector = connectors.find((c) => c.id === MINIAPP_CONNECTOR_ID);
     if (miniConnector) {
       try {
-        connect({ connector: miniConnector });
+        connect({ connector: miniConnector, chainId: monadChain.id });
       } catch (err) {
         console.warn('ADV_LP:auto_connect_miniapp_failed', err);
+        setMiniAppConnectError('Connect your Farcaster wallet to deploy from the mini app.');
       }
     }
   }, [miniAppState, isConnected, connectors, connect]);
+
+  const handleMiniAppConnect = useCallback(() => {
+    const miniConnector = connectors.find((c) => c.id === MINIAPP_CONNECTOR_ID);
+    if (!miniConnector) {
+      setMiniAppConnectError('Farcaster mini-app wallet not available.');
+      return;
+    }
+    try {
+      connect({ connector: miniConnector, chainId: monadChain.id });
+      setMiniAppConnectError(null);
+    } catch (err) {
+      console.warn('ADV_LP:manual_connect_miniapp_failed', err);
+      setMiniAppConnectError('Unable to connect Farcaster wallet. Please retry.');
+    }
+  }, [connectors, connect]);
 
   const moonBalanceDisplay = formatTokenBalance(
     moonBalance.data?.value,
@@ -867,6 +885,15 @@ function AdvancedLpContent() {
                 <p className="text-sm text-white/70">
                   Connect a wallet capable of signing on Monad.
                 </p>
+                {miniAppState === 'miniapp' && (
+                  <button
+                    type="button"
+                    onClick={handleMiniAppConnect}
+                    className="px-4 py-2 border border-[var(--moss-green)] text-[var(--moss-green)] rounded-full text-sm hover:bg-[var(--moss-green)] hover:text-black transition disabled:opacity-40"
+                  >
+                    Connect Farcaster wallet
+                  </button>
+                )}
                 <div className="flex flex-wrap gap-3">
                   {connectors.map((connector) => (
                     <button
@@ -881,6 +908,9 @@ function AdvancedLpContent() {
                   ))}
                 </div>
                 {connectError && <p className="text-sm text-red-300">{connectError.message}</p>}
+                {miniAppConnectError && (
+                  <p className="text-sm text-red-300">{miniAppConnectError}</p>
+                )}
               </div>
             )}
           </article>
