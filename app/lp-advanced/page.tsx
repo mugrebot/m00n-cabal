@@ -88,6 +88,8 @@ function formatTokenBalance(value?: bigint, decimals = 18) {
   if (value === undefined) return '0';
   const numeric = Number(formatUnits(value, decimals));
   if (!Number.isFinite(numeric)) return '0';
+  if (numeric >= 1_000_000_000) return `${(numeric / 1_000_000_000).toFixed(1)}B`;
+  if (numeric >= 1_000_000) return `${(numeric / 1_000_000).toFixed(1)}M`;
   if (numeric >= 1_000_000) return `${numeric.toFixed(1)}M`;
   if (numeric >= 1_000) return `${numeric.toFixed(1)}k`;
   return numeric.toFixed(4);
@@ -699,6 +701,19 @@ function AdvancedLpContent() {
     depositAsset
   ]);
 
+  useEffect(() => {
+    if (miniAppState !== 'miniapp') return;
+    if (isConnected) return;
+    const miniConnector = connectors.find((c) => c.id === 'farcasterMiniApp');
+    if (miniConnector) {
+      try {
+        connect({ connector: miniConnector });
+      } catch (err) {
+        console.warn('ADV_LP:auto_connect_miniapp_failed', err);
+      }
+    }
+  }, [miniAppState, isConnected, connectors, connect]);
+
   const moonBalanceDisplay = formatTokenBalance(
     moonBalance.data?.value,
     moonBalance.data?.decimals
@@ -1071,7 +1086,7 @@ function AdvancedLpContent() {
             )}
           </div>
 
-          <div className="pt-4 space-y-2">
+          <div className="pt-4 space-y-2 sticky bottom-0 bg-black/85 backdrop-blur border-t border-white/10 px-3 pb-4 md:static md:bg-transparent md:border-0 md:px-0 md:pb-0">
             <button
               type="button"
               onClick={handleDeploy}
