@@ -158,16 +158,6 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
     return max * 1.08;
   }, [series, currentUsd, lowerUsd, upperUsd]);
 
-  const [stars] = useState(() => {
-    return [...Array(40)].map((_, i) => ({
-      id: i,
-      x: Math.random(),
-      y: Math.random(),
-      size: Math.random() > 0.8 ? 2 : 1,
-      opacity: Math.random() * 0.5 + 0.1
-    }));
-  });
-
   const scaleY = useCallback(
     (value: number) => {
       const clamped = Math.min(Math.max(value, minValue), maxValue);
@@ -206,12 +196,7 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      className="w-full rounded-[32px] border border-white/10 bg-[#000000] p-4 relative overflow-hidden"
-      style={{
-        backgroundImage:
-          'radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.03) 1px, transparent 1px), radial-gradient(circle at 80% 40%, rgba(255, 255, 255, 0.03) 1px, transparent 1px), radial-gradient(circle at 40% 70%, rgba(255, 255, 255, 0.03) 1px, transparent 1px), radial-gradient(circle at 90% 10%, rgba(255, 255, 255, 0.03) 1px, transparent 1px)',
-        backgroundSize: '120px 120px'
-      }}
+      className="w-full h-full bg-transparent relative overflow-visible"
     >
       <defs>
         <linearGradient id="telemetryLine" x1="0" y1="0" x2="1" y2="1">
@@ -226,18 +211,6 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
           </feMerge>
         </filter>
       </defs>
-
-      {stars.map((star) => (
-        <rect
-          key={star.id}
-          x={star.x * width}
-          y={star.y * height}
-          width={star.size}
-          height={star.size}
-          fill="white"
-          opacity={star.opacity}
-        />
-      ))}
 
       {hasRange && upperY !== null && lowerY !== null && (
         <>
@@ -390,16 +363,57 @@ function AdvancedLpContent() {
 
   const chartSeries = useMemo(() => generateMockSeries(moonMarketCapUsd), [moonMarketCapUsd]);
 
+  const [stars] = useState(() => {
+    return [...Array(100)].map((_, i) => ({
+      id: i,
+      x: Math.random(),
+      y: Math.random(),
+      size: Math.random() > 0.8 ? 2 : 1,
+      opacity: Math.random() * 0.5 + 0.1
+    }));
+  });
+
   const renderShell = useCallback(
-    (children: ReactNode) => (
-      <main className="min-h-screen bg-[#05030b] text-white relative overflow-hidden">
+    (children: ReactNode, backgroundElement?: ReactNode) => (
+      <main className="min-h-screen bg-[#05030b] text-white relative overflow-hidden flex items-center justify-center p-4 md:p-10">
+        {/* Global ambient backgrounds */}
         <div className="absolute inset-0 bg-gradient-to-b from-[#130a26] via-transparent to-black opacity-70" />
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_20%_20%,rgba(140,84,255,0.3),transparent_45%),radial-gradient(circle_at_80%_0%,rgba(108,229,177,0.18),transparent_40%)]" />
 
-        <div className="relative z-10 max-w-6xl mx-auto px-6 py-10 space-y-10">{children}</div>
+        {/* Main Dashboard Container */}
+        <div
+          className="relative z-10 w-full max-w-6xl rounded-[32px] border border-white/10 bg-[#000000] overflow-hidden shadow-2xl"
+          style={{
+            backgroundImage:
+              'radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.03) 1px, transparent 1px), radial-gradient(circle at 80% 40%, rgba(255, 255, 255, 0.03) 1px, transparent 1px), radial-gradient(circle at 40% 70%, rgba(255, 255, 255, 0.03) 1px, transparent 1px), radial-gradient(circle at 90% 10%, rgba(255, 255, 255, 0.03) 1px, transparent 1px)',
+            backgroundSize: '120px 120px'
+          }}
+        >
+          {/* Stars Layer */}
+          <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-60">
+            {stars.map((star) => (
+              <rect
+                key={star.id}
+                x={`${star.x * 100}%`}
+                y={`${star.y * 100}%`}
+                width={star.size}
+                height={star.size}
+                fill="white"
+                opacity={star.opacity}
+              />
+            ))}
+          </svg>
+
+          {/* Optional background chart layer */}
+          {backgroundElement && (
+            <div className="absolute inset-0 z-0 pointer-events-none">{backgroundElement}</div>
+          )}
+
+          <div className="relative z-10 p-6 md:p-10 space-y-8">{children}</div>
+        </div>
       </main>
     ),
-    []
+    [stars]
   );
 
   useEffect(() => {
