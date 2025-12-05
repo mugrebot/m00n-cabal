@@ -282,6 +282,8 @@ export async function getTopM00nLpPositions(limit = MAX_SOLAR_POSITIONS): Promis
         '16034',
         '16037',
         '16608',
+        '32578',
+        '32584',
         ...(process.env.M00N_SOLAR_SEED_TOKEN_IDS ?? '').split(',')
       ]
         .map((entry) => entry.trim())
