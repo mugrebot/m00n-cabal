@@ -795,7 +795,7 @@ function AdvancedLpContent() {
       const neededMoon = respRequiredMoonWei ? BigInt(respRequiredMoonWei) : BigInt(0);
       const neededWmon = respRequiredWmonWei ? BigInt(respRequiredWmonWei) : BigInt(0);
       const hasMoon = moonBalance.data?.value ?? BigInt(0);
-      const hasWmon = wmonBalance.data?.value ?? BigInt(0);
+      const hasWmon = manualWmonBalance ?? wmonBalance.data?.value ?? BigInt(0);
 
       if (neededMoon > hasMoon || neededWmon > hasWmon) {
         setStatus('error');
@@ -899,7 +899,8 @@ function AdvancedLpContent() {
     depositAsset,
     publicClient,
     moonBalance,
-    wmonBalance
+    wmonBalance,
+    manualWmonBalance
   ]);
 
   useEffect(() => {
