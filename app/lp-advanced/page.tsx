@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { PrivyProvider, usePrivy, useWallets, type PrivyProviderProps } from '@privy-io/react-auth';
-import { useSetActiveWallet } from '@privy-io/wagmi';
 import {
   WagmiProvider,
   createConfig,
@@ -549,7 +548,6 @@ function AdvancedLpContent({
 
   const { ready: privyReady, login } = usePrivy();
   const { wallets: privyWallets, ready: privyWalletsReady } = useWallets();
-  const setActiveWallet = useSetActiveWallet();
 
   const handleSwapToken = useCallback(
     async (target: 'moon' | 'wmon') => {
@@ -1149,28 +1147,16 @@ function AdvancedLpContent({
     };
   }, [address, effectivePublicClient, wmonBalance.data?.value]);
 
-  // Desktop-only: sync Privy wallet into wagmi when available
+  // Desktop-only: trigger Privy login; user still needs to pick a wallet via wagmi connectors
   useEffect(() => {
     if (miniAppState !== 'desktop') return;
     if (!privyReady || !privyWalletsReady) return;
-    if (isConnected) return;
-    const wallet = privyWallets[0];
-    if (!wallet) return;
-    setPrivyActivating(true);
-    setPrivyError(null);
-    setActiveWallet(wallet)
-      .catch((err: unknown) => {
-        console.error('PRIVY:setActiveWallet_failed', err);
-        setPrivyError('Unable to connect via Privy right now.');
-      })
-      .finally(() => setPrivyActivating(false));
-  }, [miniAppState, privyReady, privyWalletsReady, privyWallets, isConnected, setActiveWallet]);
+    setPrivyActivating(false);
+  }, [miniAppState, privyReady, privyWalletsReady]);
 
   const handleOpenLpManager = useCallback(async () => {
     const absolute =
-      typeof window !== 'undefined'
-        ? `${window.location.origin}${LP_MANAGER_PATH}`
-        : LP_MANAGER_PATH;
+      typeof window !== 'undefined' ? `${window.location.origin}/lp-advanced` : '/lp-advanced';
     if (miniAppState === 'miniapp') {
       try {
         await sdk.actions.openMiniApp({ url: absolute });
@@ -1182,7 +1168,7 @@ function AdvancedLpContent({
       return;
     }
     if (typeof window !== 'undefined') {
-      window.location.href = LP_MANAGER_PATH;
+      window.location.href = absolute;
     }
   }, [miniAppState]);
 
@@ -1276,22 +1262,13 @@ function AdvancedLpContent({
           >
             Back to cabal check
           </Link>
-          {miniAppState === 'miniapp' ? (
-            <button
-              type="button"
-              onClick={handleOpenLpManager}
-              className="px-3 py-1 rounded-full border border-[var(--monad-purple)] text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-black transition"
-            >
-              LP Manager
-            </button>
-          ) : (
-            <Link
-              href={LP_MANAGER_PATH}
-              className="px-3 py-1 rounded-full border border-[var(--monad-purple)] text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-black transition"
-            >
-              LP Manager
-            </Link>
-          )}
+          <button
+            type="button"
+            onClick={handleOpenLpManager}
+            className="px-3 py-1 rounded-full border border-[var(--monad-purple)] text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-black transition"
+          >
+            LP Manager
+          </button>
         </div>
       </header>
 
