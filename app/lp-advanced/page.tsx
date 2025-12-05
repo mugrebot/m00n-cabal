@@ -60,7 +60,6 @@ const permit2Abi = [
     outputs: []
   }
 ] as const;
-
 const monadChain = {
   id: 143,
   name: 'Monad',
@@ -800,26 +799,30 @@ function AdvancedLpContent() {
         }
       };
 
+      const allowanceMoon = moonAllowance.data ?? BigInt(0);
+      const allowanceWmon = wmonAllowance.data ?? BigInt(0);
+
       const approveWithPermit2 = async (
         tokenAddress: `0x${string}`,
         label: 'm00n' | 'WMON',
-        amount: bigint
+        required: bigint,
+        currentAllowance: bigint
       ) => {
-        if (amount <= BigInt(0)) return;
+        if (required <= BigInt(0) || required <= currentAllowance) return currentAllowance;
+        setStatusMessage(`Approving ${label}…`);
+
         const nowSec = Math.floor(Date.now() / 1000);
         const permitExpiration = nowSec + 60 * 60 * 24 * 30;
-
-        setStatusMessage(`Approving ${label}…`);
 
         const approveUnderlyingData = encodeFunctionData({
           abi: erc20Abi,
           functionName: 'approve',
-          args: [PERMIT2_ADDRESS, amount]
+          args: [PERMIT2_ADDRESS, required]
         });
         const permitData = encodeFunctionData({
           abi: permit2Abi,
           functionName: 'approve',
-          args: [tokenAddress, POSITION_MANAGER_ADDRESS, amount, permitExpiration]
+          args: [tokenAddress, POSITION_MANAGER_ADDRESS, required, permitExpiration]
         });
 
         const approveUnderlyingTx = await walletClient.sendTransaction({
@@ -837,17 +840,14 @@ function AdvancedLpContent() {
           chain: walletClient.chain ?? undefined
         });
         await waitForReceipt(approvePermitTx);
+
+        return required;
       };
 
-      if (neededMoon > BigInt(0)) {
-        await approveWithPermit2(TOKEN_MOON_ADDRESS, 'm00n', neededMoon);
-        void moonAllowance.refetch?.();
-      }
-
-      if (neededWmon > BigInt(0)) {
-        await approveWithPermit2(TOKEN_WMON_ADDRESS, 'WMON', neededWmon);
-        void wmonAllowance.refetch?.();
-      }
+      await approveWithPermit2(TOKEN_MOON_ADDRESS, 'm00n', neededMoon, allowanceMoon);
+      await approveWithPermit2(TOKEN_WMON_ADDRESS, 'WMON', neededWmon, allowanceWmon);
+      void moonAllowance.refetch?.();
+      void wmonAllowance.refetch?.();
 
       setStatusMessage('Submitting transaction…');
       const tx = await walletClient.sendTransaction({
