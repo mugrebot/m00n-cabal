@@ -15,6 +15,7 @@ const TICK_SPACING = 200;
 const MONAD_CHAIN_ID = Number(process.env.MONAD_CHAIN_ID ?? 143);
 const SLIPPAGE_BPS = 500;
 const MOON_CIRC_SUPPLY = 95_000_000_000; // market cap inputs need per-token conversion
+const ONE_WEI = BigInt(1);
 
 const POOL_KEY = {
   currency0: TOKEN_MOON_ADDRESS as Address,
@@ -152,21 +153,41 @@ export async function POST(request: NextRequest) {
     const currentBelowRange = currentTick < tickLower;
     const currentAboveRange = currentTick > tickUpper;
 
+    const priceLowerWmon = lowerRatio;
+    const priceUpperWmon = upperRatio;
+    const priceCurrentWmon = tickToPrice(currentTick);
+
     if (side === 'single') {
       if (singleDepositAsset === 'moon') {
-        if (currentBelowRange) {
-          moonAmount = parseUnits(singleAmount!, 18);
-        } else {
-          // Spot is inside/above the band; require double-sided
-          moonAmount = parseUnits(singleAmount!, 18);
-          wmonAmount = BigInt(1); // tiny sentinel to satisfy invariant without changing economics; frontend can overwrite with real ratio if desired
+        moonAmount = parseUnits(singleAmount!, 18);
+        if (!currentBelowRange) {
+          // In-range or above: compute required WMON to make the position valid
+          const needed = computeOtherAmountForInRange({
+            baseAmount: moonAmount,
+            baseIsMoon: true,
+            priceCurrentWmon,
+            priceLowerWmon,
+            priceUpperWmon
+          });
+          if (needed === null) {
+            return NextResponse.json({ error: 'in_range_amount_calc_failed' }, { status: 400 });
+          }
+          wmonAmount = needed > 0 ? needed : ONE_WEI; // ensure non-zero
         }
       } else {
-        if (currentAboveRange) {
-          wmonAmount = parseUnits(singleAmount!, 18);
-        } else {
-          wmonAmount = parseUnits(singleAmount!, 18);
-          moonAmount = BigInt(1);
+        wmonAmount = parseUnits(singleAmount!, 18);
+        if (!currentAboveRange) {
+          const needed = computeOtherAmountForInRange({
+            baseAmount: wmonAmount,
+            baseIsMoon: false,
+            priceCurrentWmon,
+            priceLowerWmon,
+            priceUpperWmon
+          });
+          if (needed === null) {
+            return NextResponse.json({ error: 'in_range_amount_calc_failed' }, { status: 400 });
+          }
+          moonAmount = needed > 0 ? needed : ONE_WEI;
         }
       }
     } else {
@@ -231,4 +252,48 @@ export async function POST(request: NextRequest) {
 
 function priceToTick(value: number) {
   return Math.log(value) / Math.log(1.0001);
+}
+
+function tickToPrice(tick: number) {
+  return Math.pow(1.0001, tick);
+}
+
+function computeOtherAmountForInRange({
+  baseAmount,
+  baseIsMoon,
+  priceCurrentWmon,
+  priceLowerWmon,
+  priceUpperWmon
+}: {
+  baseAmount: bigint;
+  baseIsMoon: boolean;
+  priceCurrentWmon: number;
+  priceLowerWmon: number;
+  priceUpperWmon: number;
+}): bigint | null {
+  if (priceCurrentWmon <= 0 || priceLowerWmon <= 0 || priceUpperWmon <= 0) {
+    return null;
+  }
+  const sqrtP = Math.sqrt(priceCurrentWmon);
+  const sqrtPa = Math.sqrt(priceLowerWmon);
+  const sqrtPb = Math.sqrt(priceUpperWmon);
+
+  // In-range ratio for amount1/amount0 (WMON per m00n)
+  const numerator = sqrtP * sqrtPb * (sqrtP - sqrtPa);
+  const denominator = sqrtPb - sqrtP;
+  if (denominator <= 0) return null;
+  const ratio = numerator / denominator; // amount1 / amount0
+
+  if (baseIsMoon) {
+    const moonAmountFloat = Number(baseAmount) / 1e18;
+    const otherFloat = moonAmountFloat * ratio;
+    if (!Number.isFinite(otherFloat) || otherFloat <= 0) return null;
+    return BigInt(Math.max(1, Math.floor(otherFloat * 1e18)));
+  }
+
+  // base is WMON, need moon amount = amount1 / ratio
+  const wmonAmountFloat = Number(baseAmount) / 1e18;
+  const otherFloat = wmonAmountFloat / ratio;
+  if (!Number.isFinite(otherFloat) || otherFloat <= 0) return null;
+  return BigInt(Math.max(1, Math.floor(otherFloat * 1e18)));
 }
