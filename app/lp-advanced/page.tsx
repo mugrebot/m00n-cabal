@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { PrivyProvider, usePrivy, useWallets, type PrivyProviderProps } from '@privy-io/react-auth';
-import { PrivyWagmiConnector } from '@privy-io/wagmi-connector';
 import { useSetActiveWallet } from '@privy-io/wagmi';
 import {
   WagmiProvider,
@@ -469,30 +468,25 @@ function LpAdvancedProviders({ privyConfig }: { privyConfig: PrivyProviderProps[
     </QueryClientProvider>
   );
 
-  // Desktop path: let Privy manage wagmi via PrivyWagmiConnector
-  if (miniAppState === 'desktop' && PRIVY_APP_ID) {
-    const publicClient = createPublicClient({
-      chain: monadChain,
-      transport: viemHttp(monadChain.rpcUrls.default.http[0]!)
-    });
+  if (!wagmiConfig) {
+    return (
+      <main className="min-h-screen bg-black text-white flex items-center justify-center">
+        <span className="text-sm text-white/80">Loading LP planner…</span>
+      </main>
+    );
+  }
 
+  // Desktop: wrap with PrivyProvider, but keep our wagmi config
+  if (miniAppState === 'desktop' && PRIVY_APP_ID) {
     return (
       <PrivyProvider appId={PRIVY_APP_ID} config={privyConfig}>
-        <PrivyWagmiConnector wagmiChainsConfig={{ chains: [monadChain], publicClient }}>
-          {baseChildren}
-        </PrivyWagmiConnector>
+        <WagmiProvider config={wagmiConfig}>{baseChildren}</WagmiProvider>
       </PrivyProvider>
     );
   }
 
-  // Mini-app (or fallback) path: use our wagmi config with mini-app connector only
-  return wagmiConfig ? (
-    <WagmiProvider config={wagmiConfig}>{baseChildren}</WagmiProvider>
-  ) : (
-    <main className="min-h-screen bg-black text-white flex items-center justify-center">
-      <span className="text-sm text-white/80">Loading LP planner…</span>
-    </main>
-  );
+  // Mini-app or fallback
+  return <WagmiProvider config={wagmiConfig}>{baseChildren}</WagmiProvider>;
 }
 
 function AdvancedLpContent({
