@@ -12,4 +12,6 @@ export interface LpPosition {
   tickUpper?: number;
   rangeStatus?: RangeStatus;
   currentTick?: number;
+  planetKind?: 'jupiter' | 'neptune';
+  planetColor?: string;
 }

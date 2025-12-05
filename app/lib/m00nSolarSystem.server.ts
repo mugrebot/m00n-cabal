@@ -75,6 +75,14 @@ const EXCLUDED_OWNER_ADDRESSES = new Set(
     .filter((entry) => entry.startsWith('0x') && entry.length === 42)
 );
 
+const SPECIAL_PLANETS: Record<
+  string,
+  { label: string; planetKind: 'jupiter' | 'neptune'; planetColor: string }
+> = {
+  '32578': { label: 'Jupiter', planetKind: 'jupiter', planetColor: '#d4b483' },
+  '32584': { label: 'Neptune', planetKind: 'neptune', planetColor: '#5db0ff' }
+};
+
 const GET_RECENT_POSITIONS = gql`
   query GetRecentPositions($first: Int!, $skip: Int!) {
     positions(orderBy: createdAtTimestamp, orderDirection: desc, first: $first, skip: $skip) {
@@ -425,7 +433,8 @@ export async function getTopM00nLpPositions(limit = MAX_SOLAR_POSITIONS): Promis
       const tokenId = position.tokenId.toString();
       const isClankerPool = tokenId === SPECIAL_CLANKER_ID;
       const owner = ownerMap.get(tokenId) ?? '0x0';
-      const label = isClankerPool ? 'Clanker Pool' : resolveOwnerLabel(owner);
+      const special = SPECIAL_PLANETS[tokenId];
+      const label = isClankerPool ? 'Clanker Pool' : (special?.label ?? resolveOwnerLabel(owner));
 
       let notionalUsd = 0;
       if (moonPriceUsd !== null && wmonPriceUsd !== null) {
@@ -449,7 +458,9 @@ export async function getTopM00nLpPositions(limit = MAX_SOLAR_POSITIONS): Promis
         tickLower: position.tickLower,
         tickUpper: position.tickUpper,
         rangeStatus: position.rangeStatus,
-        currentTick: position.currentTick
+        currentTick: position.currentTick,
+        planetKind: special?.planetKind,
+        planetColor: special?.planetColor
       };
     })
     .filter((entry) => !EXCLUDED_OWNER_ADDRESSES.has(entry.owner.toLowerCase()));

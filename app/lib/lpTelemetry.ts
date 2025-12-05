@@ -67,6 +67,7 @@ export interface LeaderboardSnapshot {
 const TOP_POSITION_SAMPLE_SIZE = Number(process.env.M00N_SOLAR_LEADERBOARD_SAMPLE_SIZE ?? 200);
 const TOP_OVERALL_COUNT = 7;
 const SPECIAL_CLANKER_LABEL = 'Clanker Pool';
+const EXCLUDED_TOKEN_IDS = new Set(['32578', '32584']);
 
 export async function buildLeaderboardSnapshot(): Promise<LeaderboardSnapshot> {
   const [positions, wmonPriceUsd] = await Promise.all([
@@ -74,7 +75,9 @@ export async function buildLeaderboardSnapshot(): Promise<LeaderboardSnapshot> {
     getWmonUsdPriceFromSubgraph()
   ]);
 
-  if (positions.length === 0) {
+  const filtered = positions.filter((p) => !EXCLUDED_TOKEN_IDS.has(p.tokenId));
+
+  if (filtered.length === 0) {
     return {
       updatedAt: new Date().toISOString(),
       moonPriceUsd: null,
@@ -86,13 +89,13 @@ export async function buildLeaderboardSnapshot(): Promise<LeaderboardSnapshot> {
     };
   }
 
-  const referenceTick = positions[0]?.currentTick ?? null;
+  const referenceTick = filtered[0]?.currentTick ?? null;
   const moonPriceUsd =
     wmonPriceUsd !== null && referenceTick !== null
       ? tickToPrice(referenceTick) * wmonPriceUsd
       : null;
 
-  const entries = positions.map((position) => {
+  const entries = filtered.map((position) => {
     const bandType = classifyBandType(position);
     const specialLabel = position.isClankerPool ? SPECIAL_CLANKER_LABEL : null;
     const ownerLabel = specialLabel ?? getAddressLabel(position.owner);

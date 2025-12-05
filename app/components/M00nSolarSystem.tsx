@@ -147,7 +147,17 @@ export function M00nSolarSystem({ positions, width = 480, height = 480 }: M00nSo
         ctx.beginPath();
         ctx.arc(x, y, planetRadius, 0, Math.PI * 2);
         ctx.clip();
-        ctx.drawImage(texture, x - drawSize / 2, y - drawSize / 2, drawSize, drawSize);
+        if (planet.planetColor) {
+          const gradient = ctx.createRadialGradient(x, y, planetRadius * 0.2, x, y, drawSize / 2);
+          gradient.addColorStop(0, '#ffffff');
+          gradient.addColorStop(0.15, planet.planetColor);
+          gradient.addColorStop(0.8, planet.planetColor);
+          gradient.addColorStop(1, '#000000');
+          ctx.fillStyle = gradient;
+          ctx.fillRect(x - drawSize / 2, y - drawSize / 2, drawSize, drawSize);
+        } else {
+          ctx.drawImage(texture, x - drawSize / 2, y - drawSize / 2, drawSize, drawSize);
+        }
         ctx.restore();
       };
 
