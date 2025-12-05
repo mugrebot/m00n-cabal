@@ -1078,11 +1078,9 @@ function AdvancedLpContent() {
           ADVANCED LP
         </p>
         <div className="flex items-center justify-center gap-3">
-          <h1 className="text-3xl sm:text-4xl font-semibold">Custom</h1>
+          <h1 className="text-3xl sm:text-4xl font-semibold">Custom LP Planner</h1>
           <Link
-            href="/advanced_lp.md"
-            target="_blank"
-            rel="noreferrer"
+            href="/lp-advanced/help"
             className="w-8 h-8 rounded-full border border-white/20 text-white/80 flex items-center justify-center text-sm hover:bg-white/10"
             aria-label="Open Advanced LP guide"
           >
