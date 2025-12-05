@@ -148,8 +148,8 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
     if (currentUsd) candidates.push(currentUsd);
     if (lowerUsd) candidates.push(lowerUsd);
     if (upperUsd) candidates.push(upperUsd);
-    const min = Math.min(...candidates, 1);
-    return Math.max(min * 0.8, 1);
+    const min = Math.min(...candidates);
+    return Math.max(0, min * 0.9);
   }, [series, currentUsd, lowerUsd, upperUsd]);
 
   const maxValue = useMemo(() => {
@@ -157,19 +157,15 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
     if (currentUsd) candidates.push(currentUsd);
     if (lowerUsd) candidates.push(lowerUsd);
     if (upperUsd) candidates.push(upperUsd);
-    const max = Math.max(...candidates, 1);
-    return max * 1.2;
+    const max = Math.max(...candidates);
+    return max * 1.1;
   }, [series, currentUsd, lowerUsd, upperUsd]);
 
   const scaleY = useCallback(
     (value: number) => {
-      // Use logarithmic scale to handle large "moon" targets (e.g. 60k -> 1M)
-      const safeVal = Math.max(value, 1);
-      const logVal = Math.log(safeVal);
-      const logMin = Math.log(Math.max(minValue, 1));
-      const logMax = Math.log(Math.max(maxValue, 1));
-      const range = logMax - logMin;
-      const ratio = range === 0 ? 0.5 : (logVal - logMin) / range;
+      const clamped = Math.min(Math.max(value, minValue), maxValue);
+      const range = maxValue - minValue;
+      const ratio = range === 0 ? 0.5 : (clamped - minValue) / range;
       return height - ratio * height;
     },
     [minValue, maxValue, height]
