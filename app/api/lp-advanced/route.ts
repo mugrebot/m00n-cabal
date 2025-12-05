@@ -127,9 +127,9 @@ export async function POST(request: NextRequest) {
     const [usdLower, usdUpper] =
       lowerBound < upperBound ? [lowerBound, upperBound] : [upperBound, lowerBound];
 
-    // Treat inputs as market-cap USD; convert to per-token USD for tick math.
-    const lowerPriceUsd = usdLower / MOON_CIRC_SUPPLY;
-    const upperPriceUsd = usdUpper / MOON_CIRC_SUPPLY;
+    // Inputs are per-token USD (client already converts market cap -> per-token before POST)
+    const lowerPriceUsd = usdLower;
+    const upperPriceUsd = usdUpper;
 
     const lowerRatio = lowerPriceUsd / wmonUsdPrice;
     const upperRatio = upperPriceUsd / wmonUsdPrice;
@@ -156,7 +156,10 @@ export async function POST(request: NextRequest) {
       if (singleDepositAsset === 'moon') {
         if (!currentBelowRange) {
           return NextResponse.json(
-            { error: 'single_moon_requires_range_above_spot' },
+            {
+              error: 'single_moon_requires_range_above_spot',
+              hint: `Current tick ${currentTick}, band ticks [${tickLower}, ${tickUpper}]`
+            },
             { status: 400 }
           );
         }
@@ -164,7 +167,10 @@ export async function POST(request: NextRequest) {
       } else {
         if (!currentAboveRange) {
           return NextResponse.json(
-            { error: 'single_wmon_requires_range_below_spot' },
+            {
+              error: 'single_wmon_requires_range_below_spot',
+              hint: `Current tick ${currentTick}, band ticks [${tickLower}, ${tickUpper}]`
+            },
             { status: 400 }
           );
         }
