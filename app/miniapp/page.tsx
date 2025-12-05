@@ -64,8 +64,6 @@ const HOLDER_CHAT_URL =
   process.env.NEXT_PUBLIC_HOLDER_CHAT_URL ?? 'https://warpcast.com/~/channel/m00n';
 const HEAVEN_MODE_URL = process.env.NEXT_PUBLIC_HEAVEN_URL ?? 'https://warpcast.com/~/channel/m00n';
 const MOONLANDER_URL = 'https://farcaster.xyz/miniapps/xXgsbdvvhOB7/m00nlander';
-const ADVANCED_LP_URL =
-  process.env.NEXT_PUBLIC_ADVANCED_LP_URL ?? 'https://m00nad.vercel.app/lp-advanced';
 const CHAIN_CAIP = 'eip155:143';
 const MON_NATIVE_CAIP = `${CHAIN_CAIP}/native`;
 const WMON_CAIP = `${CHAIN_CAIP}/erc20:${WMON_ADDRESS.toLowerCase()}`;
@@ -1718,10 +1716,10 @@ function MiniAppPageInner() {
   const handleOpenAdvancedLp = async () => {
     setIsObservationDeckOpen(false);
     try {
-      await sdk.actions.openMiniApp({ url: ADVANCED_LP_URL });
+      router.push('/miniapp/advanced-lp');
     } catch (err) {
-      console.warn('openMiniApp advanced LP failed, falling back to openUrl', err);
-      await openExternalUrl(ADVANCED_LP_URL);
+      console.warn('router push advanced LP failed, falling back to openUrl', err);
+      await openExternalUrl('/miniapp/advanced-lp');
     }
   };
 
@@ -4088,12 +4086,6 @@ function MiniAppPageInner() {
         </button>
         <button
           onClick={() => router.push('/miniapp/advanced-lp')}
-          className="w-full text-xs px-3 py-2 rounded-lg border border-white/25 text-white hover:bg-white/10 transition-colors"
-        >
-          Open advanced LP lab
-        </button>
-        <button
-          onClick={handleOpenAdvancedLp}
           className="w-full text-xs px-3 py-2 rounded-lg border border-white/25 text-white hover:bg-white/10 transition-colors"
         >
           Open advanced LP lab
