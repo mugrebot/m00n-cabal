@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "NEXT_FORCE_WEBPACK=1 bun run scripts/build-airdrop-json.ts && NEXT_FORCE_WEBPACK=1 next build --no-turbo",
+    "build": "NEXT_FORCE_WEBPACK=1 bun run scripts/build-airdrop-json.ts && NEXT_FORCE_WEBPACK=1 next build",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest",
