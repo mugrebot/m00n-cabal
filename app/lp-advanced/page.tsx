@@ -820,9 +820,13 @@ function AdvancedLpContent({
 
       const numerator = sqrtP * sqrtPb * (sqrtP - sqrtPa);
       const denominator = sqrtPb - sqrtP;
-      if (denominator <= 0) return;
 
-      const ratio = numerator / denominator; // amount1 / amount0
+      let ratio = numerator / denominator; // amount1 / amount0
+
+      // Fallback if ratio is invalid or zero-ish: use clamped spot price as ratio
+      if (!Number.isFinite(ratio) || ratio <= 0) {
+        ratio = clampedPrice;
+      }
 
       if (changedSide === 'moon') {
         const other = amountIn * ratio;

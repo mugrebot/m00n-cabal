@@ -3664,14 +3664,7 @@ function MiniAppPageInner() {
     return renderShell(
       <div className="min-h-screen w-full flex flex-col items-center justify-start gap-6 p-4 pb-24 relative z-10">
         <div className="max-w-5xl w-full space-y-6 scanline bg-black/40 border border-white/15 rounded-3xl px-6 py-8">
-          <div className="flex justify-end gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={handleOpenAdvancedLp}
-              className="pixel-font px-4 py-2 border border-[var(--monad-purple)] text-[var(--monad-purple)] rounded-full text-[10px] tracking-[0.4em] hover:bg-[var(--monad-purple)] hover:text-black transition-colors"
-            >
-              ADVANCED LP
-            </button>
+          <div className="flex justify-end">
             <button
               type="button"
               onClick={handleCloseObservationDeck}
