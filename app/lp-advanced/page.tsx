@@ -46,6 +46,7 @@ const MON_NATIVE_CAIP = `${CHAIN_CAIP}/native`;
 const WMON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_WMON_ADDRESS.toLowerCase()}`;
 const MOON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_MOON_ADDRESS.toLowerCase()}`;
 const APPROVAL_BUFFER_BPS = BigInt(200); // 2% buffer to avoid edge under-approvals on large sizes
+const DEFAULT_MONAD_RPC = process.env.NEXT_PUBLIC_MONAD_RPC_URL ?? 'https://rpc.monad.xyz';
 const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3' as const;
 const permit2Abi = [
   {
@@ -950,21 +951,53 @@ function AdvancedLpContent() {
 
   // Manual W-MON balance read (in case wagmi balance is stale/zero)
   useEffect(() => {
-    if (!address || !effectivePublicClient) return;
+    if (!address) return;
     let cancelled = false;
     (async () => {
       try {
-        const bal = await effectivePublicClient.readContract({
-          address: TOKEN_WMON_ADDRESS,
+        if (effectivePublicClient) {
+          const bal = await effectivePublicClient.readContract({
+            address: TOKEN_WMON_ADDRESS,
+            abi: erc20Abi,
+            functionName: 'balanceOf',
+            args: [address]
+          });
+          if (!cancelled) {
+            setManualWmonBalance(bal as bigint);
+          }
+          return;
+        }
+      } catch (err) {
+        console.warn('ADV_LP:manual_wmon_balance_failed_via_client', err);
+      }
+
+      // Fallback: raw JSON-RPC eth_call
+      try {
+        const callData = encodeFunctionData({
           abi: erc20Abi,
           functionName: 'balanceOf',
           args: [address]
         });
-        if (!cancelled) {
-          setManualWmonBalance(bal as bigint);
+        const resp = await fetch(DEFAULT_MONAD_RPC, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'eth_call',
+            params: [{ to: TOKEN_WMON_ADDRESS, data: callData }, 'latest'],
+            id: 1
+          })
+        });
+        const json = (await resp.json()) as { result?: string | null };
+        const hex = json.result;
+        if (hex && typeof hex === 'string' && hex.startsWith('0x')) {
+          const bal = BigInt(hex);
+          if (!cancelled) {
+            setManualWmonBalance(bal);
+          }
         }
       } catch (err) {
-        console.warn('ADV_LP:manual_wmon_balance_failed', err);
+        console.warn('ADV_LP:manual_wmon_balance_failed_via_fetch', err);
       }
     })();
     return () => {
