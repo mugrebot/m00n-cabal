@@ -1,58 +1,44 @@
-## Advanced LP Lab — Quick Guide
+## Custom LP Planner — Quick Guide
 
-Use this cheat sheet to understand the Advanced LP Lab and decide which
-position type fits your outlook. Read everything carefully—LPing carries risk.
+Use this short guide to pick a position type. LPing carries risk.
 
 ### Position Types
 
-- **Single-sided (m00n-only):** Deposit only m00n. Your liquidity sits above the
-  current price. You earn fees if price trades into your range; you’re exposed
-  to m00n downside only via opportunity cost (staying in m00n).
-- **Single-sided (W-MON-only):** Deposit only W-MON. Your liquidity sits below
-  the current price. You earn fees if price trades down into your range; you’re
-  exposed to m00n upside opportunity cost.
-- **Double-sided:** Deposit both m00n and W-MON across a range. You earn fees in
-  both tokens while active. Impermanent loss applies if price moves and stays
-  away from your entry mix.
+- **Single-sided (m00n):** m00n only, range above spot. Earn fees if price rises into it.
+- **Single-sided (W-MON):** W-MON only, range below spot. Earn fees if price dips into it.
+- **Double-sided:** Both tokens across a band. Earn fees in both; impermanent loss applies.
 
 ### Choosing a Range
 
-- **Narrow range:** Higher fee APR when in-range, but you fall out-of-range more
-  easily (no fees when out-of-range).
-- **Wide range:** More time in-range, lower peak APR, smoother experience.
+- **Narrow:** More APR in-range; can fall out faster.
+- **Wide:** More time in-range; lower peak APR; smoother ride.
 
-### Market Outlook Heuristics (not advice)
+### Outlook Heuristics (not advice)
 
-- **Bullish m00n:** Prefer m00n-only single-sided above spot, or a wide
-  double-sided range tilted above spot.
-- **Bearish/hedging:** Prefer W-MON-only single-sided below spot, or a range
-  tilted below spot.
-- **Neutral/fee farming:** Double-sided, symmetric around spot with a sensible
-  width to stay active.
+- **Bullish m00n:** m00n-only above spot or double-sided tilted up.
+- **Bearish/hedge:** W-MON-only below spot or tilted down.
+- **Neutral/fees:** Double-sided, symmetric around spot.
 
 ### Fees and Rewards
 
-- Fees accrue in the tokens that trade through your range. In double-sided you
-  can accrue both tokens; in single-sided you accrue the opposite token when
-  trades cross your range.
+- Fees accrue in tokens that trade through your range.
+- Single-sided earns the opposite token when trades cross; double-sided can earn both.
 
 ### Risks & Disclaimers
 
-- LPing is **not risk-free**. You can lose value vs. holding due to impermanent
-- loss and adverse price moves.
+- LPing is **not risk-free**. Impermanent loss and price moves can hurt versus holding.
 - You may go out-of-range and earn zero fees until price returns.
-- Smart contract and protocol risk apply. Only deposit what you can afford to
-  lose.
+- Smart contract/protocol risk. Only deposit what you can afford to lose.
 - Nothing here is financial advice.
 
 ### Quick Checklist Before Deploy
 
-- You’re connected to the correct wallet (Monad).
-- You understand where your range sits relative to current price.
-- You’re comfortable with the amounts and approval prompts.
+- On Monad and connected.
+- Range makes sense versus current price.
+- Amounts and approvals look right.
 
 ### Learn More
 
 - Uniswap v4 concentrated liquidity primer:
   https://docs.uniswap.org/concepts/protocol/concentrated-liquidity
-- m00n/WMON pool telemetry is visible in the Advanced LP page chart.
+- Pool telemetry is visible in the Custom LP Planner chart.

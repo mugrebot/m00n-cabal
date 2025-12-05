@@ -353,7 +353,14 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
 
       {spotX !== null && spotY !== null && (
         <g>
-          <circle cx={spotX} cy={spotY} r={6} fill="#fdd65b" stroke="none" />
+          <image
+            href="/assets/m00nsvg.svg"
+            x={spotX - 10}
+            y={spotY - 10}
+            width={20}
+            height={20}
+            preserveAspectRatio="xMidYMid meet"
+          />
         </g>
       )}
     </svg>

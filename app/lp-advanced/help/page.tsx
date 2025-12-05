@@ -4,37 +4,37 @@ const sections = [
   {
     title: 'Position Types',
     bullets: [
-      '**Single-sided (m00n-only):** Deposit only m00n. Liquidity above current price. Earn fees if price trades up into your range; main cost is m00n opportunity.',
-      '**Single-sided (W-MON-only):** Deposit only W-MON. Liquidity below current price. Earn fees if price trades down into your range; main cost is m00n upside opportunity.',
-      '**Double-sided:** Deposit both m00n and W-MON across a range. Earn fees in both while active. Impermanent loss applies if price moves and stays away from your entry mix.'
+      '**Single-sided (m00n):** m00n only, range above spot. Earn fees if price rises into it.',
+      '**Single-sided (W-MON):** W-MON only, range below spot. Earn fees if price dips into it.',
+      '**Double-sided:** Both tokens across a band. Earn fees in both; impermanent loss applies.'
     ]
   },
   {
     title: 'Choosing a Range',
     bullets: [
-      '**Narrow range:** Higher fee APR when in-range; easier to fall out-of-range (no fees when out).',
-      '**Wide range:** More time in-range; lower peak APR; smoother experience.'
+      '**Narrow:** More APR in-range; can fall out faster.',
+      '**Wide:** More time in-range; lower peak APR; smoother ride.'
     ]
   },
   {
-    title: 'Market Outlook Heuristics (not advice)',
+    title: 'Outlook Heuristics (not advice)',
     bullets: [
-      '**Bullish m00n:** m00n-only single-sided above spot, or wide double-sided tilted above spot.',
-      '**Bearish/hedging:** W-MON-only single-sided below spot, or range tilted below spot.',
-      '**Neutral/fee farming:** Double-sided, symmetric around spot with sensible width to stay active.'
+      '**Bullish m00n:** m00n-only above spot or double-sided tilted up.',
+      '**Bearish/hedge:** W-MON-only below spot or tilted down.',
+      '**Neutral/fees:** Double-sided, symmetric around spot.'
     ]
   },
   {
     title: 'Fees and Rewards',
     bullets: [
-      'Fees accrue in the tokens that trade through your range.',
-      'Double-sided can accrue both tokens; single-sided accrues the opposite token when trades cross your range.'
+      'Fees accrue in tokens that trade through your range.',
+      'Single-sided earns the opposite token when trades cross; double-sided can earn both.'
     ]
   },
   {
     title: 'Risks & Disclaimers',
     bullets: [
-      'LPing is **not risk-free**. Impermanent loss and adverse price moves can reduce value vs. holding.',
+      'LPing is **not risk-free**. Impermanent loss and price moves can hurt versus holding.',
       'You may go out-of-range and earn zero fees until price returns.',
       'Smart contract and protocol risk apply. Only deposit what you can afford to lose.',
       'Nothing here is financial advice.'
@@ -43,9 +43,9 @@ const sections = [
   {
     title: 'Quick Checklist Before Deploy',
     bullets: [
-      'On Monad and connected to the correct wallet.',
-      'You know where your range sits relative to current price.',
-      'Amounts and approvals look correct.'
+      'On Monad and connected.',
+      'Range makes sense versus current price.',
+      'Amounts and approvals look right.'
     ]
   },
   {
