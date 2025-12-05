@@ -810,20 +810,11 @@ function AdvancedLpContent({
       const priceUpperWmon = rangeMax / marketState.wmonUsdPrice;
       const priceCurrentWmon = tickToPrice(marketState.tick);
 
-      // Spot below range -> Only m00n needed
-      if (priceCurrentWmon < priceLowerWmon) {
-        if (changedSide === 'moon') setDoubleWmonAmount('0');
-        // If user types WMON, m00n would be infinite/undefined, so we leave it
-        return;
-      }
-      // Spot above range -> Only WMON needed
-      if (priceCurrentWmon > priceUpperWmon) {
-        if (changedSide === 'wmon') setDoubleMoonAmount('0');
-        return;
-      }
+      // Clamp spot into the band to always derive a ratio (avoid zeroed counterpart)
+      const clampedPrice = Math.min(Math.max(priceCurrentWmon, priceLowerWmon), priceUpperWmon);
 
-      // In range -> Calculate ratio
-      const sqrtP = Math.sqrt(priceCurrentWmon);
+      // Calculate ratio (amount1/amount0) using clamped price
+      const sqrtP = Math.sqrt(clampedPrice);
       const sqrtPa = Math.sqrt(priceLowerWmon);
       const sqrtPb = Math.sqrt(priceUpperWmon);
 
