@@ -781,22 +781,24 @@ function AdvancedLpContent() {
               </div>
             </div>
 
-            <div className="absolute top-2 right-2 z-20 pointer-events-none scale-75">
+            <div className="absolute bottom-8 right-2 z-20 pointer-events-none scale-75">
               <img src="/assets/m00nsvg.svg" alt="m00n" className="w-32 h-32 opacity-90" />
             </div>
 
             <p
-              className="absolute -left-8 top-1/2 -translate-y-1/2 -rotate-90 text-xs tracking-[0.2em] text-[#fdd65b] origin-center whitespace-nowrap hidden sm:block font-bold z-20"
+              className="absolute -left-8 top-[60%] -translate-y-1/2 -rotate-90 text-xs tracking-[0.2em] text-[#fdd65b] origin-center whitespace-nowrap hidden sm:block font-bold z-20"
               style={{ textShadow: '0 0 10px rgba(253, 214, 91, 0.5)' }}
             >
               Price of m00n
             </p>
-            <RangeChart
-              series={chartSeries}
-              currentUsd={moonMarketCapUsd}
-              lowerUsd={rangeMin}
-              upperUsd={rangeMax}
-            />
+            <div className="mt-12">
+              <RangeChart
+                series={chartSeries}
+                currentUsd={moonMarketCapUsd}
+                lowerUsd={rangeMin}
+                upperUsd={rangeMax}
+              />
+            </div>
           </div>
           <p className="text-xs text-white/60 text-center max-w-lg mx-auto">
             Yellow trace = simulated m00n market cap. The ribbon highlights the USD range you are
