@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { PrivyProvider, usePrivy, useWallets, type PrivyProviderProps } from '@privy-io/react-auth';
+import { PrivyWagmiConnector } from '@privy-io/wagmi-connector';
 import { useSetActiveWallet } from '@privy-io/wagmi';
 import {
   WagmiProvider,
@@ -390,6 +391,7 @@ export default function LpAdvancedPage() {
 function LpAdvancedProviders({ privyConfig }: { privyConfig: PrivyProviderProps['config'] }) {
   const [miniAppState, setMiniAppState] = useState<MiniAppState>('unknown');
   const [wagmiConfig, setWagmiConfig] = useState<ReturnType<typeof createConfig> | null>(null);
+  const [forcedViewerFid, setForcedViewerFid] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -402,6 +404,22 @@ function LpAdvancedProviders({ privyConfig }: { privyConfig: PrivyProviderProps[
       }
       if (cancelled) return;
       setMiniAppState(state);
+
+      // If we are inside the mini app, try to prime the viewer FID up front.
+      if (state === 'miniapp') {
+        try {
+          await sdk.actions.ready();
+          if (!cancelled) {
+            const context = await sdk.context;
+            if (!cancelled) setForcedViewerFid(context.user?.fid ?? null);
+          }
+        } catch (error) {
+          console.warn('ADV_LP:outer_context_failed', error);
+          if (!cancelled) setForcedViewerFid(null);
+        }
+      } else {
+        setForcedViewerFid(null);
+      }
 
       try {
         const connectors = await buildConnectors(state);
@@ -445,28 +463,47 @@ function LpAdvancedProviders({ privyConfig }: { privyConfig: PrivyProviderProps[
     );
   }
 
-  const content = (
-    <WagmiProvider config={wagmiConfig}>
-      <QueryClientProvider client={queryClient}>
-        <AdvancedLpContent forcedMiniAppState={miniAppState} />
-      </QueryClientProvider>
-    </WagmiProvider>
+  const baseChildren = (
+    <QueryClientProvider client={queryClient}>
+      <AdvancedLpContent forcedMiniAppState={miniAppState} forcedViewerFid={forcedViewerFid} />
+    </QueryClientProvider>
   );
 
+  // Desktop path: let Privy manage wagmi via PrivyWagmiConnector
   if (miniAppState === 'desktop' && PRIVY_APP_ID) {
+    const publicClient = createPublicClient({
+      chain: monadChain,
+      transport: viemHttp(monadChain.rpcUrls.default.http[0]!)
+    });
+
     return (
       <PrivyProvider appId={PRIVY_APP_ID} config={privyConfig}>
-        {content}
+        <PrivyWagmiConnector wagmiChainsConfig={{ chains: [monadChain], publicClient }}>
+          {baseChildren}
+        </PrivyWagmiConnector>
       </PrivyProvider>
     );
   }
 
-  return content;
+  // Mini-app (or fallback) path: use our wagmi config with mini-app connector only
+  return wagmiConfig ? (
+    <WagmiProvider config={wagmiConfig}>{baseChildren}</WagmiProvider>
+  ) : (
+    <main className="min-h-screen bg-black text-white flex items-center justify-center">
+      <span className="text-sm text-white/80">Loading LP planner…</span>
+    </main>
+  );
 }
 
-function AdvancedLpContent({ forcedMiniAppState }: { forcedMiniAppState?: MiniAppState }) {
+function AdvancedLpContent({
+  forcedMiniAppState,
+  forcedViewerFid
+}: {
+  forcedMiniAppState?: MiniAppState;
+  forcedViewerFid?: number | null;
+}) {
   const [miniAppState, setMiniAppState] = useState<MiniAppState>(forcedMiniAppState ?? 'unknown');
-  const [viewerFid, setViewerFid] = useState<number | null>(null);
+  const [viewerFid, setViewerFid] = useState<number | null>(forcedViewerFid ?? null);
   const [miniAppError, setMiniAppError] = useState<string | null>(null);
   const [privyError, setPrivyError] = useState<string | null>(null);
   const [privyActivating, setPrivyActivating] = useState(false);
@@ -638,7 +675,8 @@ function AdvancedLpContent({ forcedMiniAppState }: { forcedMiniAppState?: MiniAp
   useEffect(() => {
     if (forcedMiniAppState && forcedMiniAppState !== 'unknown') {
       setMiniAppState(forcedMiniAppState);
-      return;
+      // Even when forced, if we're in the mini app and missing the FID, try to fetch it.
+      if (forcedMiniAppState !== 'miniapp' || viewerFid !== null) return;
     }
 
     let cancelled = false;
@@ -677,7 +715,7 @@ function AdvancedLpContent({ forcedMiniAppState }: { forcedMiniAppState?: MiniAp
     return () => {
       cancelled = true;
     };
-  }, [forcedMiniAppState]);
+  }, [forcedMiniAppState, viewerFid]);
 
   useEffect(() => {
     let mounted = true;
