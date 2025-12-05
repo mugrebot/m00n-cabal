@@ -10,6 +10,7 @@ import {
 } from 'react';
 import Image from 'next/image';
 import sdk from '@farcaster/miniapp-sdk';
+import { useRouter } from 'next/navigation';
 import { encodeFunctionData, erc20Abi, formatUnits, parseUnits } from 'viem';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiConfig, createConfig, http } from 'wagmi';
@@ -432,6 +433,7 @@ const permit2Abi = [
 ] as const;
 
 function MiniAppPageInner() {
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [isSdkReady, setIsSdkReady] = useState(false);
   const [isMiniApp, setIsMiniApp] = useState<boolean | null>(null);
@@ -4040,6 +4042,12 @@ function MiniAppPageInner() {
           className="w-full text-xs px-3 py-2 rounded-lg border border-[var(--moss-green)] text-[var(--moss-green)] hover:bg-[var(--moss-green)] hover:text-black transition-colors"
         >
           Open claim site
+        </button>
+        <button
+          onClick={() => router.push('/miniapp/advanced-lp')}
+          className="w-full text-xs px-3 py-2 rounded-lg border border-white/25 text-white hover:bg-white/10 transition-colors"
+        >
+          Open advanced LP lab
         </button>
         <button
           onClick={handleOpenAdvancedLp}
