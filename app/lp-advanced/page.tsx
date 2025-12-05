@@ -1077,7 +1077,18 @@ function AdvancedLpContent() {
         <p className="pixel-font text-xs tracking-[0.4em] text-[var(--moss-green)] uppercase">
           ADVANCED LP
         </p>
-        <h1 className="text-3xl sm:text-4xl font-semibold">Advanced LP Lab</h1>
+        <div className="flex items-center justify-center gap-3">
+          <h1 className="text-3xl sm:text-4xl font-semibold">Advanced LP Lab</h1>
+          <Link
+            href="/advanced_lp.md"
+            target="_blank"
+            rel="noreferrer"
+            className="w-8 h-8 rounded-full border border-white/20 text-white/80 flex items-center justify-center text-sm hover:bg-white/10"
+            aria-label="Open Advanced LP guide"
+          >
+            ?
+          </Link>
+        </div>
         <div className="flex flex-wrap gap-3 justify-center text-xs text-white/70">
           <Link
             href="/miniapp"
