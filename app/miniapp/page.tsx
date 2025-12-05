@@ -3737,7 +3737,25 @@ function MiniAppPageInner() {
                 <p className="text-xs uppercase tracking-[0.4em] text-white/60">{bandCopy.title}</p>
                 <p className="text-sm opacity-75">{bandCopy.subtitle}</p>
               </div>
-              <div className="space-y-4">{renderBandInventory(preferredBand)}</div>
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={handleOpenLpGate}
+                    className="pixel-font px-5 py-2 border border-white/20 rounded-full text-xs tracking-[0.35em] hover:bg-white/10 transition-colors"
+                  >
+                    LP MANAGER
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenAdvancedLp}
+                    className="pixel-font px-5 py-2 border border-[var(--monad-purple)] text-[var(--monad-purple)] rounded-full text-xs tracking-[0.35em] hover:bg-[var(--monad-purple)] hover:text-black transition-colors"
+                  >
+                    ADVANCED LP
+                  </button>
+                </div>
+                <div className="space-y-4">{renderBandInventory(preferredBand)}</div>
+              </div>
             </>
           ) : (
             <div className={`${PANEL_CLASS} text-center space-y-2`}>
@@ -3772,20 +3790,6 @@ function MiniAppPageInner() {
               className="pixel-font px-6 py-3 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors"
             >
               LAUNCH m00nLANDER
-            </button>
-            <button
-              type="button"
-              onClick={handleOpenLpGate}
-              className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
-            >
-              LP MANAGER
-            </button>
-            <button
-              type="button"
-              onClick={handleOpenAdvancedLp}
-              className="pixel-font px-6 py-3 border border-[var(--monad-purple)] text-[var(--monad-purple)] rounded-lg hover:bg-[var(--monad-purple)] hover:text-black transition-colors"
-            >
-              ADVANCED LP
             </button>
           </div>
         </div>
