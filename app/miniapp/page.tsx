@@ -3078,13 +3078,22 @@ function MiniAppPageInner() {
   };
 
   const renderLpGateInlineButton = () => (
-    <button
-      type="button"
-      onClick={handleOpenLpGate}
-      className="cta-ghost text-[10px] tracking-[0.3em] px-6 py-3"
-    >
-      LP MANAGER
-    </button>
+    <div className="flex flex-wrap gap-2 justify-center">
+      <button
+        type="button"
+        onClick={handleOpenLpGate}
+        className="cta-ghost text-[10px] tracking-[0.3em] px-6 py-3"
+      >
+        LP MANAGER
+      </button>
+      <button
+        type="button"
+        onClick={handleOpenAdvancedLp}
+        className="cta-ghost text-[10px] tracking-[0.3em] px-6 py-3 border-[var(--monad-purple)] text-[var(--monad-purple)]"
+      >
+        ADVANCED LP
+      </button>
+    </div>
   );
 
   const renderLpDiagnostics = () => {
@@ -3779,6 +3788,13 @@ function MiniAppPageInner() {
               className="pixel-font px-6 py-3 border border-white/20 text-white rounded-lg hover:bg-white/10 transition-colors"
             >
               LP MANAGER
+            </button>
+            <button
+              type="button"
+              onClick={handleOpenAdvancedLp}
+              className="pixel-font px-6 py-3 border border-[var(--monad-purple)] text-[var(--monad-purple)] rounded-lg hover:bg-[var(--monad-purple)] hover:text-black transition-colors"
+            >
+              ADVANCED LP
             </button>
           </div>
         </div>
