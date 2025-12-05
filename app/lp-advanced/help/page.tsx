@@ -59,13 +59,13 @@ const sections = [
 
 export default function HelpPage() {
   return (
-    <main className="min-h-screen bg-black text-white">
+    <main className="fixed inset-0 z-[99999] bg-black text-white overflow-y-auto">
       <div className="max-w-3xl mx-auto px-6 py-10 space-y-8">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-semibold tracking-tight">Custom LP Planner — Guide</h1>
           <Link
             href="/lp-advanced"
-            className="text-sm px-3 py-1 rounded-full border border-white/60 bg-white/15 hover:bg-white/25 transition text-white font-semibold"
+            className="text-sm px-3 py-1 rounded-full border border-white/80 bg-white/20 hover:bg-white/30 transition text-white font-semibold"
           >
             ← Back
           </Link>
@@ -80,7 +80,7 @@ export default function HelpPage() {
           {sections.map((section) => (
             <section
               key={section.title}
-              className="border border-white/30 rounded-2xl p-5 bg-[#0f1014] shadow-lg space-y-3"
+              className="border border-white/50 rounded-2xl p-5 bg-black shadow-lg space-y-3"
             >
               <h2 className="text-lg font-semibold text-white">{section.title}</h2>
               <ul className="list-disc list-inside space-y-3 text-sm text-white leading-relaxed">
