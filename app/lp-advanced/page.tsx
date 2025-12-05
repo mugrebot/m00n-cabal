@@ -45,7 +45,6 @@ interface ChartPoint {
 
 const TOKEN_MOON_ADDRESS = getAddress('0x22cd99ec337a2811f594340a4a6e41e4a3022b07');
 const TOKEN_WMON_ADDRESS = getAddress('0x3bd359C1119dA7Da1d913d1C4D2b7C461115433A');
-const ADMIN_FID = 9933;
 
 const CHAIN_CAIP = 'eip155:143';
 const MON_NATIVE_CAIP = `${CHAIN_CAIP}/native`;
@@ -495,7 +494,7 @@ function AdvancedLpContent({
 }) {
   const [miniAppState, setMiniAppState] = useState<MiniAppState>(forcedMiniAppState ?? 'unknown');
   const [viewerFid, setViewerFid] = useState<number | null>(forcedViewerFid ?? null);
-  const [miniAppError, setMiniAppError] = useState<string | null>(null);
+  const [, setMiniAppError] = useState<string | null>(null);
   const [privyError, setPrivyError] = useState<string | null>(null);
   const [privyActivating, setPrivyActivating] = useState(false);
 
@@ -1180,6 +1179,8 @@ function AdvancedLpContent({
     }
   }, [login]);
 
+  // Previously gated mini-app access to ADMIN_FID only; now allow all mini-app users to proceed.
+  // We still show a brief loading state while detecting, but do not block access by FID.
   if (miniAppState === 'unknown') {
     return renderShell(
       <section className="flex flex-col items-center justify-center min-h-[60vh] space-y-4 text-center">
@@ -1188,52 +1189,7 @@ function AdvancedLpContent({
         </p>
         <article className="lunar-card max-w-md space-y-2">
           <p className="text-xl font-semibold">Calibrating lab access…</p>
-          <p className="text-sm text-white/70">
-            Hold tight while we verify whether you&apos;re inside the mini app.
-          </p>
-        </article>
-      </section>
-    );
-  }
-
-  if (miniAppState === 'miniapp' && viewerFid === null) {
-    return renderShell(
-      <section className="flex flex-col items-center justify-center min-h-[60vh] space-y-4 text-center">
-        <p className="pixel-font text-xs tracking-[0.4em] text-[var(--moss-green)] uppercase">
-          ACCESS CHECK
-        </p>
-        <article className="lunar-card max-w-md space-y-2">
-          <p className="text-xl font-semibold">Need Farcaster context</p>
-          <p className="text-sm text-white/70">
-            {miniAppError ??
-              'We need your FID before unlocking the LP Lab. Reload inside Warpcast or open this page in a browser.'}
-          </p>
-        </article>
-      </section>
-    );
-  }
-
-  if (miniAppState === 'miniapp' && viewerFid !== ADMIN_FID) {
-    return renderShell(
-      <section className="flex flex-col items-center justify-center min-h-[60vh] space-y-4 text-center">
-        <p className="pixel-font text-xs tracking-[0.4em] text-[var(--moss-green)] uppercase">
-          RESTRICTED
-        </p>
-        <article className="lunar-card max-w-lg space-y-3">
-          <p className="text-2xl font-semibold">LP Lab locked inside the mini app</p>
-          <p className="text-sm text-white/70">
-            Advanced deployments are only available to the cabal operator (FID {ADMIN_FID}) when
-            launched inside Warpcast. Open this page in a desktop browser to experiment, or ping
-            @m00npapi.eth for help.
-          </p>
-          <a
-            href="https://m00nad.vercel.app/lp-advanced"
-            target="_blank"
-            rel="noreferrer"
-            className="cta-ghost inline-flex justify-center text-xs"
-          >
-            Open in browser
-          </a>
+          <p className="text-sm text-white/70">Hold tight while we verify your session.</p>
         </article>
       </section>
     );
