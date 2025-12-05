@@ -163,8 +163,13 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
 
   const scaleY = useCallback(
     (value: number) => {
-      const clamped = Math.min(Math.max(value, minValue), maxValue);
-      const ratio = (clamped - minValue) / (maxValue - minValue || 1);
+      // Use logarithmic scale to handle large "moon" targets (e.g. 60k -> 1M)
+      const safeVal = Math.max(value, 1);
+      const logVal = Math.log(safeVal);
+      const logMin = Math.log(Math.max(minValue, 1));
+      const logMax = Math.log(Math.max(maxValue, 1));
+      const range = logMax - logMin;
+      const ratio = range === 0 ? 0.5 : (logVal - logMin) / range;
       return height - ratio * height;
     },
     [minValue, maxValue, height]
@@ -795,10 +800,6 @@ function AdvancedLpContent() {
                   mkt cap = {formatUsd(moonMarketCapUsd)}
                 </p>
               </div>
-            </div>
-
-            <div className="absolute bottom-8 right-2 z-20 pointer-events-none scale-75">
-              <img src="/assets/m00nsvg.svg" alt="m00n" className="w-32 h-32 opacity-90" />
             </div>
 
             <p
