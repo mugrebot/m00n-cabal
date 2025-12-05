@@ -91,7 +91,6 @@ function formatTokenBalance(value?: bigint, decimals = 18) {
   if (!Number.isFinite(numeric)) return '0';
   if (numeric >= 1_000_000_000) return `${(numeric / 1_000_000_000).toFixed(1)}B`;
   if (numeric >= 1_000_000) return `${(numeric / 1_000_000).toFixed(1)}M`;
-  if (numeric >= 1_000_000) return `${numeric.toFixed(1)}M`;
   if (numeric >= 1_000) return `${numeric.toFixed(1)}k`;
   return numeric.toFixed(4);
 }
@@ -347,6 +346,14 @@ function AdvancedLpContent() {
     address,
     token: TOKEN_WMON_ADDRESS
   });
+  const moonAllowance = useBalance({
+    address,
+    token: TOKEN_MOON_ADDRESS
+  });
+  const wmonAllowance = useBalance({
+    address,
+    token: TOKEN_WMON_ADDRESS
+  });
 
   const [bandSide, setBandSide] = useState<BandSide>('single');
   const [depositAsset, setDepositAsset] = useState<DepositAsset>('moon');
@@ -361,6 +368,11 @@ function AdvancedLpContent() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [requiredMoonWei, setRequiredMoonWei] = useState<string | null>(null);
   const [requiredWmonWei, setRequiredWmonWei] = useState<string | null>(null);
+  const [needsApproval, setNeedsApproval] = useState<{ moon: boolean; wmon: boolean }>({
+    moon: false,
+    wmon: false
+  });
+  const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
   const [marketState, setMarketState] = useState<PoolState | null>(null);
   const [marketLoading, setMarketLoading] = useState(true);
   const [marketError, setMarketError] = useState<string | null>(null);
@@ -576,8 +588,8 @@ function AdvancedLpContent() {
       const amountIn = parseFloat(value);
       if (isNaN(amountIn) || amountIn <= 0) return;
 
-      const priceLowerWmon = rangeMin / MOON_CIRC_SUPPLY / marketState.wmonUsdPrice;
-      const priceUpperWmon = rangeMax / MOON_CIRC_SUPPLY / marketState.wmonUsdPrice;
+      const priceLowerWmon = rangeMin / marketState.wmonUsdPrice;
+      const priceUpperWmon = rangeMax / marketState.wmonUsdPrice;
       const priceCurrentWmon = tickToPrice(marketState.tick);
 
       // Spot below range -> Only m00n needed
@@ -648,6 +660,7 @@ function AdvancedLpContent() {
       setStatus('building');
       setStatusMessage('Building calldata with V4 PositionManager…');
       setTxHash(null);
+      setApprovalMessage(null);
 
       const lowerPriceUsd = rangeMin;
       const upperPriceUsd = rangeMax;
@@ -698,7 +711,18 @@ function AdvancedLpContent() {
       setRequiredMoonWei(respRequiredMoonWei ?? null);
       setRequiredWmonWei(respRequiredWmonWei ?? null);
 
-      const hash = await walletClient.sendTransaction({
+      const neededMoon = respRequiredMoonWei ? BigInt(respRequiredMoonWei) : BigInt(0);
+      const neededWmon = respRequiredWmonWei ? BigInt(respRequiredWmonWei) : BigInt(0);
+      const hasMoon = moonBalance.data?.value ?? BigInt(0);
+      const hasWmon = wmonBalance.data?.value ?? BigInt(0);
+
+      if (neededMoon > hasMoon || neededWmon > hasWmon) {
+        setStatus('error');
+        setStatusMessage('Insufficient balance for required amounts.');
+        return;
+      }
+
+      const tx = await walletClient.sendTransaction({
         account: address,
         to,
         data,
@@ -708,7 +732,7 @@ function AdvancedLpContent() {
 
       setStatus('success');
       setStatusMessage('Transaction submitted. View on Monadscan below.');
-      setTxHash(hash);
+      setTxHash(tx);
     } catch (error) {
       console.error('ADVANCED_LP_DEPLOY', error);
       setStatus('error');
@@ -764,6 +788,14 @@ function AdvancedLpContent() {
     wmonBalance.data?.value,
     wmonBalance.data?.decimals
   );
+
+  useEffect(() => {
+    if (!isConnected) return;
+    void moonBalance.refetch?.();
+    void wmonBalance.refetch?.();
+    void moonAllowance.refetch?.();
+    void wmonAllowance.refetch?.();
+  }, [isConnected, moonBalance, wmonBalance, moonAllowance, wmonAllowance]);
 
   if (miniAppState === 'unknown') {
     return renderShell(
@@ -857,7 +889,7 @@ function AdvancedLpContent() {
             <div className="mt-12">
               <RangeChart
                 series={chartSeries}
-                currentUsd={moonMarketCapUsd}
+                currentUsd={moonSpotPriceUsd}
                 lowerUsd={rangeMin}
                 upperUsd={rangeMax}
               />
@@ -994,14 +1026,14 @@ function AdvancedLpContent() {
               className={`absolute inset-0 bg-red-500/5 pointer-events-none ${marketLoading ? 'animate-pulse' : ''}`}
             />
             <p className="relative text-[9px] uppercase tracking-widest text-red-300 font-semibold">
-              Current tick (in terms of mkt cap of m00n in usd)
+              Current price of m00n (USD)
             </p>
             {marketError ? (
               <p className="relative text-xs text-red-300 py-2">Telemetry unavailable</p>
             ) : (
               <>
                 <p className="relative text-2xl font-mono text-white drop-shadow-lg">
-                  {marketLoading && !moonMarketCapUsd ? 'Syncing…' : formatUsd(moonMarketCapUsd)}
+                  {marketLoading && !moonSpotPriceUsd ? 'Syncing…' : formatUsd(moonSpotPriceUsd)}
                 </p>
                 {marketState && (
                   <p className="relative text-[10px] text-white/40 font-mono">
@@ -1132,6 +1164,9 @@ function AdvancedLpContent() {
           </div>
 
           <div className="pt-4 space-y-2 sticky bottom-0 bg-black/85 backdrop-blur border-t border-white/10 px-3 pb-4 md:static md:bg-transparent md:border-0 md:px-0 md:pb-0">
+            {approvalMessage && (
+              <p className="text-xs text-amber-300 text-center">{approvalMessage}</p>
+            )}
             <button
               type="button"
               onClick={handleDeploy}
