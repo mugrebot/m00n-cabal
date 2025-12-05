@@ -62,6 +62,8 @@ const HOLDER_CHAT_URL =
   process.env.NEXT_PUBLIC_HOLDER_CHAT_URL ?? 'https://warpcast.com/~/channel/m00n';
 const HEAVEN_MODE_URL = process.env.NEXT_PUBLIC_HEAVEN_URL ?? 'https://warpcast.com/~/channel/m00n';
 const MOONLANDER_URL = 'https://farcaster.xyz/miniapps/xXgsbdvvhOB7/m00nlander';
+const ADVANCED_LP_URL =
+  process.env.NEXT_PUBLIC_ADVANCED_LP_URL ?? 'https://m00nad.vercel.app/lp-advanced';
 const CHAIN_CAIP = 'eip155:143';
 const MON_NATIVE_CAIP = `${CHAIN_CAIP}/native`;
 const WMON_CAIP = `${CHAIN_CAIP}/erc20:${WMON_ADDRESS.toLowerCase()}`;
@@ -1687,6 +1689,10 @@ function MiniAppPageInner() {
 
   const handleOpenMoonLander = async () => {
     await openExternalUrl(MOONLANDER_URL);
+  };
+
+  const handleOpenAdvancedLp = async () => {
+    await openExternalUrl(ADVANCED_LP_URL);
   };
 
   const handleRetryLpStatus = () => {
@@ -4026,6 +4032,12 @@ function MiniAppPageInner() {
           className="w-full text-xs px-3 py-2 rounded-lg border border-[var(--moss-green)] text-[var(--moss-green)] hover:bg-[var(--moss-green)] hover:text-black transition-colors"
         >
           Open claim site
+        </button>
+        <button
+          onClick={handleOpenAdvancedLp}
+          className="w-full text-xs px-3 py-2 rounded-lg border border-white/25 text-white hover:bg-white/10 transition-colors"
+        >
+          Open advanced LP lab
         </button>
         <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1">
           {portals.map((portal) => (
