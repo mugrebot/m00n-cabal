@@ -10,8 +10,10 @@ import {
   useConnect,
   useDisconnect,
   useWalletClient,
-  useBalance
+  useBalance,
+  useReadContract
 } from 'wagmi';
+import { erc20Abi, encodeFunctionData } from 'viem';
 import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector';
 import { metaMask, injected, coinbaseWallet } from 'wagmi/connectors';
 import { formatUnits } from 'viem';
@@ -37,6 +39,11 @@ interface ChartPoint {
 const TOKEN_MOON_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07' as const;
 const TOKEN_WMON_ADDRESS = '0x3bd359C1119dA7Da1d913d1C4D2b7C461115433A' as const;
 const ADMIN_FID = 9933;
+
+const CHAIN_CAIP = 'eip155:143';
+const MON_NATIVE_CAIP = `${CHAIN_CAIP}/native`;
+const WMON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_WMON_ADDRESS.toLowerCase()}`;
+const MOON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_MOON_ADDRESS.toLowerCase()}`;
 
 const monadChain = {
   id: 143,
@@ -76,14 +83,26 @@ const wagmiConfig = createConfig({
 const queryClient = new QueryClient();
 const MINIAPP_CONNECTOR_ID = 'farcasterMiniApp';
 
-const TICK_SPACING = 200;
 const HISTORY_POINTS = 48;
 const MOON_CIRC_SUPPLY = 100_000_000_000; // market cap conversion factor
+const POSITION_MANAGER_ADDRESS = '0x5b7eC4a94fF9beDb700fb82aB09d5846972F4016';
+const BUY_MOON_URL = process.env.NEXT_PUBLIC_BUY_MOON_URL ?? 'https://farcaster.xyz/miniapps';
+const BUY_WMON_URL = process.env.NEXT_PUBLIC_BUY_WMON_URL ?? 'https://farcaster.xyz/miniapps';
 
-const snapDownToSpacing = (tick: number) => Math.floor(tick / TICK_SPACING) * TICK_SPACING;
-const snapUpToSpacing = (tick: number) => Math.ceil(tick / TICK_SPACING) * TICK_SPACING;
+function openExternalUrl(url: string) {
+  if (!url) return;
+  try {
+    sdk?.actions?.openUrl(url);
+  } catch {
+    /* noop */
+  }
+  if (typeof window !== 'undefined') {
+    window.open(url, '_blank', 'noreferrer');
+  }
+}
+
+// spacing utils (unused in client but kept for reference)
 const tickToPrice = (tick: number) => Math.pow(1.0001, tick);
-const priceToTick = (price: number) => Math.log(price) / Math.log(1.0001);
 
 function formatTokenBalance(value?: bigint, decimals = 18) {
   if (value === undefined) return '0';
@@ -346,14 +365,38 @@ function AdvancedLpContent() {
     address,
     token: TOKEN_WMON_ADDRESS
   });
-  const moonAllowance = useBalance({
-    address,
-    token: TOKEN_MOON_ADDRESS
+  const moonAllowance = useReadContract({
+    address: TOKEN_MOON_ADDRESS,
+    abi: erc20Abi,
+    functionName: 'allowance',
+    args: [address ?? '0x0000000000000000000000000000000000000000', POSITION_MANAGER_ADDRESS],
+    query: { enabled: Boolean(address) }
   });
-  const wmonAllowance = useBalance({
-    address,
-    token: TOKEN_WMON_ADDRESS
+  const wmonAllowance = useReadContract({
+    address: TOKEN_WMON_ADDRESS,
+    abi: erc20Abi,
+    functionName: 'allowance',
+    args: [address ?? '0x0000000000000000000000000000000000000000', POSITION_MANAGER_ADDRESS],
+    query: { enabled: Boolean(address) }
   });
+
+  const handleSwapToken = useCallback(async (target: 'moon' | 'wmon') => {
+    setSwapInFlight(target);
+    try {
+      if (sdk?.actions?.swapToken) {
+        await sdk.actions.swapToken({
+          sellToken: MON_NATIVE_CAIP,
+          buyToken: target === 'wmon' ? WMON_CAIP : MOON_CAIP
+        });
+      } else {
+        openExternalUrl(target === 'wmon' ? BUY_WMON_URL : BUY_MOON_URL);
+      }
+    } catch (error) {
+      console.error('ADV_LP_SWAP', error);
+    } finally {
+      setSwapInFlight((current) => (current === target ? null : current));
+    }
+  }, []);
 
   const [bandSide, setBandSide] = useState<BandSide>('single');
   const [depositAsset, setDepositAsset] = useState<DepositAsset>('moon');
@@ -368,15 +411,12 @@ function AdvancedLpContent() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [requiredMoonWei, setRequiredMoonWei] = useState<string | null>(null);
   const [requiredWmonWei, setRequiredWmonWei] = useState<string | null>(null);
-  const [needsApproval, setNeedsApproval] = useState<{ moon: boolean; wmon: boolean }>({
-    moon: false,
-    wmon: false
-  });
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
   const [marketState, setMarketState] = useState<PoolState | null>(null);
   const [marketLoading, setMarketLoading] = useState(true);
   const [marketError, setMarketError] = useState<string | null>(null);
   const [miniAppConnectError, setMiniAppConnectError] = useState<string | null>(null);
+  const [swapInFlight, setSwapInFlight] = useState<'moon' | 'wmon' | null>(null);
 
   const moonSpotPriceUsd = useMemo(() => {
     if (marketState?.moonUsdPrice && marketState.moonUsdPrice > 0) {
@@ -727,6 +767,40 @@ function AdvancedLpContent() {
         return;
       }
 
+      const allowanceMoon = moonAllowance.data ?? BigInt(0);
+      const allowanceWmon = wmonAllowance.data ?? BigInt(0);
+
+      if (neededMoon > allowanceMoon) {
+        setStatusMessage('Approving m00n…');
+        const approveMoonData = encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [POSITION_MANAGER_ADDRESS, neededMoon]
+        });
+        await walletClient.sendTransaction({
+          account: address,
+          to: TOKEN_MOON_ADDRESS,
+          data: approveMoonData,
+          chain: walletClient.chain ?? undefined
+        });
+      }
+
+      if (neededWmon > allowanceWmon) {
+        setStatusMessage('Approving W-MON…');
+        const approveWmonData = encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'approve',
+          args: [POSITION_MANAGER_ADDRESS, neededWmon]
+        });
+        await walletClient.sendTransaction({
+          account: address,
+          to: TOKEN_WMON_ADDRESS,
+          data: approveWmonData,
+          chain: walletClient.chain ?? undefined
+        });
+      }
+
+      setStatusMessage('Submitting transaction…');
       const tx = await walletClient.sendTransaction({
         account: address,
         to,
@@ -741,7 +815,13 @@ function AdvancedLpContent() {
     } catch (error) {
       console.error('ADVANCED_LP_DEPLOY', error);
       setStatus('error');
-      setStatusMessage(error instanceof Error ? error.message : 'Unable to deploy band right now.');
+      if (error instanceof Error && /reject|denied|User rejected/i.test(error.message)) {
+        setStatusMessage('Transaction canceled.');
+      } else {
+        setStatusMessage(
+          error instanceof Error ? error.message : 'Unable to deploy band right now.'
+        );
+      }
     }
   }, [
     address,
@@ -753,7 +833,11 @@ function AdvancedLpContent() {
     rangeMin,
     rangeMax,
     rangeError,
-    depositAsset
+    depositAsset,
+    moonBalance.data?.value,
+    wmonBalance.data?.value,
+    moonAllowance.data,
+    wmonAllowance.data
   ]);
 
   useEffect(() => {
@@ -920,12 +1004,34 @@ function AdvancedLpContent() {
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <p className="opacity-60">m00n balance</p>
-                    <p className="font-mono text-lg">{moonBalanceDisplay}</p>
+                    <p className="font-mono text-lg">
+                      {moonBalance.data ? moonBalanceDisplay : '—'}
+                    </p>
                   </div>
                   <div>
                     <p className="opacity-60">W-MON balance</p>
-                    <p className="font-mono text-lg">{wmonBalanceDisplay}</p>
+                    <p className="font-mono text-lg">
+                      {wmonBalance.data ? wmonBalanceDisplay : '—'}
+                    </p>
                   </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSwapToken('moon')}
+                    disabled={swapInFlight === 'moon'}
+                    className="flex-1 rounded-xl border border-[var(--monad-purple)] px-3 py-2 text-[11px] uppercase tracking-[0.2em] text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-black transition-colors disabled:opacity-50"
+                  >
+                    {swapInFlight === 'moon' ? 'Opening…' : 'Buy m00n'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSwapToken('wmon')}
+                    disabled={swapInFlight === 'wmon'}
+                    className="flex-1 rounded-xl border border-white/40 px-3 py-2 text-[11px] uppercase tracking-[0.2em] text-white hover:bg-white/10 transition-colors disabled:opacity-50"
+                  >
+                    {swapInFlight === 'wmon' ? 'Opening…' : 'Buy W-MON'}
+                  </button>
                 </div>
               </>
             ) : (
