@@ -10,7 +10,7 @@ import {
 } from 'react';
 import Image from 'next/image';
 import sdk from '@farcaster/miniapp-sdk';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { encodeFunctionData, erc20Abi, formatUnits, parseUnits } from 'viem';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiConfig, createConfig, http } from 'wagmi';
@@ -434,6 +434,7 @@ const permit2Abi = [
 
 function MiniAppPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(true);
   const [isSdkReady, setIsSdkReady] = useState(false);
   const [isMiniApp, setIsMiniApp] = useState<boolean | null>(null);
@@ -489,6 +490,7 @@ function MiniAppPageInner() {
   const [primaryBalanceStatus, setPrimaryBalanceStatus] = useState<
     'idle' | 'loading' | 'error' | 'loaded'
   >('idle');
+  const [lpParamHandled, setLpParamHandled] = useState(false);
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardResponse | null>(null);
   const [leaderboardStatus, setLeaderboardStatus] = useState<
     'idle' | 'loading' | 'error' | 'loaded'
@@ -866,6 +868,22 @@ function MiniAppPageInner() {
     return 'newcomer';
   }, [effectivePersona, personaRecord]);
   const canAccessLpFeatures = personaBadge === 'moon_boy' || personaBadge === 'keeper';
+
+  useEffect(() => {
+    if (lpParamHandled) return;
+    const lpParam = searchParams?.get('lp');
+    if (!lpParam) return;
+    setIsObservationDeckOpen(false);
+    if (lpParam === 'manager' || lpParam === 'lounge') {
+      setLpPortalMode(canAccessLpFeatures ? 'lounge' : 'gate');
+      setLpParamHandled(true);
+      return;
+    }
+    if (lpParam === 'gate') {
+      setLpPortalMode('gate');
+      setLpParamHandled(true);
+    }
+  }, [searchParams, canAccessLpFeatures, lpParamHandled]);
 
   const handleOpenLpGate = useCallback(() => {
     setIsObservationDeckOpen(false);

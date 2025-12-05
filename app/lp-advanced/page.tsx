@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { PrivyProvider, usePrivy, useWallets } from '@privy-io/react-auth';
+import { PrivyProvider, usePrivy, useWallets, type PrivyProviderProps } from '@privy-io/react-auth';
 import { useSetActiveWallet } from '@privy-io/wagmi';
 import {
   WagmiProvider,
@@ -114,6 +114,7 @@ const MOON_CIRC_SUPPLY = 100_000_000_000; // market cap conversion factor
 const POSITION_MANAGER_ADDRESS = getAddress('0x5b7eC4a94fF9beDb700fb82aB09d5846972F4016');
 const BUY_MOON_URL = process.env.NEXT_PUBLIC_BUY_MOON_URL ?? 'https://farcaster.xyz/miniapps';
 const BUY_WMON_URL = process.env.NEXT_PUBLIC_BUY_WMON_URL ?? 'https://farcaster.xyz/miniapps';
+const LP_MANAGER_PATH = '/miniapp?lp=manager';
 
 function openExternalUrl(url: string) {
   if (!url) return;
@@ -375,15 +376,14 @@ export default function LpAdvancedPage() {
     console.warn('PRIVY_APP_ID missing; Privy desktop connect will be disabled.');
   }
 
+  const privyConfig: PrivyProviderProps['config'] = {
+    // createOnLogin is available in Privy but not yet reflected in our types
+     
+    appearance: { theme: 'dark' }
+  };
+
   return (
-    <PrivyProvider
-      appId={PRIVY_APP_ID}
-      config={{
-        embeddedWallets: { createOnLogin: false },
-        externalWallets: { coinbase: true, metamask: true, rainbow: true, walletConnect: true },
-        appearance: { theme: 'dark' }
-      }}
-    >
+    <PrivyProvider appId={PRIVY_APP_ID} config={privyConfig}>
       <WagmiProvider config={wagmiConfig}>
         <QueryClientProvider client={queryClient}>
           <AdvancedLpContent />
@@ -445,7 +445,7 @@ function AdvancedLpContent() {
   const [swapInFlight, setSwapInFlight] = useState<'moon' | 'wmon' | null>(null);
   const [manualWmonBalance, setManualWmonBalance] = useState<bigint | null>(null);
 
-  const { ready: privyReady, authenticated, login } = usePrivy();
+  const { ready: privyReady, login } = usePrivy();
   const { wallets: privyWallets, ready: privyWalletsReady } = useWallets();
   const setActiveWallet = useSetActiveWallet();
 
@@ -1051,12 +1051,40 @@ function AdvancedLpContent() {
     setPrivyActivating(true);
     setPrivyError(null);
     setActiveWallet(wallet)
-      .catch((err) => {
+      .catch((err: unknown) => {
         console.error('PRIVY:setActiveWallet_failed', err);
         setPrivyError('Unable to connect via Privy right now.');
       })
       .finally(() => setPrivyActivating(false));
   }, [miniAppState, privyReady, privyWalletsReady, privyWallets, isConnected, setActiveWallet]);
+
+  const handleOpenLpManager = useCallback(async () => {
+    const absolute =
+      typeof window !== 'undefined'
+        ? `${window.location.origin}${LP_MANAGER_PATH}`
+        : LP_MANAGER_PATH;
+    if (miniAppState === 'miniapp') {
+      try {
+        await sdk.actions.openMiniApp({ url: absolute });
+        return;
+      } catch (err) {
+        console.warn('ADV_LP:open_lp_manager_via_miniapp_failed', err);
+      }
+      await openExternalUrl(absolute);
+      return;
+    }
+    if (typeof window !== 'undefined') {
+      window.location.href = LP_MANAGER_PATH;
+    }
+  }, [miniAppState]);
+
+  const handlePrivyLogin = useCallback(async () => {
+    try {
+      await login();
+    } catch {
+      setPrivyError('Privy login failed.');
+    }
+  }, [login]);
 
   if (miniAppState === 'unknown') {
     return renderShell(
@@ -1140,6 +1168,22 @@ function AdvancedLpContent() {
           >
             Back to cabal check
           </Link>
+          {miniAppState === 'miniapp' ? (
+            <button
+              type="button"
+              onClick={handleOpenLpManager}
+              className="px-3 py-1 rounded-full border border-[var(--monad-purple)] text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-black transition"
+            >
+              LP Manager
+            </button>
+          ) : (
+            <Link
+              href={LP_MANAGER_PATH}
+              className="px-3 py-1 rounded-full border border-[var(--monad-purple)] text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-black transition"
+            >
+              LP Manager
+            </Link>
+          )}
         </div>
       </header>
 
@@ -1232,7 +1276,7 @@ function AdvancedLpContent() {
                   <div className="flex flex-col gap-2">
                     <button
                       type="button"
-                      onClick={() => login().catch(() => setPrivyError('Privy login failed.'))}
+                      onClick={handlePrivyLogin}
                       disabled={!privyReady || privyActivating}
                       className="px-4 py-2 border border-white/40 rounded-full text-sm hover:bg-white/10 transition disabled:opacity-50"
                     >
