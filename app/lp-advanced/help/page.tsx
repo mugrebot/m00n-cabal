@@ -59,35 +59,31 @@ const sections = [
 
 export default function HelpPage() {
   return (
-    <main className="min-h-screen text-white relative">
-      <div className="absolute inset-0 bg-[#02020a]" />
-      <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/70 to-black/85" />
-      <div className="relative max-w-3xl mx-auto px-5 py-10 space-y-6">
+    <main className="min-h-screen bg-black text-white">
+      <div className="max-w-3xl mx-auto px-6 py-10 space-y-8">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-semibold tracking-tight text-white">
-            Custom LP Planner — Guide
-          </h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Custom LP Planner — Guide</h1>
           <Link
             href="/lp-advanced"
-            className="text-sm px-3 py-1 rounded-full border border-white/40 bg-white/5 hover:bg-white/15 transition text-white"
+            className="text-sm px-3 py-1 rounded-full border border-white/60 bg-white/15 hover:bg-white/25 transition text-white font-semibold"
           >
             ← Back
           </Link>
         </div>
 
-        <p className="text-sm text-white/90 leading-relaxed">
+        <p className="text-base text-white leading-relaxed">
           Use this short guide to understand the Custom LP Planner and pick a position type. LPing
           carries risk.
         </p>
 
-        <div className="space-y-4">
+        <div className="space-y-5">
           {sections.map((section) => (
             <section
               key={section.title}
-              className="border border-white/15 rounded-xl p-4 bg-black/90 shadow-lg space-y-2"
+              className="border border-white/30 rounded-2xl p-5 bg-[#0f1014] shadow-lg space-y-3"
             >
               <h2 className="text-lg font-semibold text-white">{section.title}</h2>
-              <ul className="list-disc list-inside space-y-3 text-sm text-white/90 leading-relaxed">
+              <ul className="list-disc list-inside space-y-3 text-sm text-white leading-relaxed">
                 {section.bullets.map((item) => (
                   <li key={item} dangerouslySetInnerHTML={{ __html: item }} />
                 ))}
@@ -96,7 +92,7 @@ export default function HelpPage() {
           ))}
         </div>
 
-        <p className="text-xs text-white/80 leading-relaxed">
+        <p className="text-xs text-white leading-relaxed">
           Nothing here is financial advice. Only deploy what you can afford to lose.
         </p>
       </div>
