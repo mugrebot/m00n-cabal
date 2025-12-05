@@ -1151,13 +1151,7 @@ function AdvancedLpContent({
     const absolute =
       typeof window !== 'undefined' ? `${window.location.origin}/lp-advanced` : '/lp-advanced';
     if (miniAppState === 'miniapp') {
-      try {
-        await sdk.actions.openMiniApp({ url: absolute });
-        return;
-      } catch (err) {
-        console.warn('ADV_LP:open_lp_manager_via_miniapp_failed', err);
-      }
-      await openExternalUrl(absolute);
+      // Stay in-place if already in the mini app; this avoids reload loops/access issues.
       return;
     }
     if (typeof window !== 'undefined') {
