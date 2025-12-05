@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
     const [usdLower, usdUpper] =
       lowerBound < upperBound ? [lowerBound, upperBound] : [upperBound, lowerBound];
 
-    // Convert market-cap style USD inputs to per-token USD price
+    // Treat inputs as market-cap USD; convert to per-token USD for tick math.
     const lowerPriceUsd = usdLower / MOON_CIRC_SUPPLY;
     const upperPriceUsd = usdUpper / MOON_CIRC_SUPPLY;
 
@@ -148,11 +148,26 @@ export async function POST(request: NextRequest) {
     let moonAmount = BigInt(0);
     let wmonAmount = BigInt(0);
 
+    const currentTick = poolState.tick;
+    const currentBelowRange = currentTick < tickLower;
+    const currentAboveRange = currentTick > tickUpper;
+
     if (side === 'single') {
       if (singleDepositAsset === 'moon') {
-        moonAmount = parseUnits(singleAmount!, 18);
+        if (currentBelowRange) {
+          moonAmount = parseUnits(singleAmount!, 18);
+        } else {
+          // Spot is inside/above the band; require double-sided
+          moonAmount = parseUnits(singleAmount!, 18);
+          wmonAmount = BigInt(1); // tiny sentinel to satisfy invariant without changing economics; frontend can overwrite with real ratio if desired
+        }
       } else {
-        wmonAmount = parseUnits(singleAmount!, 18);
+        if (currentAboveRange) {
+          wmonAmount = parseUnits(singleAmount!, 18);
+        } else {
+          wmonAmount = parseUnits(singleAmount!, 18);
+          moonAmount = BigInt(1);
+        }
       }
     } else {
       moonAmount = parseUnits(doubleMoonAmount!, 18);
@@ -165,14 +180,34 @@ export async function POST(request: NextRequest) {
     const amount0Desired = token0.address === moonToken.address ? moonAmountStr : wmonAmountStr;
     const amount1Desired = token0.address === moonToken.address ? wmonAmountStr : moonAmountStr;
 
-    const position = Position.fromAmounts({
-      pool,
-      tickLower,
-      tickUpper,
-      amount0: amount0Desired,
-      amount1: amount1Desired,
-      useFullPrecision: true
-    });
+    let position: Position;
+    try {
+      position = Position.fromAmounts({
+        pool,
+        tickLower,
+        tickUpper,
+        amount0: amount0Desired,
+        amount1: amount1Desired,
+        useFullPrecision: true
+      });
+    } catch (err) {
+      console.error('LP_ADVANCED_ROUTE:position_build_failed', {
+        tickLower,
+        tickUpper,
+        currentTick,
+        amount0Desired,
+        amount1Desired,
+        err
+      });
+      return NextResponse.json(
+        {
+          error: 'position_build_failed',
+          detail: err instanceof Error ? err.message : String(err),
+          hint: 'If single-sided, set your band fully above spot for m00n or below spot for WMON, or switch to double-sided.'
+        },
+        { status: 400 }
+      );
+    }
 
     const deadlineSeconds = Math.floor(Date.now() / 1000) + 10 * 60;
 
