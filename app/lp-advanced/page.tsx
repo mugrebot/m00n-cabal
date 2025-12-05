@@ -1115,7 +1115,7 @@ function AdvancedLpContent() {
 
             <p className="text-[10px] text-white/60 leading-relaxed border border-white/20 p-2 mt-4">
               the amount will calculate the other side based on the range set; depending on the
-              range we will disable one or the other, or allow a user to input one and calculate the
+              range we disable one or the other, or allow a user to input one and calculate the
               other required for a double sided position.
             </p>
 
