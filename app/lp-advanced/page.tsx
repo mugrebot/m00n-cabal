@@ -12,6 +12,7 @@ import {
   useWalletClient,
   useBalance
 } from 'wagmi';
+import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector';
 import { metaMask, injected, coinbaseWallet } from 'wagmi/connectors';
 import { formatUnits } from 'viem';
 import sdk from '@farcaster/miniapp-sdk';
@@ -55,6 +56,7 @@ const connectors =
   typeof window === 'undefined'
     ? []
     : ([
+        miniAppConnector(),
         metaMask(),
         injected({ shimDisconnect: true }),
         coinbaseWallet({
@@ -1069,7 +1071,7 @@ function AdvancedLpContent() {
             )}
           </div>
 
-          <div className="pt-4">
+          <div className="pt-4 space-y-2">
             <button
               type="button"
               onClick={handleDeploy}
@@ -1080,7 +1082,7 @@ function AdvancedLpContent() {
             </button>
             {statusMessage && (
               <p
-                className={`text-xs text-center mt-3 ${status === 'error' ? 'text-red-300' : 'text-[var(--moss-green)]'}`}
+                className={`text-xs text-center ${status === 'error' ? 'text-red-300' : 'text-[var(--moss-green)]'}`}
               >
                 {statusMessage}
               </p>
@@ -1090,7 +1092,7 @@ function AdvancedLpContent() {
                 href={`https://monadscan.com/tx/${txHash}`}
                 target="_blank"
                 rel="noreferrer"
-                className="block text-center text-[10px] text-white/50 underline mt-2"
+                className="block text-center text-[10px] text-white/50 underline"
               >
                 View on Monadscan
               </a>
