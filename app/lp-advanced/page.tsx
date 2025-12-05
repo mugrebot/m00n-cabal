@@ -159,8 +159,8 @@ function RangeChart({ series, currentUsd, lowerUsd, upperUsd }: RangeChartProps)
     if (lowerUsd) candidates.push(lowerUsd);
     if (upperUsd) candidates.push(upperUsd);
     const max = Math.max(...candidates, 1);
-    // Ensure top headroom
-    return max * 1.5;
+    // Ensure generous top headroom to center the trace on log scale (counter-balance floor drop)
+    return max * 5;
   }, [series, currentUsd, lowerUsd, upperUsd]);
 
   const scaleY = useCallback(
