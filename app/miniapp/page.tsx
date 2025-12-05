@@ -239,7 +239,7 @@ type UserPersona =
   | 'eligible_holder'
   | 'locked_out'
   | 'emoji_chat';
-type AdminPortalView = 'default' | UserPersona;
+type AdminPortalView = 'default' | UserPersona | 'advanced_lp';
 
 interface TokenBreakdown {
   address: string;
@@ -826,7 +826,10 @@ function MiniAppPageInner() {
   ]);
 
   const adminPersonaOverride =
-    isAdmin && adminPortalView !== 'default' && adminPortalView !== 'emoji_chat'
+    isAdmin &&
+    adminPortalView !== 'default' &&
+    adminPortalView !== 'emoji_chat' &&
+    adminPortalView !== 'advanced_lp'
       ? adminPortalView
       : null;
   const effectivePersona: UserPersona = adminPersonaOverride ?? derivedPersona;
@@ -3996,7 +3999,8 @@ function MiniAppPageInner() {
       { id: 'emoji_chat', label: 'Observation deck' },
       { id: 'eligible_holder', label: 'Claim console' },
       { id: 'locked_out', label: 'Lockout gate' },
-      { id: 'lp_gate', label: 'No claim + LP' }
+      { id: 'lp_gate', label: 'No claim + LP' },
+      { id: 'advanced_lp', label: 'Advanced LP lab' }
     ];
 
     const currentPortalLabel =
@@ -4120,6 +4124,30 @@ function MiniAppPageInner() {
       </div>
     );
   };
+
+  const renderAdvancedLpEmbed = () => (
+    <div className={`${PANEL_CLASS} space-y-4`}>
+      <div className="flex items-center justify-between">
+        <p className="lunar-heading">Advanced LP Lab</p>
+        <a
+          className="text-xs underline text-[var(--moss-green)] hover:text-white"
+          href={ADVANCED_LP_URL}
+          target="_blank"
+          rel="noreferrer"
+        >
+          Open in browser
+        </a>
+      </div>
+      <div className="w-full h-[900px] border border-white/10 bg-black overflow-hidden rounded-xl">
+        <iframe
+          title="Advanced LP Lab"
+          src={ADVANCED_LP_URL}
+          className="w-full h-full border-0"
+          allow="clipboard-write; fullscreen"
+        />
+      </div>
+    </div>
+  );
 
   const statusState = useMemo(() => {
     if (isMiniApp === false) {
@@ -4287,6 +4315,8 @@ function MiniAppPageInner() {
         return renderEligibleHolderPanel();
       case 'locked_out':
         return renderLockedOutPanel();
+      case 'advanced_lp':
+        return renderShell(renderAdvancedLpEmbed());
       default:
         break;
     }
