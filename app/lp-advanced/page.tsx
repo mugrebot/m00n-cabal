@@ -14,7 +14,7 @@ import {
   useReadContract,
   usePublicClient
 } from 'wagmi';
-import { erc20Abi, encodeFunctionData } from 'viem';
+import { createPublicClient, erc20Abi, encodeFunctionData, http as viemHttp } from 'viem';
 import { farcasterMiniApp as miniAppConnector } from '@farcaster/miniapp-wagmi-connector';
 import { metaMask, injected, coinbaseWallet } from 'wagmi/connectors';
 import { formatUnits } from 'viem';
@@ -373,6 +373,15 @@ function AdvancedLpContent() {
   const { disconnect } = useDisconnect();
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient({ chainId: monadChain.id });
+  const fallbackPublicClient = useMemo(
+    () =>
+      createPublicClient({
+        chain: monadChain,
+        transport: viemHttp(monadChain.rpcUrls.default.http[0]!)
+      }),
+    []
+  );
+  const effectivePublicClient = publicClient ?? fallbackPublicClient;
 
   const moonBalance = useBalance({
     address,
@@ -941,11 +950,11 @@ function AdvancedLpContent() {
 
   // Manual W-MON balance read (in case wagmi balance is stale/zero)
   useEffect(() => {
-    if (!address || !publicClient) return;
+    if (!address || !effectivePublicClient) return;
     let cancelled = false;
     (async () => {
       try {
-        const bal = await publicClient.readContract({
+        const bal = await effectivePublicClient.readContract({
           address: TOKEN_WMON_ADDRESS,
           abi: erc20Abi,
           functionName: 'balanceOf',
@@ -961,7 +970,7 @@ function AdvancedLpContent() {
     return () => {
       cancelled = true;
     };
-  }, [address, publicClient, wmonBalance.data?.value]);
+  }, [address, effectivePublicClient, wmonBalance.data?.value]);
 
   if (miniAppState === 'unknown') {
     return renderShell(
