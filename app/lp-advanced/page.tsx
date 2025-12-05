@@ -45,6 +45,7 @@ const CHAIN_CAIP = 'eip155:143';
 const MON_NATIVE_CAIP = `${CHAIN_CAIP}/native`;
 const WMON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_WMON_ADDRESS.toLowerCase()}`;
 const MOON_CAIP = `${CHAIN_CAIP}/erc20:${TOKEN_MOON_ADDRESS.toLowerCase()}`;
+const APPROVAL_BUFFER_BPS = BigInt(200); // 2% buffer to avoid edge under-approvals on large sizes
 const PERMIT2_ADDRESS = '0x000000000022D473030F116dDEE9F6B43aC78BA3' as const;
 const permit2Abi = [
   {
@@ -802,6 +803,11 @@ function AdvancedLpContent() {
       const allowanceMoon = moonAllowance.data ?? BigInt(0);
       const allowanceWmon = wmonAllowance.data ?? BigInt(0);
 
+      const withBuffer = (amount: bigint) =>
+        amount <= BigInt(0)
+          ? BigInt(0)
+          : amount + (amount * APPROVAL_BUFFER_BPS) / BigInt(10_000) + BigInt(1);
+
       const approveWithPermit2 = async (
         tokenAddress: `0x${string}`,
         label: 'm00n' | 'WMON',
@@ -811,18 +817,19 @@ function AdvancedLpContent() {
         if (required <= BigInt(0) || required <= currentAllowance) return currentAllowance;
         setStatusMessage(`Approving ${label}…`);
 
+        const buffered = withBuffer(required);
         const nowSec = Math.floor(Date.now() / 1000);
         const permitExpiration = nowSec + 60 * 60 * 24 * 30;
 
         const approveUnderlyingData = encodeFunctionData({
           abi: erc20Abi,
           functionName: 'approve',
-          args: [PERMIT2_ADDRESS, required]
+          args: [PERMIT2_ADDRESS, buffered]
         });
         const permitData = encodeFunctionData({
           abi: permit2Abi,
           functionName: 'approve',
-          args: [tokenAddress, POSITION_MANAGER_ADDRESS, required, permitExpiration]
+          args: [tokenAddress, POSITION_MANAGER_ADDRESS, buffered, permitExpiration]
         });
 
         const approveUnderlyingTx = await walletClient.sendTransaction({
@@ -841,13 +848,25 @@ function AdvancedLpContent() {
         });
         await waitForReceipt(approvePermitTx);
 
-        return required;
+        return buffered;
       };
 
       await approveWithPermit2(TOKEN_MOON_ADDRESS, 'm00n', neededMoon, allowanceMoon);
       await approveWithPermit2(TOKEN_WMON_ADDRESS, 'WMON', neededWmon, allowanceWmon);
-      void moonAllowance.refetch?.();
-      void wmonAllowance.refetch?.();
+
+      const [freshMoonAllowance, freshWmonAllowance] = await Promise.all([
+        moonAllowance.refetch?.(),
+        wmonAllowance.refetch?.()
+      ]);
+
+      const finalMoonAllowance = freshMoonAllowance?.data ?? allowanceMoon;
+      const finalWmonAllowance = freshWmonAllowance?.data ?? allowanceWmon;
+
+      if (neededMoon > finalMoonAllowance || neededWmon > finalWmonAllowance) {
+        setStatus('error');
+        setStatusMessage('Insufficient allowance after approval. Please retry.');
+        return;
+      }
 
       setStatusMessage('Submitting transaction…');
       const tx = await walletClient.sendTransaction({
