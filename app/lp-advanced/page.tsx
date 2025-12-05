@@ -1078,7 +1078,7 @@ function AdvancedLpContent() {
           ADVANCED LP
         </p>
         <div className="flex items-center justify-center gap-3">
-          <h1 className="text-3xl sm:text-4xl font-semibold">Advanced LP Lab</h1>
+          <h1 className="text-3xl sm:text-4xl font-semibold">Custom</h1>
           <Link
             href="/advanced_lp.md"
             target="_blank"

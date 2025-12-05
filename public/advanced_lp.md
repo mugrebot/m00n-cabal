@@ -1,3 +1,5 @@
+<p align="right"><a href="/lp-advanced">← Back to LP Lab</a></p>
+
 ## Advanced LP Lab — Quick Guide
 
 Use this cheat sheet to understand the Advanced LP Lab and decide which
