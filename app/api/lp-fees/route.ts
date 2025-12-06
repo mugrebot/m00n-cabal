@@ -143,8 +143,8 @@ export async function GET(request: NextRequest) {
       // Fetch on-chain fee preview (unclaimed). Lifetime fee growth is not exposed here,
       // so we surface unclaimed amounts and mirror to lifetime as a best-effort view.
       const preview = await getPositionFeesPreview(details.tokenId);
-      const unclaimed0 = preview?.amount0 ?? 0n;
-      const unclaimed1 = preview?.amount1 ?? 0n;
+      const unclaimed0 = preview?.amount0 ?? BigInt(0);
+      const unclaimed1 = preview?.amount1 ?? BigInt(0);
 
       const lifetime0 = unclaimed0;
       const lifetime1 = unclaimed1;
