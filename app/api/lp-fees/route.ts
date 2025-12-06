@@ -111,10 +111,9 @@ export async function GET(request: NextRequest) {
       const token1Meta = describeToken(details.poolKey.currency1);
 
       // Fee growth current vs last
-      const feeGrowthInside0Current =
-        details.feeGrowthInside0LastX128Current ?? details.feeGrowthInside0LastX128;
-      const feeGrowthInside1Current =
-        details.feeGrowthInside1LastX128Current ?? details.feeGrowthInside1LastX128;
+      // PositionDetails does not expose "current" fee growth; use last recorded values.
+      const feeGrowthInside0Current = details.feeGrowthInside0LastX128;
+      const feeGrowthInside1Current = details.feeGrowthInside1LastX128;
 
       const lifetime0 = (feeGrowthInside0Current * details.liquidity) / Q128;
       const lifetime1 = (feeGrowthInside1Current * details.liquidity) / Q128;
