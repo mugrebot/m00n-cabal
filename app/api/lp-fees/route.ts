@@ -166,9 +166,12 @@ export async function GET(request: NextRequest) {
         wmonUsdPrice
       );
 
-      const basePosition = basePositions.find(
-        (p) => p.tokenId === details.tokenId || p.tokenId?.toString() === tokenId
-      );
+      const basePosition = basePositions.find((p) => String(p.tokenId) === tokenId) as
+        | {
+            rangeStatus?: string;
+            bandType?: string;
+          }
+        | undefined;
 
       positions.push({
         tokenId,
