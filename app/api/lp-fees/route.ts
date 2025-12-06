@@ -8,7 +8,8 @@ import {
 import { getWmonUsdPriceFromSubgraph } from '@/app/lib/pricing/monadPrices';
 import { tickToPrice } from '@/app/lib/m00nSolarSystem';
 
-const Q128 = 2n ** 128n;
+// Avoid BigInt literal parse issues on lower targets
+const Q128 = BigInt(2) ** BigInt(128);
 const MONAD_CHAIN_ID = Number(process.env.MONAD_CHAIN_ID ?? 143);
 
 const TOKEN_META: Record<
