@@ -166,6 +166,10 @@ export async function GET(request: NextRequest) {
         wmonUsdPrice
       );
 
+      const basePosition = basePositions.find(
+        (p) => p.tokenId === details.tokenId || p.tokenId?.toString() === tokenId
+      );
+
       positions.push({
         tokenId,
         token0: { symbol: token0Meta.symbol, amount: formatUnits(lifetime0, token0Meta.decimals) },
@@ -180,8 +184,8 @@ export async function GET(request: NextRequest) {
           token1: formatUnits(lifetime1, token1Meta.decimals),
           usd: lifetimeUsd
         },
-        rangeStatus: basePositions.find((p) => p.tokenId === tokenId)?.rangeStatus ?? 'unknown',
-        bandType: basePositions.find((p) => p.tokenId === tokenId)?.bandType ?? 'unknown'
+        rangeStatus: basePosition?.rangeStatus ?? 'unknown',
+        bandType: basePosition?.bandType ?? 'unknown'
       });
     }
 
