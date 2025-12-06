@@ -54,6 +54,9 @@ export const truncateAddress = (address: string, visible = 4) => {
   return `${address.slice(0, visible + 2)}…${address.slice(-visible)}`;
 };
 
+// Convert Uniswap V4 tick to price ratio (token0 per token1)
+export const tickToPrice = (tick: number) => Math.pow(1.0001, tick);
+
 export const formatUsd = (value: number) =>
   new Intl.NumberFormat('en-US', {
     style: 'currency',
