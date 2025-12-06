@@ -3,7 +3,8 @@ import { formatUnits, type Address } from 'viem';
 import {
   getUserPositionsSummary,
   getPositionDetails,
-  getCurrentPoolState
+  getCurrentPoolState,
+  getPositionFeesPreview
 } from '@/app/lib/uniswapV4Positions';
 import { getWmonUsdPriceFromSubgraph } from '@/app/lib/pricing/monadPrices';
 import { tickToPrice } from '@/app/lib/m00nSolarSystem';
@@ -81,6 +82,35 @@ const computeUsd = (
 };
 
 export async function GET(request: NextRequest) {
+  // 1) TokenId preview (mini-app uses this path)
+  const tokenIdParam = request.nextUrl.searchParams.get('tokenId');
+  if (tokenIdParam) {
+    let tokenId: bigint;
+    try {
+      tokenId = BigInt(tokenIdParam);
+    } catch {
+      return NextResponse.json({ error: 'invalid_token_id' }, { status: 400 });
+    }
+
+    try {
+      const preview = await getPositionFeesPreview(tokenId);
+      if (!preview) {
+        return NextResponse.json({ tokenId: tokenIdParam, fees: null });
+      }
+      return NextResponse.json({
+        tokenId: tokenIdParam,
+        fees: {
+          token0Wei: preview.amount0.toString(),
+          token1Wei: preview.amount1.toString()
+        }
+      });
+    } catch (error) {
+      console.error('LP_FEES_ROUTE:preview_failed', { tokenId: tokenIdParam, error });
+      return NextResponse.json({ error: 'lp_fee_preview_failed' }, { status: 500 });
+    }
+  }
+
+  // 2) Address mode (desktop summary)
   const addr = request.nextUrl.searchParams.get('address');
   if (!addr) return NextResponse.json({ error: 'missing_address' }, { status: 400 });
   const owner = addr as Address;
@@ -110,25 +140,14 @@ export async function GET(request: NextRequest) {
       const token0Meta = describeToken(details.poolKey.currency0);
       const token1Meta = describeToken(details.poolKey.currency1);
 
-      // Fee growth current vs last
-      // PositionDetails does not expose "current" fee growth; use last recorded values.
-      const feeGrowthInside0Current = details.feeGrowthInside0LastX128;
-      const feeGrowthInside1Current = details.feeGrowthInside1LastX128;
+      // Fetch on-chain fee preview (unclaimed). Lifetime fee growth is not exposed here,
+      // so we surface unclaimed amounts and mirror to lifetime as a best-effort view.
+      const preview = await getPositionFeesPreview(details.tokenId);
+      const unclaimed0 = preview?.amount0 ?? 0n;
+      const unclaimed1 = preview?.amount1 ?? 0n;
 
-      const lifetime0 = (feeGrowthInside0Current * details.liquidity) / Q128;
-      const lifetime1 = (feeGrowthInside1Current * details.liquidity) / Q128;
-
-      const delta0 =
-        feeGrowthInside0Current >= details.feeGrowthInside0LastX128
-          ? feeGrowthInside0Current - details.feeGrowthInside0LastX128
-          : 0n;
-      const delta1 =
-        feeGrowthInside1Current >= details.feeGrowthInside1LastX128
-          ? feeGrowthInside1Current - details.feeGrowthInside1LastX128
-          : 0n;
-
-      const unclaimed0 = (delta0 * details.liquidity) / Q128;
-      const unclaimed1 = (delta1 * details.liquidity) / Q128;
+      const lifetime0 = unclaimed0;
+      const lifetime1 = unclaimed1;
 
       const lifetimeUsd = computeUsd(
         token0Meta,
