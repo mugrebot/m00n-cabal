@@ -574,6 +574,36 @@ function AdvancedLpContent({
   const [singleAmount, setSingleAmount] = useState('');
   const [doubleMoonAmount, setDoubleMoonAmount] = useState('');
   const [doubleWmonAmount, setDoubleWmonAmount] = useState('');
+  const [lpListLoading, setLpListLoading] = useState(false);
+  const [lpListError, setLpListError] = useState<string | null>(null);
+  const [lpList, setLpList] = useState<
+    Array<{
+      tokenId: string;
+      bandType: string;
+      rangeStatus: string;
+      tickLower: number;
+      tickUpper: number;
+    }>
+  >([]);
+  const [collectStatus, setCollectStatus] = useState<
+    Record<string, 'idle' | 'loading' | 'success' | 'error'>
+  >({});
+  const [collectError, setCollectError] = useState<Record<string, string | null>>({});
+  const [feeData, setFeeData] = useState<
+    Record<
+      string,
+      {
+        unclaimedUsd: number | null;
+        lifetimeUsd: number | null;
+        unclaimed0: string;
+        unclaimed1: string;
+        lifetime0: string;
+        lifetime1: string;
+        token0Symbol: string;
+        token1Symbol: string;
+      }
+    >
+  >({});
   const [status, setStatus] = useState<DeployState>('idle');
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -1147,9 +1177,48 @@ function AdvancedLpContent({
     setPrivyActivating(false);
   }, [miniAppState]);
 
+  const handleCollect = useCallback(
+    async (tokenId: string) => {
+      if (!walletClient || !address) {
+        setStatus('error');
+        setStatusMessage('Connect a wallet on Monad first.');
+        return;
+      }
+      setCollectStatus((prev) => ({ ...prev, [tokenId]: 'loading' }));
+      setCollectError((prev) => ({ ...prev, [tokenId]: null }));
+      try {
+        const resp = await fetch('/api/lp-collect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenId, recipient: address })
+        });
+        if (!resp.ok) throw new Error(`collect_${resp.status}`);
+        const { to, data, value } = (await resp.json()) as {
+          to: string;
+          data: `0x${string}`;
+          value: string;
+        };
+        const hash = await walletClient.sendTransaction({
+          to: to as `0x${string}`,
+          data,
+          value: BigInt(value ?? '0')
+        });
+        setCollectStatus((prev) => ({ ...prev, [tokenId]: 'success' }));
+        setStatusMessage(`Collect tx sent: ${hash.slice(0, 10)}…`);
+      } catch (err) {
+        console.error('ADV_LP:collect_failed', err);
+        setCollectStatus((prev) => ({ ...prev, [tokenId]: 'error' }));
+        setCollectError((prev) => ({ ...prev, [tokenId]: 'Collect failed. Try again.' }));
+      }
+    },
+    [walletClient, address]
+  );
+
   const handleOpenLpManager = useCallback(async () => {
     const absolute =
-      typeof window !== 'undefined' ? `${window.location.origin}/lp-advanced` : '/lp-advanced';
+      typeof window !== 'undefined'
+        ? `${window.location.origin}/miniapp?lp=manager`
+        : '/miniapp?lp=manager';
     if (miniAppState === 'miniapp') {
       // Stay in-place if already in the mini app; this avoids reload loops/access issues.
       return;
@@ -1170,6 +1239,94 @@ function AdvancedLpContent({
       setPrivyActivating(false);
     }
   }, [login]);
+
+  // Desktop-only: fetch LP positions summary to view/collect (read-only here)
+  useEffect(() => {
+    if (miniAppState !== 'desktop') return;
+    if (!address) return;
+    let cancelled = false;
+    const load = async () => {
+      setLpListLoading(true);
+      setLpListError(null);
+      try {
+        const resp = await fetch(`/api/lp-nft?address=${address}`);
+        if (!resp.ok) throw new Error(`lp_nft_${resp.status}`);
+        const data = (await resp.json()) as {
+          lpPositions?: Array<{
+            tokenId: string;
+            bandType: string;
+            rangeStatus: string;
+            tickLower: number;
+            tickUpper: number;
+          }>;
+        };
+        if (cancelled) return;
+        setLpList(
+          (data.lpPositions ?? []).map((p) => ({
+            tokenId: p.tokenId,
+            bandType: p.bandType,
+            rangeStatus: p.rangeStatus,
+            tickLower: p.tickLower,
+            tickUpper: p.tickUpper
+          }))
+        );
+      } catch (err) {
+        if (cancelled) return;
+        console.warn('ADV_LP:lp_list_failed', err);
+        setLpListError('Unable to load positions right now.');
+      } finally {
+        if (!cancelled) setLpListLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [miniAppState, address]);
+
+  // Desktop-only: fetch fees for LP positions
+  useEffect(() => {
+    if (miniAppState !== 'desktop') return;
+    if (!address) return;
+    let cancelled = false;
+    const loadFees = async () => {
+      try {
+        const resp = await fetch(`/api/lp-fees?address=${address}`);
+        if (!resp.ok) throw new Error(`lp_fees_${resp.status}`);
+        const data = (await resp.json()) as {
+          positions?: Array<{
+            tokenId: string;
+            unclaimed: { token0: string; token1: string; usd?: number | null };
+            lifetime: { token0: string; token1: string; usd?: number | null };
+            token0?: { symbol?: string };
+            token1?: { symbol?: string };
+          }>;
+        };
+        if (cancelled) return;
+        const next: typeof feeData = {};
+        (data.positions ?? []).forEach((p) => {
+          next[p.tokenId] = {
+            unclaimedUsd: p.unclaimed?.usd ?? null,
+            lifetimeUsd: p.lifetime?.usd ?? null,
+            unclaimed0: p.unclaimed?.token0 ?? '0',
+            unclaimed1: p.unclaimed?.token1 ?? '0',
+            lifetime0: p.lifetime?.token0 ?? '0',
+            lifetime1: p.lifetime?.token1 ?? '0',
+            token0Symbol: p.token0?.symbol ?? 't0',
+            token1Symbol: p.token1?.symbol ?? 't1'
+          };
+        });
+        setFeeData(next);
+      } catch (err) {
+        if (cancelled) return;
+        console.warn('ADV_LP:lp_fees_failed', err);
+      }
+    };
+    void loadFees();
+    return () => {
+      cancelled = true;
+    };
+  }, [miniAppState, address, feeData]);
 
   // Previously gated mini-app access to ADMIN_FID only; now allow all mini-app users to proceed.
   // We still show a brief loading state while detecting, but do not block access by FID.
@@ -1582,6 +1739,108 @@ function AdvancedLpContent({
                 className="block text-center text-[10px] text-white/50 underline"
               >
                 View on Monadscan
+              </a>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {miniAppState === 'desktop' && (
+            <div className="p-4 rounded-2xl border border-white/10 bg-white/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-white">Your LP positions</h2>
+                {lpListLoading && <span className="text-[11px] text-white/60">Loading…</span>}
+              </div>
+              {lpListError && <p className="text-xs text-red-300">{lpListError}</p>}
+              {!lpListLoading && lpList.length === 0 && !lpListError && (
+                <p className="text-xs text-white/70">No positions found for this wallet.</p>
+              )}
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                {lpList.map((p) => {
+                  const state = collectStatus[p.tokenId] ?? 'idle';
+                  const err = collectError[p.tokenId];
+                  const fees = feeData[p.tokenId];
+                  return (
+                    <div
+                      key={p.tokenId}
+                      className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-white space-y-1"
+                    >
+                      <div className="flex justify-between">
+                        <span className="font-mono text-white/90">#{p.tokenId}</span>
+                        <span className="uppercase tracking-[0.2em] text-[10px] text-[var(--moss-green)]">
+                          {p.bandType.replace('_', ' ')}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-white/70">
+                        <span>Range</span>
+                        <span>
+                          {p.tickLower} → {p.tickUpper}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-white/70">
+                        <span>Status</span>
+                        <span>{p.rangeStatus}</span>
+                      </div>
+                      {fees && (
+                        <div className="space-y-1 text-white/70">
+                          <div className="flex justify-between">
+                            <span>Unclaimed</span>
+                            <span>
+                              {fees.unclaimed0} {fees.token0Symbol} / {fees.unclaimed1}{' '}
+                              {fees.token1Symbol}
+                            </span>
+                          </div>
+                          {fees.unclaimedUsd !== null && (
+                            <div className="flex justify-between">
+                              <span>Unclaimed (USD)</span>
+                              <span className="text-[var(--moss-green)]">
+                                ~{formatUsd(fees.unclaimedUsd)}
+                              </span>
+                            </div>
+                          )}
+                          {fees.lifetimeUsd !== null && (
+                            <div className="flex justify-between text-white/60">
+                              <span>Lifetime fees (USD)</span>
+                              <span>{formatUsd(fees.lifetimeUsd)}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleCollect(p.tokenId)}
+                          disabled={state === 'loading' || !isConnected}
+                          className="px-3 py-1 rounded-full border border-[var(--moss-green)] text-[var(--moss-green)] hover:bg-[var(--moss-green)] hover:text-black transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {state === 'loading' ? 'Collecting…' : 'Collect'}
+                        </button>
+                        {state === 'success' && (
+                          <span className="text-[10px] text-[var(--moss-green)]">Sent</span>
+                        )}
+                        {state === 'error' && (
+                          <span className="text-[10px] text-red-300">Error</span>
+                        )}
+                      </div>
+                      {err && <p className="text-[10px] text-red-300">{err}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="p-4 rounded-2xl border border-white/10 bg-white/5 space-y-3">
+            <h2 className="text-sm font-semibold text-white">Status</h2>
+            <p className="text-xs text-white/70">{statusMessage ?? 'Ready to deploy.'}</p>
+            {txHash && (
+              <a
+                href={`https://monadscan.com/tx/${txHash}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] text-[var(--moss-green)] underline"
+              >
+                View last tx on Monadscan
               </a>
             )}
           </div>
