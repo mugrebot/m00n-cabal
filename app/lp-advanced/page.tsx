@@ -130,6 +130,64 @@ function openExternalUrl(url: string) {
 // spacing utils (unused in client but kept for reference)
 const tickToPrice = (tick: number) => Math.pow(1.0001, tick);
 
+// --- Probability & Risk Helpers (desktop-only) ---
+// Standard normal CDF approximation (Abramowitz & Stegun)
+function normCdf(x: number): number {
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const p = 0.3275911;
+  const sign = x < 0 ? -1 : 1;
+  x = Math.abs(x) / Math.sqrt(2);
+  const t = 1.0 / (1.0 + p * x);
+  const y = 1.0 - ((((a5 * t + a4) * t + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+  return 0.5 * (1.0 + sign * y);
+}
+
+/**
+ * Probability that a lognormal asset stays within [lower, upper] over horizon.
+ * Uses a simplified BM band-hit approximation (conservative underestimate).
+ * @param spot Current price
+ * @param lower Lower bound
+ * @param upper Upper bound
+ * @param sigmaAnn Annualized volatility (decimal, e.g. 1.0 = 100%)
+ * @param days Time horizon in days
+ */
+function probStayInRange(
+  spot: number,
+  lower: number,
+  upper: number,
+  sigmaAnn: number,
+  days: number
+): number {
+  if (spot <= 0 || lower <= 0 || upper <= 0 || sigmaAnn <= 0 || days <= 0) return 0;
+  if (lower >= upper) return 0;
+  if (spot < lower || spot > upper) return 0;
+  const T = days / 365;
+  const sigmaT = sigmaAnn * Math.sqrt(T);
+  // Log distances from spot to bounds
+  const dLower = Math.log(lower / spot);
+  const dUpper = Math.log(upper / spot);
+  // Prob of staying inside using approximate formula (no drift, symmetric BM)
+  // P(stay) ≈ Φ(dUpper/sigmaT) - Φ(dLower/sigmaT)
+  // This is simplified; real barrier option math is more complex but this gives intuition.
+  const pUpper = normCdf(dUpper / sigmaT);
+  const pLower = normCdf(dLower / sigmaT);
+  // Clamp to [0, 1]
+  return Math.max(0, Math.min(1, pUpper - pLower));
+}
+
+/**
+ * Expected 1-sigma move (in USD) over the horizon, using forward vol.
+ */
+function expectedMove(spot: number, sigmaAnn: number, days: number): number {
+  if (spot <= 0 || sigmaAnn <= 0 || days <= 0) return 0;
+  const T = days / 365;
+  return spot * sigmaAnn * Math.sqrt(T);
+}
+
 function formatTokenBalance(value?: bigint, decimals = 18) {
   if (value === undefined) return '0';
   const numeric = Number(formatUnits(value, decimals));
@@ -589,6 +647,51 @@ function AdvancedLpContent({
     Record<string, 'idle' | 'loading' | 'success' | 'error'>
   >({});
   const [collectError, setCollectError] = useState<Record<string, string | null>>({});
+
+  // Volatility / probability inputs (desktop-only feature)
+  const [sigmaStay, setSigmaStay] = useState('100'); // % annualized for stay-in-range prob
+  const [sigmaFwd, setSigmaFwd] = useState('120'); // % annualized for forward outcomes
+  const [horizonDays, setHorizonDays] = useState('7');
+  const [volFetchStatus, setVolFetchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(
+    'idle'
+  );
+  const [volFetchMessage, setVolFetchMessage] = useState<string | null>(null);
+  const [volFetchCooldown, setVolFetchCooldown] = useState(0);
+
+  // Cooldown timer effect
+  useEffect(() => {
+    if (volFetchCooldown <= 0) return;
+    const timer = setTimeout(() => setVolFetchCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [volFetchCooldown]);
+
+  const handleFetchVolatility = useCallback(async () => {
+    if (volFetchCooldown > 0) return; // Prevent spam
+    setVolFetchStatus('loading');
+    setVolFetchMessage(null);
+    try {
+      const res = await fetch(`/api/volatility?days=30`);
+      const data = await res.json();
+      if (data.success && data.suggestedSigmaStay && data.suggestedSigmaFwd) {
+        setSigmaStay(String(data.suggestedSigmaStay));
+        setSigmaFwd(String(data.suggestedSigmaFwd));
+        setVolFetchStatus('success');
+        setVolFetchMessage(
+          `Fetched ${data.sampleCount} samples over ${data.periodDays?.toFixed(1) ?? '?'}d. σ=${data.annualizedVolPercent?.toFixed(0)}% ann.`
+        );
+        setVolFetchCooldown(60); // 60s cooldown after success
+      } else {
+        setVolFetchStatus('error');
+        setVolFetchMessage(data.message || 'No data available. Using manual defaults.');
+        setVolFetchCooldown(10); // 10s cooldown after error
+      }
+    } catch (err) {
+      console.error('VOL_FETCH', err);
+      setVolFetchStatus('error');
+      setVolFetchMessage('Failed to fetch. Using manual defaults.');
+      setVolFetchCooldown(10);
+    }
+  }, [volFetchCooldown]);
   const [feeData, setFeeData] = useState<
     Record<
       string,
@@ -636,6 +739,50 @@ function AdvancedLpContent({
   }, [moonSpotPriceUsd]);
 
   const chartSeries = useMemo(() => generateMockSeries(moonMarketCapUsd), [moonMarketCapUsd]);
+
+  // Normalized range & probability metrics (desktop-only)
+  const riskMetrics = useMemo(() => {
+    const spotMcap = moonMarketCapUsd;
+    const lower = Number(rangeLowerUsd);
+    const upper = Number(rangeUpperUsd);
+    const sigma = Number(sigmaStay) / 100; // convert % to decimal
+    const sigmaI = Number(sigmaFwd) / 100;
+    const days = Number(horizonDays);
+
+    if (!spotMcap || spotMcap <= 0 || !lower || !upper || lower >= upper || lower <= 0) {
+      return null;
+    }
+
+    // Normalized range (% offset from spot)
+    const pctLower = (lower / spotMcap - 1) * 100;
+    const pctUpper = (upper / spotMcap - 1) * 100;
+
+    // Log distances (for display)
+    const logLower = Math.log(lower / spotMcap);
+    const logUpper = Math.log(upper / spotMcap);
+
+    // Probability of staying in range using σ (stay)
+    const probStay =
+      sigma > 0 && days > 0 ? probStayInRange(spotMcap, lower, upper, sigma, days) : null;
+
+    // Expected 1-sigma move using σᵢ (forward)
+    const expMove = sigmaI > 0 && days > 0 ? expectedMove(spotMcap, sigmaI, days) : null;
+
+    return {
+      spotMcap,
+      lower,
+      upper,
+      pctLower,
+      pctUpper,
+      logLower,
+      logUpper,
+      probStay,
+      expMove,
+      sigma,
+      sigmaI,
+      days
+    };
+  }, [moonMarketCapUsd, rangeLowerUsd, rangeUpperUsd, sigmaStay, sigmaFwd, horizonDays]);
 
   const [stars] = useState(() => {
     return [...Array(100)].map((_, i) => ({
@@ -1639,6 +1786,140 @@ function AdvancedLpContent({
             </div>
             {rangeError && <p className="text-xs text-red-300 text-center">{rangeError}</p>}
           </div>
+
+          {/* Risk / Volatility Panel (Desktop Only) */}
+          {miniAppState === 'desktop' && (
+            <div className="space-y-3 p-4 border border-white/10 bg-white/5 rounded-xl">
+              <div className="flex items-center justify-between">
+                <h3 className="lunar-heading text-white/80 text-sm">Risk Analysis</h3>
+                <button
+                  type="button"
+                  onClick={handleFetchVolatility}
+                  disabled={volFetchStatus === 'loading' || volFetchCooldown > 0}
+                  className="text-[10px] px-2 py-1 border border-white/20 text-white/70 hover:border-[var(--moss-green)] hover:text-[var(--moss-green)] transition disabled:opacity-50"
+                >
+                  {volFetchStatus === 'loading'
+                    ? 'Fetching…'
+                    : volFetchCooldown > 0
+                      ? `Wait ${volFetchCooldown}s`
+                      : 'Fetch σ from chain'}
+                </button>
+              </div>
+              {volFetchMessage && (
+                <p
+                  className={`text-[10px] ${volFetchStatus === 'error' ? 'text-amber-400' : 'text-[var(--moss-green)]'}`}
+                >
+                  {volFetchMessage}
+                </p>
+              )}
+
+              {/* Volatility Inputs */}
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-white/60 block text-center">σ (stay) %</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="500"
+                    step="1"
+                    value={sigmaStay}
+                    onChange={(e) => setSigmaStay(e.target.value)}
+                    className="w-full bg-black/60 border border-white/20 text-white py-1.5 px-2 text-center text-sm font-mono focus:outline-none focus:border-[var(--moss-green)]"
+                    placeholder="100"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-white/60 block text-center">σᵢ (fwd) %</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="500"
+                    step="1"
+                    value={sigmaFwd}
+                    onChange={(e) => setSigmaFwd(e.target.value)}
+                    className="w-full bg-black/60 border border-white/20 text-white py-1.5 px-2 text-center text-sm font-mono focus:outline-none focus:border-[var(--moss-green)]"
+                    placeholder="120"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-white/60 block text-center">Horizon (d)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="365"
+                    step="1"
+                    value={horizonDays}
+                    onChange={(e) => setHorizonDays(e.target.value)}
+                    className="w-full bg-black/60 border border-white/20 text-white py-1.5 px-2 text-center text-sm font-mono focus:outline-none focus:border-[var(--moss-green)]"
+                    placeholder="7"
+                  />
+                </div>
+              </div>
+
+              {/* Risk Metrics Output */}
+              {riskMetrics && (
+                <div className="space-y-2 pt-2 border-t border-white/10">
+                  {/* Normalized Range */}
+                  <div className="flex justify-between text-xs">
+                    <span className="text-white/60">Range vs Spot</span>
+                    <span className="font-mono text-white/90">
+                      {riskMetrics.pctLower >= 0 ? '+' : ''}
+                      {riskMetrics.pctLower.toFixed(1)}% / {riskMetrics.pctUpper >= 0 ? '+' : ''}
+                      {riskMetrics.pctUpper.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-white/60">Log Distance</span>
+                    <span className="font-mono text-white/70 text-[11px]">
+                      {riskMetrics.logLower.toFixed(3)} / {riskMetrics.logUpper.toFixed(3)}
+                    </span>
+                  </div>
+
+                  {/* Probability of staying in range */}
+                  {riskMetrics.probStay !== null && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-white/60">P(stay in range, {riskMetrics.days}d)</span>
+                      <span
+                        className={`font-mono font-bold ${
+                          riskMetrics.probStay > 0.7
+                            ? 'text-[var(--moss-green)]'
+                            : riskMetrics.probStay > 0.4
+                              ? 'text-amber-400'
+                              : 'text-red-400'
+                        }`}
+                      >
+                        {(riskMetrics.probStay * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Expected Move */}
+                  {riskMetrics.expMove !== null && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-white/60">
+                        Expected ±1σᵢ move ({riskMetrics.days}d)
+                      </span>
+                      <span className="font-mono text-white/90">
+                        ±{formatUsd(riskMetrics.expMove)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!riskMetrics && (
+                <p className="text-[10px] text-white/50 text-center">
+                  Set valid range bounds to see risk metrics.
+                </p>
+              )}
+
+              <p className="text-[9px] text-white/40 leading-relaxed">
+                σ (stay): historical vol for stay-in-range probability. σᵢ (fwd): forward vol for
+                expected outcome. Default 100%/120% ann. are typical for illiquid tokens. Adjust
+                based on your view.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <label className="lunar-heading text-white/80 text-center block">amount</label>
