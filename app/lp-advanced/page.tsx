@@ -665,9 +665,9 @@ function AdvancedLpContent({
     return () => clearTimeout(timer);
   }, [volFetchCooldown]);
 
-  // Auto-fetch volatility on desktop load
+  // Auto-fetch volatility on page load (both desktop and mini-app)
   useEffect(() => {
-    if (miniAppState === 'desktop' && volFetchStatus === 'idle') {
+    if (volFetchStatus === 'idle' && miniAppState) {
       handleFetchVolatility();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -780,12 +780,13 @@ function AdvancedLpContent({
     const expMovePct = expMove && spotMcap ? (expMove / spotMcap) * 100 : null;
 
     // Suggested range for ~50% probability (roughly ±1σ for the horizon)
+    // Cap lower at -90% since mcap can't go negative
+    const sigmaT = sigma * Math.sqrt(days / 365);
     const suggestedRange =
       sigma > 0 && days > 0
         ? {
-            // σ_T = σ_annual * sqrt(T/365)
-            lower: -sigma * Math.sqrt(days / 365) * 100, // as % below spot
-            upper: sigma * Math.sqrt(days / 365) * 100 // as % above spot
+            lower: Math.max(-90, -sigmaT * 100), // cap at -90% (can't go below 0)
+            upper: sigmaT * 100 // as % above spot
           }
         : null;
 
@@ -1904,14 +1905,34 @@ function AdvancedLpContent({
                     riskMetrics.probStay < 0.5 &&
                     riskMetrics.suggestedRange && (
                       <div className="text-[11px] text-white/60 bg-black/20 p-2 rounded">
-                        <span className="text-amber-400">💡 Tip:</span> For {riskMetrics.days}d
-                        horizon with {Number(sigmaStay).toFixed(0)}% vol, consider a wider range
-                        like{' '}
-                        <span className="text-white font-mono">
-                          {riskMetrics.suggestedRange.lower.toFixed(0)}% to +
-                          {riskMetrics.suggestedRange.upper.toFixed(0)}%
-                        </span>{' '}
-                        from spot.
+                        <div className="flex items-center justify-between gap-2">
+                          <span>
+                            <span className="text-amber-400">💡</span> Try{' '}
+                            <span className="text-white font-mono">
+                              {riskMetrics.suggestedRange.lower.toFixed(0)}% to +
+                              {riskMetrics.suggestedRange.upper.toFixed(0)}%
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (riskMetrics.suggestedRange && riskMetrics.spotMcap) {
+                                const newLower =
+                                  riskMetrics.spotMcap *
+                                  (1 + riskMetrics.suggestedRange.lower / 100);
+                                const newUpper =
+                                  riskMetrics.spotMcap *
+                                  (1 + riskMetrics.suggestedRange.upper / 100);
+                                setRangeLowerUsd(Math.max(100, newLower).toFixed(0));
+                                setRangeUpperUsd(newUpper.toFixed(0));
+                                setRangeTouched(true);
+                              }
+                            }}
+                            className="px-2 py-0.5 bg-amber-500/30 hover:bg-amber-500/50 text-amber-300 text-[10px] rounded transition"
+                          >
+                            Apply
+                          </button>
+                        </div>
                       </div>
                     )}
 
@@ -1975,7 +1996,7 @@ function AdvancedLpContent({
           {/* Compact Range Check for Mini-App */}
           {miniAppState !== 'desktop' && riskMetrics && riskMetrics.probStay !== null && (
             <div
-              className={`p-3 rounded-lg text-center ${
+              className={`p-3 rounded-lg ${
                 riskMetrics.probStay > 0.5
                   ? 'bg-emerald-500/20 border border-emerald-500/40'
                   : riskMetrics.probStay > 0.2
@@ -1983,30 +2004,46 @@ function AdvancedLpContent({
                     : 'bg-red-500/20 border border-red-500/40'
               }`}
             >
-              <p
-                className={`text-sm font-bold ${
-                  riskMetrics.probStay > 0.5
-                    ? 'text-emerald-400'
+              <div className="flex items-center justify-between mb-1">
+                <p
+                  className={`text-sm font-bold ${
+                    riskMetrics.probStay > 0.5
+                      ? 'text-emerald-400'
+                      : riskMetrics.probStay > 0.2
+                        ? 'text-amber-400'
+                        : 'text-red-400'
+                  }`}
+                >
+                  {riskMetrics.probStay > 0.5
+                    ? '✓ Good Range'
                     : riskMetrics.probStay > 0.2
-                      ? 'text-amber-400'
-                      : 'text-red-400'
-                }`}
-              >
+                      ? '⚠ Risky'
+                      : '✗ Too Narrow'}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleFetchVolatility}
+                  disabled={volFetchStatus === 'loading' || volFetchCooldown > 0}
+                  className="text-[9px] px-2 py-0.5 border border-white/30 text-white/70 rounded disabled:opacity-50"
+                >
+                  {volFetchStatus === 'loading'
+                    ? '...'
+                    : volFetchCooldown > 0
+                      ? `${volFetchCooldown}s`
+                      : '↻ Vol'}
+                </button>
+              </div>
+              <p className="text-[10px] text-white/60 text-center">
                 {riskMetrics.probStay > 0.5
-                  ? '✓ Good Range'
-                  : riskMetrics.probStay > 0.2
-                    ? '⚠ Risky'
-                    : '✗ Too Narrow'}
-              </p>
-              <p className="text-[10px] text-white/60 mt-0.5">
-                {riskMetrics.probStay > 0.5
-                  ? `${(riskMetrics.probStay * 100).toFixed(0)}% stay chance (est.)`
+                  ? `${(riskMetrics.probStay * 100).toFixed(0)}% stay chance`
                   : riskMetrics.probStay > 0.2
                     ? `${(riskMetrics.probStay * 100).toFixed(0)}% stay — consider wider`
                     : 'Price will likely exit fast'}
               </p>
-              <p className="text-[9px] text-white/40 mt-1">
-                Based on {Number(sigmaStay).toFixed(0)}% vol · Use desktop for accurate data
+              <p className="text-[9px] text-white/40 text-center mt-0.5">
+                {volFetchStatus === 'success'
+                  ? `Using ${Number(sigmaStay).toFixed(0)}% chain vol`
+                  : `Default ${Number(sigmaStay).toFixed(0)}% vol — tap ↻`}
               </p>
             </div>
           )}
