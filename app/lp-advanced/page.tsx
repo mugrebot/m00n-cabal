@@ -665,6 +665,14 @@ function AdvancedLpContent({
     return () => clearTimeout(timer);
   }, [volFetchCooldown]);
 
+  // Auto-fetch volatility on desktop load
+  useEffect(() => {
+    if (miniAppState === 'desktop' && volFetchStatus === 'idle') {
+      handleFetchVolatility();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [miniAppState]);
+
   const handleFetchVolatility = useCallback(async () => {
     if (volFetchCooldown > 0) return; // Prevent spam
     setVolFetchStatus('loading');
@@ -1821,6 +1829,13 @@ function AdvancedLpContent({
                 </button>
               </div>
 
+              {/* Warning if using defaults */}
+              {volFetchStatus === 'idle' && (
+                <p className="text-[10px] text-amber-400 text-center">
+                  ⚠ Using default 100% vol — click Refresh to get actual volatility
+                </p>
+              )}
+
               {/* Main Verdict */}
               {riskMetrics ? (
                 <div className="space-y-3">
@@ -1954,6 +1969,45 @@ function AdvancedLpContent({
                   Set your range bounds above to check if it&apos;s wide enough.
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Compact Range Check for Mini-App */}
+          {miniAppState !== 'desktop' && riskMetrics && riskMetrics.probStay !== null && (
+            <div
+              className={`p-3 rounded-lg text-center ${
+                riskMetrics.probStay > 0.5
+                  ? 'bg-emerald-500/20 border border-emerald-500/40'
+                  : riskMetrics.probStay > 0.2
+                    ? 'bg-amber-500/20 border border-amber-500/40'
+                    : 'bg-red-500/20 border border-red-500/40'
+              }`}
+            >
+              <p
+                className={`text-sm font-bold ${
+                  riskMetrics.probStay > 0.5
+                    ? 'text-emerald-400'
+                    : riskMetrics.probStay > 0.2
+                      ? 'text-amber-400'
+                      : 'text-red-400'
+                }`}
+              >
+                {riskMetrics.probStay > 0.5
+                  ? '✓ Good Range'
+                  : riskMetrics.probStay > 0.2
+                    ? '⚠ Risky'
+                    : '✗ Too Narrow'}
+              </p>
+              <p className="text-[10px] text-white/60 mt-0.5">
+                {riskMetrics.probStay > 0.5
+                  ? `${(riskMetrics.probStay * 100).toFixed(0)}% stay chance (est.)`
+                  : riskMetrics.probStay > 0.2
+                    ? `${(riskMetrics.probStay * 100).toFixed(0)}% stay — consider wider`
+                    : 'Price will likely exit fast'}
+              </p>
+              <p className="text-[9px] text-white/40 mt-1">
+                Based on {Number(sigmaStay).toFixed(0)}% vol · Use desktop for accurate data
+              </p>
             </div>
           )}
 
