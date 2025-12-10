@@ -768,6 +768,19 @@ function AdvancedLpContent({
     // Expected 1-sigma move using σᵢ (forward)
     const expMove = sigmaI > 0 && days > 0 ? expectedMove(spotMcap, sigmaI, days) : null;
 
+    // Expected move as percentage
+    const expMovePct = expMove && spotMcap ? (expMove / spotMcap) * 100 : null;
+
+    // Suggested range for ~50% probability (roughly ±1σ for the horizon)
+    const suggestedRange =
+      sigma > 0 && days > 0
+        ? {
+            // σ_T = σ_annual * sqrt(T/365)
+            lower: -sigma * Math.sqrt(days / 365) * 100, // as % below spot
+            upper: sigma * Math.sqrt(days / 365) * 100 // as % above spot
+          }
+        : null;
+
     return {
       spotMcap,
       lower,
@@ -778,6 +791,8 @@ function AdvancedLpContent({
       logUpper,
       probStay,
       expMove,
+      expMovePct,
+      suggestedRange,
       sigma,
       sigmaI,
       days
@@ -1791,7 +1806,7 @@ function AdvancedLpContent({
           {miniAppState === 'desktop' && (
             <div className="space-y-3 p-4 border border-white/10 bg-white/5 rounded-xl">
               <div className="flex items-center justify-between">
-                <h3 className="lunar-heading text-white/80 text-sm">Risk Analysis</h3>
+                <h3 className="lunar-heading text-white/80 text-sm">Range Check</h3>
                 <button
                   type="button"
                   onClick={handleFetchVolatility}
@@ -1799,125 +1814,146 @@ function AdvancedLpContent({
                   className="text-[10px] px-2 py-1 border border-white/20 text-white/70 hover:border-[var(--moss-green)] hover:text-[var(--moss-green)] transition disabled:opacity-50"
                 >
                   {volFetchStatus === 'loading'
-                    ? 'Fetching…'
+                    ? 'Checking…'
                     : volFetchCooldown > 0
-                      ? `Wait ${volFetchCooldown}s`
-                      : 'Fetch σ from chain'}
+                      ? `${volFetchCooldown}s`
+                      : '↻ Refresh Vol'}
                 </button>
               </div>
-              {volFetchMessage && (
-                <p
-                  className={`text-[10px] ${volFetchStatus === 'error' ? 'text-amber-400' : 'text-[var(--moss-green)]'}`}
-                >
-                  {volFetchMessage}
-                </p>
-              )}
 
-              {/* Volatility Inputs */}
-              <div className="grid grid-cols-3 gap-2">
-                <div className="space-y-1">
-                  <label className="text-[10px] text-white/60 block text-center">σ (stay) %</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="500"
-                    step="1"
-                    value={sigmaStay}
-                    onChange={(e) => setSigmaStay(e.target.value)}
-                    className="w-full bg-black/60 border border-white/20 text-white py-1.5 px-2 text-center text-sm font-mono focus:outline-none focus:border-[var(--moss-green)]"
-                    placeholder="100"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] text-white/60 block text-center">σᵢ (fwd) %</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="500"
-                    step="1"
-                    value={sigmaFwd}
-                    onChange={(e) => setSigmaFwd(e.target.value)}
-                    className="w-full bg-black/60 border border-white/20 text-white py-1.5 px-2 text-center text-sm font-mono focus:outline-none focus:border-[var(--moss-green)]"
-                    placeholder="120"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] text-white/60 block text-center">Horizon (d)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="365"
-                    step="1"
-                    value={horizonDays}
-                    onChange={(e) => setHorizonDays(e.target.value)}
-                    className="w-full bg-black/60 border border-white/20 text-white py-1.5 px-2 text-center text-sm font-mono focus:outline-none focus:border-[var(--moss-green)]"
-                    placeholder="7"
-                  />
-                </div>
-              </div>
-
-              {/* Risk Metrics Output */}
-              {riskMetrics && (
-                <div className="space-y-2 pt-2 border-t border-white/10">
-                  {/* Normalized Range */}
-                  <div className="flex justify-between text-xs">
-                    <span className="text-white/60">Range vs Spot</span>
-                    <span className="font-mono text-white/90">
-                      {riskMetrics.pctLower >= 0 ? '+' : ''}
-                      {riskMetrics.pctLower.toFixed(1)}% / {riskMetrics.pctUpper >= 0 ? '+' : ''}
-                      {riskMetrics.pctUpper.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-white/60">Log Distance</span>
-                    <span className="font-mono text-white/70 text-[11px]">
-                      {riskMetrics.logLower.toFixed(3)} / {riskMetrics.logUpper.toFixed(3)}
-                    </span>
-                  </div>
-
-                  {/* Probability of staying in range */}
-                  {riskMetrics.probStay !== null && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-white/60">P(stay in range, {riskMetrics.days}d)</span>
-                      <span
-                        className={`font-mono font-bold ${
-                          riskMetrics.probStay > 0.7
-                            ? 'text-[var(--moss-green)]'
-                            : riskMetrics.probStay > 0.4
+              {/* Main Verdict */}
+              {riskMetrics ? (
+                <div className="space-y-3">
+                  {/* Verdict Box */}
+                  {riskMetrics.probStay !== null ? (
+                    <div
+                      className={`p-3 rounded-lg text-center ${
+                        riskMetrics.probStay > 0.5
+                          ? 'bg-emerald-500/20 border border-emerald-500/40'
+                          : riskMetrics.probStay > 0.2
+                            ? 'bg-amber-500/20 border border-amber-500/40'
+                            : 'bg-red-500/20 border border-red-500/40'
+                      }`}
+                    >
+                      <p
+                        className={`text-lg font-bold ${
+                          riskMetrics.probStay > 0.5
+                            ? 'text-emerald-400'
+                            : riskMetrics.probStay > 0.2
                               ? 'text-amber-400'
                               : 'text-red-400'
                         }`}
                       >
-                        {(riskMetrics.probStay * 100).toFixed(1)}%
-                      </span>
+                        {riskMetrics.probStay > 0.5
+                          ? '✓ Good Range'
+                          : riskMetrics.probStay > 0.2
+                            ? '⚠ Risky Range'
+                            : '✗ Too Narrow'}
+                      </p>
+                      <p className="text-xs text-white/70 mt-1">
+                        {riskMetrics.probStay > 0.5
+                          ? `${(riskMetrics.probStay * 100).toFixed(0)}% chance to stay in range over ${riskMetrics.days}d`
+                          : riskMetrics.probStay > 0.2
+                            ? `Only ${(riskMetrics.probStay * 100).toFixed(0)}% chance to stay in range`
+                            : `< ${Math.max(1, riskMetrics.probStay * 100).toFixed(0)}% chance — price will likely exit quickly`}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-lg text-center bg-white/5 border border-white/10">
+                      <p className="text-white/60 text-sm">Set volatility to see range analysis</p>
                     </div>
                   )}
 
-                  {/* Expected Move */}
-                  {riskMetrics.expMove !== null && (
-                    <div className="flex justify-between text-xs">
-                      <span className="text-white/60">
-                        Expected ±1σᵢ move ({riskMetrics.days}d)
-                      </span>
-                      <span className="font-mono text-white/90">
-                        ±{formatUsd(riskMetrics.expMove)}
-                      </span>
+                  {/* Key Stats */}
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-black/30 p-2 rounded">
+                      <p className="text-white/50 text-[10px]">Your Range</p>
+                      <p className="font-mono text-white">
+                        {riskMetrics.pctLower >= 0 ? '+' : ''}
+                        {riskMetrics.pctLower.toFixed(0)}% to {riskMetrics.pctUpper >= 0 ? '+' : ''}
+                        {riskMetrics.pctUpper.toFixed(0)}%
+                      </p>
                     </div>
-                  )}
+                    <div className="bg-black/30 p-2 rounded">
+                      <p className="text-white/50 text-[10px]">
+                        Expected Swing ({riskMetrics.days}d)
+                      </p>
+                      <p className="font-mono text-white">
+                        ±{riskMetrics.expMovePct ? riskMetrics.expMovePct.toFixed(0) : '--'}%
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Suggestion */}
+                  {riskMetrics.probStay !== null &&
+                    riskMetrics.probStay < 0.5 &&
+                    riskMetrics.suggestedRange && (
+                      <div className="text-[11px] text-white/60 bg-black/20 p-2 rounded">
+                        <span className="text-amber-400">💡 Tip:</span> For {riskMetrics.days}d
+                        horizon with {Number(sigmaStay).toFixed(0)}% vol, consider a wider range
+                        like{' '}
+                        <span className="text-white font-mono">
+                          {riskMetrics.suggestedRange.lower.toFixed(0)}% to +
+                          {riskMetrics.suggestedRange.upper.toFixed(0)}%
+                        </span>{' '}
+                        from spot.
+                      </div>
+                    )}
+
+                  {/* Collapsible Advanced */}
+                  <details className="text-[10px]">
+                    <summary className="text-white/40 cursor-pointer hover:text-white/60">
+                      Advanced settings
+                    </summary>
+                    <div className="grid grid-cols-3 gap-2 mt-2">
+                      <div className="space-y-1">
+                        <label className="text-white/50 block text-center">Vol %</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="9999"
+                          value={sigmaStay}
+                          onChange={(e) => setSigmaStay(e.target.value)}
+                          className="w-full bg-black/60 border border-white/20 text-white py-1 px-2 text-center font-mono focus:outline-none focus:border-[var(--moss-green)]"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-white/50 block text-center">Fwd Vol %</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="9999"
+                          value={sigmaFwd}
+                          onChange={(e) => setSigmaFwd(e.target.value)}
+                          className="w-full bg-black/60 border border-white/20 text-white py-1 px-2 text-center font-mono focus:outline-none focus:border-[var(--moss-green)]"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-white/50 block text-center">Days</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="365"
+                          value={horizonDays}
+                          onChange={(e) => setHorizonDays(e.target.value)}
+                          className="w-full bg-black/60 border border-white/20 text-white py-1 px-2 text-center font-mono focus:outline-none focus:border-[var(--moss-green)]"
+                        />
+                      </div>
+                    </div>
+                    {volFetchMessage && (
+                      <p
+                        className={`mt-2 ${volFetchStatus === 'error' ? 'text-amber-400' : 'text-[var(--moss-green)]'}`}
+                      >
+                        {volFetchMessage}
+                      </p>
+                    )}
+                  </details>
                 </div>
-              )}
-
-              {!riskMetrics && (
-                <p className="text-[10px] text-white/50 text-center">
-                  Set valid range bounds to see risk metrics.
+              ) : (
+                <p className="text-xs text-white/50 text-center py-2">
+                  Set your range bounds above to check if it&apos;s wide enough.
                 </p>
               )}
-
-              <p className="text-[9px] text-white/40 leading-relaxed">
-                σ (stay): historical vol for stay-in-range probability. σᵢ (fwd): forward vol for
-                expected outcome. Default 100%/120% ann. are typical for illiquid tokens. Adjust
-                based on your view.
-              </p>
             </div>
           )}
 
