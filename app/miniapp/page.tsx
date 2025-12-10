@@ -279,6 +279,8 @@ interface LpPosition {
   feesError?: string | null;
   collectStatus?: 'idle' | 'loading' | 'error';
   collectError?: string | null;
+  removeStatus?: 'idle' | 'loading' | 'success' | 'error';
+  removeError?: string | null;
 }
 
 interface LeaderboardEntry {
@@ -1075,7 +1077,9 @@ function MiniAppPageInner() {
           feesStatus: position.fees ? ('loaded' as const) : ('idle' as const),
           feesError: null,
           collectStatus: 'idle' as const,
-          collectError: null
+          collectError: null,
+          removeStatus: 'idle' as const,
+          removeError: null
         }));
         const hasLpSignal = lpPositions.length > 0 || data.hasLpNft;
 
@@ -1607,6 +1611,87 @@ function MiniAppPageInner() {
       }
     },
     [miniWalletAddress, mutateLpPosition, refreshPersonalSigils, sendCallsViaProvider, showToast]
+  );
+
+  const handleRemoveLiquidity = useCallback(
+    async (tokenId: string) => {
+      if (!miniWalletAddress) {
+        showToast('error', 'Connect your mini wallet to remove liquidity');
+        return;
+      }
+
+      // Confirm with user
+      const confirmed = window.confirm(
+        'Remove all liquidity from this position?\n\nThis will withdraw your tokens and any uncollected fees.'
+      );
+      if (!confirmed) return;
+
+      mutateLpPosition(tokenId, (position) => ({
+        ...position,
+        removeStatus: 'loading',
+        removeError: null
+      }));
+
+      try {
+        const response = await fetch('/api/lp-remove', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tokenId,
+            recipient: miniWalletAddress,
+            percentageToRemove: 100,
+            burnToken: true
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.message || `remove_route_${response.status}`);
+        }
+
+        const payload = (await response.json()) as {
+          to: `0x${string}`;
+          data: `0x${string}`;
+          value?: string;
+        };
+
+        const callValue =
+          typeof payload.value === 'string' && payload.value.length > 0
+            ? BigInt(payload.value)
+            : BigInt(0);
+
+        await sendCallsViaProvider({
+          calls: [{ to: payload.to, data: payload.data, value: callValue }]
+        });
+
+        mutateLpPosition(tokenId, (position) => ({
+          ...position,
+          removeStatus: 'success',
+          removeError: null
+        }));
+
+        showToast('success', 'Liquidity removal submitted! Position will close.');
+
+        // Remove from list after a delay
+        setTimeout(() => {
+          setLpGateState((prev) => ({
+            ...prev,
+            lpPositions: (prev.lpPositions ?? []).filter((p) => p.tokenId !== tokenId)
+          }));
+        }, 3000);
+      } catch (error) {
+        console.error('LP_FEES:remove_failed', { tokenId, error });
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unable to remove liquidity right now';
+        mutateLpPosition(tokenId, (position) => ({
+          ...position,
+          removeStatus: 'error',
+          removeError: errorMessage
+        }));
+        showToast('error', 'Failed to remove liquidity');
+      }
+    },
+    [miniWalletAddress, mutateLpPosition, sendCallsViaProvider, showToast]
   );
 
   const syncMiniWalletAddress = useCallback(async () => {
@@ -2720,6 +2805,18 @@ function MiniAppPageInner() {
                   >
                     {position.collectStatus === 'loading' ? 'COLLECTING…' : 'COLLECT REWARDS'}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveLiquidity(position.tokenId)}
+                    disabled={position.removeStatus === 'loading'}
+                    className="pixel-font text-[10px] tracking-[0.3em] px-4 py-2 border border-red-400/50 text-red-400 rounded-full uppercase disabled:opacity-50"
+                  >
+                    {position.removeStatus === 'loading'
+                      ? 'REMOVING…'
+                      : position.removeStatus === 'success'
+                        ? 'REMOVED ✓'
+                        : 'REMOVE LP'}
+                  </button>
                   {position.feesStatus === 'error' && (
                     <span className="text-xs text-red-400">
                       {position.feesError ?? 'Unable to load rewards'}
@@ -2728,6 +2825,11 @@ function MiniAppPageInner() {
                   {position.collectStatus === 'error' && (
                     <span className="text-xs text-red-400">
                       {position.collectError ?? 'Unable to collect rewards'}
+                    </span>
+                  )}
+                  {position.removeStatus === 'error' && (
+                    <span className="text-xs text-red-400">
+                      {position.removeError ?? 'Unable to remove liquidity'}
                     </span>
                   )}
                 </div>

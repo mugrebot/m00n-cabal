@@ -647,6 +647,10 @@ function AdvancedLpContent({
     Record<string, 'idle' | 'loading' | 'success' | 'error'>
   >({});
   const [collectError, setCollectError] = useState<Record<string, string | null>>({});
+  const [removeStatus, setRemoveStatus] = useState<
+    Record<string, 'idle' | 'loading' | 'success' | 'error'>
+  >({});
+  const [removeError, setRemoveError] = useState<Record<string, string | null>>({});
 
   // Volatility / probability inputs (desktop-only feature)
   const [sigmaStay, setSigmaStay] = useState('100'); // % annualized for stay-in-range prob
@@ -1380,6 +1384,64 @@ function AdvancedLpContent({
         console.error('ADV_LP:collect_failed', err);
         setCollectStatus((prev) => ({ ...prev, [tokenId]: 'error' }));
         setCollectError((prev) => ({ ...prev, [tokenId]: 'Collect failed. Try again.' }));
+      }
+    },
+    [walletClient, address]
+  );
+
+  const handleRemoveLiquidity = useCallback(
+    async (tokenId: string) => {
+      if (!walletClient || !address) {
+        setStatus('error');
+        setStatusMessage('Connect a wallet on Monad first.');
+        return;
+      }
+      // Confirm with user
+      const confirmed = window.confirm(
+        'Remove all liquidity from this position?\n\nThis will withdraw your tokens and any uncollected fees. The position NFT will be burned.'
+      );
+      if (!confirmed) return;
+
+      setRemoveStatus((prev) => ({ ...prev, [tokenId]: 'loading' }));
+      setRemoveError((prev) => ({ ...prev, [tokenId]: null }));
+      try {
+        const resp = await fetch('/api/lp-remove', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tokenId,
+            recipient: address,
+            percentageToRemove: 100,
+            burnToken: true
+          })
+        });
+        if (!resp.ok) {
+          const errData = await resp.json().catch(() => ({}));
+          throw new Error(errData.message || `remove_${resp.status}`);
+        }
+        const { to, data, value } = (await resp.json()) as {
+          to: string;
+          data: `0x${string}`;
+          value: string;
+        };
+        const hash = await walletClient.sendTransaction({
+          to: to as `0x${string}`,
+          data,
+          value: BigInt(value ?? '0')
+        });
+        setRemoveStatus((prev) => ({ ...prev, [tokenId]: 'success' }));
+        setStatusMessage(`Remove tx sent: ${hash.slice(0, 10)}… Position closed!`);
+        // Refresh the positions list after successful removal
+        setTimeout(() => {
+          setLpList((prev) => prev.filter((p) => p.tokenId !== tokenId));
+        }, 2000);
+      } catch (err) {
+        console.error('ADV_LP:remove_failed', err);
+        setRemoveStatus((prev) => ({ ...prev, [tokenId]: 'error' }));
+        setRemoveError((prev) => ({
+          ...prev,
+          [tokenId]: err instanceof Error ? err.message : 'Remove failed. Try again.'
+        }));
       }
     },
     [walletClient, address]
@@ -2214,7 +2276,7 @@ function AdvancedLpContent({
                           )}
                         </div>
                       )}
-                      <div className="flex items-center justify-between pt-1">
+                      <div className="flex items-center gap-2 pt-1">
                         <button
                           type="button"
                           onClick={() => handleCollect(p.tokenId)}
@@ -2223,12 +2285,39 @@ function AdvancedLpContent({
                         >
                           {state === 'loading' ? 'Collecting…' : 'Collect'}
                         </button>
-                        {state === 'success' && (
-                          <span className="text-[10px] text-[var(--moss-green)]">Sent</span>
-                        )}
-                        {state === 'error' && (
-                          <span className="text-[10px] text-red-300">Error</span>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveLiquidity(p.tokenId)}
+                          disabled={
+                            (removeStatus[p.tokenId] ?? 'idle') === 'loading' || !isConnected
+                          }
+                          className="px-3 py-1 rounded-full border border-red-400 text-red-400 hover:bg-red-400 hover:text-black transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {(removeStatus[p.tokenId] ?? 'idle') === 'loading'
+                            ? 'Removing…'
+                            : 'Remove'}
+                        </button>
+                        <div className="flex-1 text-right">
+                          {state === 'success' && (
+                            <span className="text-[10px] text-[var(--moss-green)]">✓</span>
+                          )}
+                          {state === 'error' && err && (
+                            <span className="text-[10px] text-red-300" title={err}>
+                              Error
+                            </span>
+                          )}
+                          {(removeStatus[p.tokenId] ?? 'idle') === 'success' && (
+                            <span className="text-[10px] text-[var(--moss-green)]">Removed!</span>
+                          )}
+                          {(removeStatus[p.tokenId] ?? 'idle') === 'error' && (
+                            <span
+                              className="text-[10px] text-red-300"
+                              title={removeError[p.tokenId] ?? ''}
+                            >
+                              Failed
+                            </span>
+                          )}
+                        </div>
                       </div>
                       {err && <p className="text-[10px] text-red-300">{err}</p>}
                     </div>
