@@ -19,31 +19,10 @@ let volatilityCache: {
   days: number;
 } = { data: null, timestamp: 0, days: 0 };
 
-// m00n/WMON pool on Monad
-const TOKEN_MOON_ADDRESS = '0x22cd99ec337a2811f594340a4a6e41e4a3022b07';
-const TOKEN_WMON_ADDRESS = '0x3bd359c1119da7da1d913d1c4d2b7c461115433a';
+// m00n/WMON pool on Monad - actual pool ID from subgraph
+const MOON_WMON_POOL_ID = '0x4934249c6914ae7cfb16d19a069437811a2d119d3785ca2e8188e8606be54abd';
 
-// Query for recent swaps to get tick history
-// Note: The exact schema depends on the subgraph version. Adjust field names if needed.
-const GET_RECENT_SWAPS = gql`
-  query GetRecentSwaps($pool: String!, $first: Int!, $orderBy: String!, $orderDirection: String!) {
-    swaps(
-      where: { pool: $pool }
-      first: $first
-      orderBy: $orderBy
-      orderDirection: $orderDirection
-    ) {
-      id
-      timestamp
-      tick
-      sqrtPriceX96
-      amount0
-      amount1
-    }
-  }
-`;
-
-// Alternative: Pool hourly data if swaps aren't available
+// Query for pool hourly data - best for volatility calculation
 const GET_POOL_HOUR_DATA = gql`
   query GetPoolHourData($pool: String!, $first: Int!) {
     poolHourDatas(
@@ -54,24 +33,16 @@ const GET_POOL_HOUR_DATA = gql`
     ) {
       periodStartUnix
       tick
-      sqrtPrice
-      liquidity
-      volumeToken0
-      volumeToken1
     }
   }
 `;
 
-// Alternative: Pool day data
-const GET_POOL_DAY_DATA = gql`
-  query GetPoolDayData($pool: String!, $first: Int!) {
-    poolDayDatas(where: { pool: $pool }, first: $first, orderBy: date, orderDirection: desc) {
-      date
+// Fallback: Recent swaps for more granular data
+const GET_RECENT_SWAPS = gql`
+  query GetRecentSwaps($pool: String!, $first: Int!) {
+    swaps(where: { pool: $pool }, first: $first, orderBy: timestamp, orderDirection: desc) {
+      timestamp
       tick
-      sqrtPrice
-      liquidity
-      volumeToken0
-      volumeToken1
     }
   }
 `;
@@ -164,80 +135,50 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Build pool ID (lowercase, format depends on subgraph schema)
-  // This is typically: keccak256(abi.encode(token0, token1, fee, tickSpacing, hooks))
-  // For now, we'll try to find the pool by token addresses
-  const poolId = `${TOKEN_MOON_ADDRESS.toLowerCase()}-${TOKEN_WMON_ADDRESS.toLowerCase()}`;
-
   const snapshots: TickSnapshot[] = [];
   let source = 'none';
 
   try {
-    // Try swaps first (most granular)
+    // Try hourly data first (best for volatility - stable intervals)
     try {
-      const swapsData = (await graphClient.request(GET_RECENT_SWAPS, {
-        pool: poolId,
-        first: Math.min(1000, days * 24), // Rough estimate for hourly swaps
-        orderBy: 'timestamp',
-        orderDirection: 'desc'
-      })) as { swaps?: Array<{ timestamp: string; tick: string }> };
+      const hourlyData = (await graphClient.request(GET_POOL_HOUR_DATA, {
+        pool: MOON_WMON_POOL_ID,
+        first: Math.min(720, days * 24) // Max ~30 days of hourly data
+      })) as { poolHourDatas?: Array<{ periodStartUnix: number; tick: string }> };
 
-      if (swapsData.swaps && swapsData.swaps.length >= 10) {
-        source = 'swaps';
-        for (const swap of swapsData.swaps) {
+      if (hourlyData.poolHourDatas && hourlyData.poolHourDatas.length >= 5) {
+        source = 'poolHourDatas';
+        for (const hour of hourlyData.poolHourDatas) {
           snapshots.push({
-            timestamp: Number(swap.timestamp),
-            tick: Number(swap.tick)
+            timestamp: Number(hour.periodStartUnix),
+            tick: Number(hour.tick)
           });
         }
       }
     } catch (e) {
-      console.warn('VOLATILITY: swaps query failed, trying poolHourDatas', e);
+      console.warn('VOLATILITY: poolHourDatas query failed, trying swaps', e);
     }
 
-    // Fallback to hourly data
+    // Fallback to swaps if hourly data insufficient
     if (snapshots.length < 10) {
       try {
-        const hourlyData = (await graphClient.request(GET_POOL_HOUR_DATA, {
-          pool: poolId,
-          first: days * 24
-        })) as { poolHourDatas?: Array<{ periodStartUnix: string; tick: string }> };
+        const swapsData = (await graphClient.request(GET_RECENT_SWAPS, {
+          pool: MOON_WMON_POOL_ID,
+          first: Math.min(500, days * 50) // Sample of recent swaps
+        })) as { swaps?: Array<{ timestamp: string; tick: string }> };
 
-        if (hourlyData.poolHourDatas && hourlyData.poolHourDatas.length >= 5) {
-          source = 'poolHourDatas';
-          snapshots.length = 0; // Clear any partial swaps
-          for (const hour of hourlyData.poolHourDatas) {
+        if (swapsData.swaps && swapsData.swaps.length >= 10) {
+          source = 'swaps';
+          snapshots.length = 0; // Clear any partial hourly data
+          for (const swap of swapsData.swaps) {
             snapshots.push({
-              timestamp: Number(hour.periodStartUnix),
-              tick: Number(hour.tick)
+              timestamp: Number(swap.timestamp),
+              tick: Number(swap.tick)
             });
           }
         }
       } catch (e) {
-        console.warn('VOLATILITY: poolHourDatas query failed, trying poolDayDatas', e);
-      }
-    }
-
-    // Fallback to daily data
-    if (snapshots.length < 5) {
-      try {
-        const dailyData = (await graphClient.request(GET_POOL_DAY_DATA, {
-          pool: poolId,
-          first: days
-        })) as { poolDayDatas?: Array<{ date: string; tick: string }> };
-
-        if (dailyData.poolDayDatas && dailyData.poolDayDatas.length >= 2) {
-          source = 'poolDayDatas';
-          snapshots.length = 0;
-          for (const day of dailyData.poolDayDatas) {
-            snapshots.push({
-              timestamp: Number(day.date) * 86400, // date is typically day number
-              tick: Number(day.tick)
-            });
-          }
-        }
-      } catch (e) {
-        console.warn('VOLATILITY: poolDayDatas query failed', e);
+        console.warn('VOLATILITY: swaps query failed', e);
       }
     }
 
