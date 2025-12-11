@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   // Determine status color and emoji
   const isInRange = rangeStatus === 'in-range';
   const statusColor = isInRange ? MOSS_GREEN : '#ff6b6b';
-  const statusEmoji = isInRange ? '✓' : '⚠';
+  const statusEmoji = isInRange ? '✅' : '⚠️';
   const statusText = isInRange ? 'IN RANGE' : 'OUT OF RANGE';
 
   // Format band type for display
