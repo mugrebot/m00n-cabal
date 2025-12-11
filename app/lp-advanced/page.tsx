@@ -1162,38 +1162,76 @@ function AdvancedLpContent({
         required: bigint
       ) => {
         if (required <= BigInt(0)) return;
-        setStatusMessage(`Approving ${label}…`);
 
         const buffered = withBuffer(required);
         const nowSec = Math.floor(Date.now() / 1000);
         const permitExpiration = nowSec + 60 * 60 * 24 * 30;
 
-        const approveUnderlyingData = encodeFunctionData({
-          abi: erc20Abi,
-          functionName: 'approve',
-          args: [PERMIT2_ADDRESS, buffered]
-        });
-        const permitData = encodeFunctionData({
-          abi: permit2Abi,
-          functionName: 'approve',
-          args: [tokenAddress, POSITION_MANAGER_ADDRESS, buffered, permitExpiration]
-        });
+        // Check existing ERC20 allowance to Permit2
+        let existingAllowance = BigInt(0);
+        try {
+          if (publicClient) {
+            existingAllowance = await publicClient.readContract({
+              address: tokenAddress,
+              abi: erc20Abi,
+              functionName: 'allowance',
+              args: [address, PERMIT2_ADDRESS]
+            });
+          }
+        } catch {
+          existingAllowance = BigInt(0);
+        }
 
-        const approveUnderlyingTx = await walletClient.sendTransaction({
-          account: address,
-          to: tokenAddress,
-          data: approveUnderlyingData,
-          chain: walletClient.chain ?? undefined
-        });
-        await waitForReceipt(approveUnderlyingTx);
+        // Only approve ERC20 → Permit2 if needed
+        if (existingAllowance < buffered) {
+          setStatusMessage(`Approving ${label} to Permit2…`);
+          const approveUnderlyingData = encodeFunctionData({
+            abi: erc20Abi,
+            functionName: 'approve',
+            args: [PERMIT2_ADDRESS, buffered]
+          });
+          const approveUnderlyingTx = await walletClient.sendTransaction({
+            account: address,
+            to: tokenAddress,
+            data: approveUnderlyingData,
+            chain: walletClient.chain ?? undefined
+          });
+          await waitForReceipt(approveUnderlyingTx);
+        }
 
-        const approvePermitTx = await walletClient.sendTransaction({
-          account: address,
-          to: PERMIT2_ADDRESS,
-          data: permitData,
-          chain: walletClient.chain ?? undefined
-        });
-        await waitForReceipt(approvePermitTx);
+        // Check existing Permit2 allowance to PositionManager
+        let permit2Allowance = BigInt(0);
+        try {
+          if (publicClient) {
+            const result = await publicClient.readContract({
+              address: PERMIT2_ADDRESS,
+              abi: permit2Abi,
+              functionName: 'allowance',
+              args: [address, tokenAddress, POSITION_MANAGER_ADDRESS]
+            });
+            // Permit2 returns [amount, expiration, nonce] tuple
+            permit2Allowance = Array.isArray(result) ? BigInt(result[0]) : BigInt(0);
+          }
+        } catch {
+          permit2Allowance = BigInt(0);
+        }
+
+        // Only approve Permit2 → PositionManager if needed
+        if (permit2Allowance < buffered) {
+          setStatusMessage(`Setting ${label} Permit2 allowance…`);
+          const permitData = encodeFunctionData({
+            abi: permit2Abi,
+            functionName: 'approve',
+            args: [tokenAddress, POSITION_MANAGER_ADDRESS, buffered, permitExpiration]
+          });
+          const approvePermitTx = await walletClient.sendTransaction({
+            account: address,
+            to: PERMIT2_ADDRESS,
+            data: permitData,
+            chain: walletClient.chain ?? undefined
+          });
+          await waitForReceipt(approvePermitTx);
+        }
       };
 
       await approveWithPermit2(TOKEN_MOON_ADDRESS, 'm00n', neededMoon);
@@ -2231,14 +2269,52 @@ function AdvancedLpContent({
               </div>
             )}
             {txHash && (
-              <a
-                href={`https://monadscan.com/tx/${txHash}`}
-                target="_blank"
-                rel="noreferrer"
-                className="block text-center text-[10px] text-white/50 underline"
-              >
-                View on Monadscan
-              </a>
+              <div className="flex flex-col gap-2 items-center">
+                <a
+                  href={`https://monadscan.com/tx/${txHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-center text-[10px] text-white/50 underline"
+                >
+                  View on Monadscan
+                </a>
+                {status === 'success' && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const baseUrl =
+                        typeof window !== 'undefined'
+                          ? window.location.origin
+                          : 'https://m00ncabal.xyz';
+                      const shareUrl = `${baseUrl}/miniapp`;
+                      const currentMcap = moonMarketCapUsd ?? 0;
+                      const bandEmoji =
+                        rangeTouched && rangeMin != null && rangeMin < currentMcap
+                          ? '🔻'
+                          : rangeTouched && rangeMax != null && rangeMax > currentMcap
+                            ? '🚀'
+                            : '🎯';
+                      const shareText = `${bandEmoji} Just deployed a m00n LP position!
+
+Range: $${Number(rangeLowerUsd).toLocaleString()} → $${Number(rangeUpperUsd).toLocaleString()}
+
+Join the m00n cabal 🌙`;
+
+                      try {
+                        await sdk.actions.composeCast({
+                          text: shareText,
+                          embeds: [shareUrl]
+                        });
+                      } catch (err) {
+                        console.error('SHARE_DEPLOY:failed', err);
+                      }
+                    }}
+                    className="px-4 py-1.5 border border-[#8c54ff]/50 text-[#8c54ff] rounded-full text-[11px] hover:bg-[#8c54ff]/10 transition"
+                  >
+                    SHARE 🌙
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
