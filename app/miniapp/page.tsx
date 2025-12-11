@@ -1706,8 +1706,8 @@ function MiniAppPageInner() {
       // Build OG image URL with position data
       const baseUrl =
         typeof window !== 'undefined' ? window.location.origin : 'https://m00ncabal.xyz';
-      const ogParams = new URLSearchParams({
-        tokenId: position.tokenId,
+      // Build share URL with position data for OG image
+      const shareParams = new URLSearchParams({
         bandType: position.bandType || 'custom',
         rangeStatus: position.rangeStatus || 'unknown',
         rangeLower: position.priceLowerInToken1
@@ -1719,7 +1719,7 @@ function MiniAppPageInner() {
         username: userData.username || `fid:${userData.fid}`
       });
 
-      const shareUrl = `${baseUrl}/miniapp?position=${position.tokenId}`;
+      const shareUrl = `${baseUrl}/share/position/${position.tokenId}?${shareParams.toString()}`;
 
       // Compose text based on position status
       const isInRange = position.rangeStatus === 'in-range';
