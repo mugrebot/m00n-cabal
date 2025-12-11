@@ -2107,6 +2107,35 @@ function AdvancedLpContent({
                   ? `Using ${Number(sigmaStay).toFixed(0)}% chain vol`
                   : `Default ${Number(sigmaStay).toFixed(0)}% vol — tap ↻`}
               </p>
+              {/* Apply Suggested Range for mini-app */}
+              {riskMetrics.probStay < 0.5 && riskMetrics.suggestedRange && (
+                <div className="flex items-center justify-center gap-2 mt-2 pt-2 border-t border-white/10">
+                  <span className="text-[10px] text-white/60">
+                    💡 Try{' '}
+                    <span className="font-mono text-white">
+                      {riskMetrics.suggestedRange.lower.toFixed(0)}% to +
+                      {riskMetrics.suggestedRange.upper.toFixed(0)}%
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (riskMetrics.suggestedRange && riskMetrics.spotMcap) {
+                        const newLower =
+                          riskMetrics.spotMcap * (1 + riskMetrics.suggestedRange.lower / 100);
+                        const newUpper =
+                          riskMetrics.spotMcap * (1 + riskMetrics.suggestedRange.upper / 100);
+                        setRangeLowerUsd(Math.max(100, newLower).toFixed(0));
+                        setRangeUpperUsd(newUpper.toFixed(0));
+                        setRangeTouched(true);
+                      }
+                    }}
+                    className="px-2 py-0.5 bg-amber-500/30 hover:bg-amber-500/50 text-amber-300 text-[10px] rounded transition"
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
