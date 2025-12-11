@@ -273,8 +273,8 @@ export async function GET(request: NextRequest) {
       </div>
     ),
     {
-      width: 800,
-      height: 500
+      width: 1200,
+      height: 800 // 3:2 aspect ratio required for Farcaster Mini App embeds
     }
   );
 }

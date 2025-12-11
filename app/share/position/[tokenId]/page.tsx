@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import { redirect } from 'next/navigation';
+import ShareRedirect from './ShareRedirect';
 
 type Props = {
   params: Promise<{ tokenId: string }>;
@@ -40,6 +40,22 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
     ? `This position is currently in range and earning fees! 🌙`
     : `Watching the market from the m00n cabal 🌙`;
 
+  // Farcaster Mini App Embed JSON (per spec: https://miniapps.farcaster.xyz/docs)
+  const miniAppEmbed = {
+    version: '1',
+    imageUrl: ogImageUrl,
+    button: {
+      title: 'View Position 🌙',
+      action: {
+        type: 'launch_frame',
+        name: 'm00n cabal',
+        url: `${baseUrl}/miniapp?position=${tokenId}`,
+        splashImageUrl: `${baseUrl}/brand/splash.svg`,
+        splashBackgroundColor: '#0a0612'
+      }
+    }
+  };
+
   return {
     title,
     description,
@@ -49,8 +65,8 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
       images: [
         {
           url: ogImageUrl,
-          width: 800,
-          height: 500,
+          width: 1200,
+          height: 800,
           alt: `m00n LP Position #${tokenId}`
         }
       ],
@@ -63,22 +79,17 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
       description,
       images: [ogImageUrl]
     },
-    // Farcaster Frame meta tags for frame v1 compatibility
+    // Farcaster Mini App embed meta tag
     other: {
-      'fc:frame': 'vNext',
-      'fc:frame:image': ogImageUrl,
-      'fc:frame:image:aspect_ratio': '1.91:1',
-      'fc:frame:button:1': 'Open m00n cabal 🌙',
-      'fc:frame:button:1:action': 'link',
-      'fc:frame:button:1:target': `${baseUrl}/miniapp?position=${tokenId}`
+      'fc:miniapp': JSON.stringify(miniAppEmbed),
+      // Legacy frame support
+      'fc:frame': JSON.stringify(miniAppEmbed)
     }
   };
 }
 
-export default async function SharePositionPage({ params, searchParams }: Props) {
+export default async function SharePositionPage({ params }: Props) {
   const { tokenId } = await params;
 
-  // Server-side redirect after a brief delay isn't possible in RSC
-  // So we redirect immediately but the metadata is already set for crawlers
-  redirect(`/miniapp?position=${tokenId}`);
+  return <ShareRedirect tokenId={tokenId} />;
 }
