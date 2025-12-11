@@ -2286,14 +2286,27 @@ function AdvancedLpContent({
                         typeof window !== 'undefined'
                           ? window.location.origin
                           : 'https://m00nad.vercel.app';
-                      const shareUrl = `${baseUrl}/miniapp`;
+
                       const currentMcap = moonMarketCapUsd ?? 0;
-                      const bandEmoji =
+                      const bandType =
                         rangeTouched && rangeMin != null && rangeMin < currentMcap
-                          ? '🔻'
+                          ? 'crash_band'
                           : rangeTouched && rangeMax != null && rangeMax > currentMcap
-                            ? '🚀'
-                            : '🎯';
+                            ? 'upside_band'
+                            : 'custom';
+                      const bandEmoji =
+                        bandType === 'crash_band' ? '🔻' : bandType === 'upside_band' ? '🚀' : '🎯';
+
+                      // Build share URL with position data for OG image
+                      const shareParams = new URLSearchParams({
+                        bandType,
+                        rangeStatus: 'in-range',
+                        rangeLower: String(Math.round(Number(rangeLowerUsd) || 0)),
+                        rangeUpper: String(Math.round(Number(rangeUpperUsd) || 0)),
+                        username: 'anon'
+                      });
+                      const shareUrl = `${baseUrl}/share/position/new?${shareParams.toString()}`;
+
                       const shareText = `${bandEmoji} Just deployed a m00n LP position!
 
 Range: $${Number(rangeLowerUsd).toLocaleString()} → $${Number(rangeUpperUsd).toLocaleString()}
