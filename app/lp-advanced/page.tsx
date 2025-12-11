@@ -2285,7 +2285,7 @@ function AdvancedLpContent({
                       const baseUrl =
                         typeof window !== 'undefined'
                           ? window.location.origin
-                          : 'https://m00ncabal.xyz';
+                          : 'https://m00nad.vercel.app';
                       const shareUrl = `${baseUrl}/miniapp`;
                       const currentMcap = moonMarketCapUsd ?? 0;
                       const bandEmoji =

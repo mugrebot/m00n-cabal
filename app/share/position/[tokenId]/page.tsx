@@ -10,7 +10,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   const { tokenId } = await params;
   const sp = await searchParams;
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://m00ncabal.xyz';
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://m00nad.vercel.app';
 
   // Build OG image URL with all the position data
   const ogParams = new URLSearchParams({

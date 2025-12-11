@@ -1705,7 +1705,7 @@ function MiniAppPageInner() {
 
       // Build OG image URL with position data
       const baseUrl =
-        typeof window !== 'undefined' ? window.location.origin : 'https://m00ncabal.xyz';
+        typeof window !== 'undefined' ? window.location.origin : 'https://m00nad.vercel.app';
       // Build share URL with position data for OG image
       const shareParams = new URLSearchParams({
         bandType: position.bandType || 'custom',
