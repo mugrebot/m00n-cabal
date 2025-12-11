@@ -1694,6 +1694,70 @@ function MiniAppPageInner() {
     [miniWalletAddress, mutateLpPosition, sendCallsViaProvider, showToast]
   );
 
+  const handleSharePosition = useCallback(
+    async (position: LpPosition) => {
+      if (!userData) {
+        showToast('error', 'Unable to share right now');
+        return;
+      }
+
+      const wmonPrice = lpGateState.poolWmonUsdPrice ?? 0;
+
+      // Build OG image URL with position data
+      const baseUrl =
+        typeof window !== 'undefined' ? window.location.origin : 'https://m00ncabal.xyz';
+      const ogParams = new URLSearchParams({
+        tokenId: position.tokenId,
+        bandType: position.bandType || 'custom',
+        rangeStatus: position.rangeStatus || 'unknown',
+        rangeLower: position.priceLowerInToken1
+          ? String(Math.round(Number(position.priceLowerInToken1) * 100000000 * wmonPrice))
+          : '0',
+        rangeUpper: position.priceUpperInToken1
+          ? String(Math.round(Number(position.priceUpperInToken1) * 100000000 * wmonPrice))
+          : '0',
+        username: userData.username || `fid:${userData.fid}`
+      });
+
+      const shareUrl = `${baseUrl}/miniapp?position=${position.tokenId}`;
+
+      // Compose text based on position status
+      const isInRange = position.rangeStatus === 'in-range';
+      const bandEmoji =
+        position.bandType === 'crash_band'
+          ? '🔻'
+          : position.bandType === 'upside_band'
+            ? '🚀'
+            : '🎯';
+      const statusEmoji = isInRange ? '✅' : '⚠️';
+
+      // Check if there are fees (non-zero token amounts)
+      const hasFees =
+        position.fees &&
+        (BigInt(position.fees.token0Wei || '0') > BigInt(0) ||
+          BigInt(position.fees.token1Wei || '0') > BigInt(0));
+
+      const shareText = `${bandEmoji} My m00n LP position #${position.tokenId}
+
+${statusEmoji} ${isInRange ? 'Currently in range and earning!' : 'Out of range - watching the market'}
+${hasFees ? `💰 Earning fees!` : ''}
+
+Join the m00n cabal 🌙`;
+
+      try {
+        await sdk.actions.composeCast({
+          text: shareText,
+          embeds: [shareUrl]
+        });
+        showToast('success', 'Share dialog opened!');
+      } catch (err) {
+        console.error('SHARE_POSITION:failed', err);
+        showToast('error', 'Unable to share right now');
+      }
+    },
+    [userData, lpGateState.poolWmonUsdPrice, showToast]
+  );
+
   const syncMiniWalletAddress = useCallback(async () => {
     try {
       const provider = await getMiniWalletProvider();
@@ -2816,6 +2880,13 @@ function MiniAppPageInner() {
                       : position.removeStatus === 'success'
                         ? 'REMOVED ✓'
                         : 'REMOVE LP'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSharePosition(position)}
+                    className="pixel-font text-[10px] tracking-[0.3em] px-4 py-2 border border-[#8c54ff]/50 text-[#8c54ff] rounded-full uppercase hover:bg-[#8c54ff]/10"
+                  >
+                    SHARE 🌙
                   </button>
                   {position.feesStatus === 'error' && (
                     <span className="text-xs text-red-400">
