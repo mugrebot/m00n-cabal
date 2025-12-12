@@ -1655,13 +1655,6 @@ function AdvancedLpContent({
           >
             Back to cabal check
           </Link>
-          <button
-            type="button"
-            onClick={handleOpenLpManager}
-            className="px-3 py-1 rounded-full border border-[var(--monad-purple)] text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-black transition"
-          >
-            LP Manager
-          </button>
         </div>
       </header>
 

@@ -287,6 +287,7 @@ interface LpPosition {
     token1Wei: string;
     token0Formatted: string;
     token1Formatted: string;
+    unclaimedUsd?: number | null;
   };
   feesStatus?: 'idle' | 'loading' | 'loaded' | 'error';
   feesError?: string | null;
@@ -1315,6 +1316,61 @@ function MiniAppPageInner() {
       cancelled = true;
     };
   }, [miniWalletAddress, lpRefreshNonce]);
+
+  // Fetch fees for LP positions after they're loaded
+  useEffect(() => {
+    const positions = lpGateState.lpPositions ?? [];
+    if (positions.length === 0 || !miniWalletAddress) return;
+
+    let cancelled = false;
+
+    const fetchFees = async () => {
+      try {
+        const resp = await fetch(`/api/lp-fees?address=${miniWalletAddress}`);
+        if (!resp.ok) return;
+        const data = (await resp.json()) as {
+          positions?: Array<{
+            tokenId: string;
+            unclaimed0: string;
+            unclaimed1: string;
+            token0Symbol: string;
+            token1Symbol: string;
+            unclaimedUsd: number | null;
+          }>;
+        };
+        if (cancelled || !data.positions) return;
+
+        // Update positions with fees
+        const feeMap = new Map(data.positions.map((p) => [p.tokenId, p]));
+        setLpGateState((prev) => ({
+          ...prev,
+          lpPositions: (prev.lpPositions ?? []).map((pos) => {
+            const feeInfo = feeMap.get(pos.tokenId);
+            if (!feeInfo) return pos;
+            return {
+              ...pos,
+              fees: {
+                token0Wei: '0',
+                token1Wei: '0',
+                token0Formatted: feeInfo.unclaimed0,
+                token1Formatted: feeInfo.unclaimed1,
+                unclaimedUsd: feeInfo.unclaimedUsd
+              },
+              feesStatus: 'loaded' as const
+            };
+          })
+        }));
+      } catch (err) {
+        console.warn('Failed to fetch LP fees', err);
+      }
+    };
+
+    void fetchFees();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lpGateState.lpPositions?.length, miniWalletAddress]);
 
   useEffect(() => {
     const tick = () => {
@@ -3514,8 +3570,9 @@ Join the $m00n cabal 🌙`;
       const duration =
         type === 'allTime' ? entry.longestStreakDuration : entry.currentStreakDuration;
       const ratio = maxStreak > 0 ? duration / maxStreak : 0;
-      const fireSize = 24 + ratio * 40;
+      const fireSize = 20 + ratio * 24;
       const resolvedLabel = entry.label ?? truncateAddress(entry.owner);
+      const abbreviatedAddr = truncateAddress(entry.owner);
 
       // Streak tier colors
       const days = duration / 86400;
@@ -3535,33 +3592,37 @@ Join the $m00n cabal 🌙`;
       return (
         <div
           key={`streak-${type}-${entry.tokenId}`}
-          className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/40 px-4 py-3"
+          className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2"
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
             <span
-              className="select-none"
+              className="select-none flex-shrink-0"
               style={{ fontSize: `${fireSize}px`, lineHeight: 1 }}
               aria-hidden="true"
             >
               {tierEmoji}
             </span>
-            <div>
-              <p className="text-sm font-semibold">
-                #{index + 1} <span className="opacity-80">{resolvedLabel}</span>
-              </p>
-              <p className="text-xs opacity-60">
-                {type === 'points'
-                  ? `${entry.points.toLocaleString()} pts`
-                  : formatStreakDuration(duration)}
-                {entry.valueUsd ? ` • ${formatUsd(entry.valueUsd)}` : ''}
-              </p>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">#{index + 1}</span>
+                <span className="text-sm opacity-90 truncate">{resolvedLabel}</span>
+              </div>
+              <div className="flex items-center gap-2 text-[10px] opacity-60">
+                <span className="font-mono">{abbreviatedAddr}</span>
+                {entry.valueUsd ? <span>• {formatUsd(entry.valueUsd)}</span> : null}
+              </div>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1">
-            <span className="text-[11px] font-bold" style={{ color: tierColor }}>
-              {type === 'current' && entry.isCurrentlyInRange ? '🟢 LIVE' : ''}
-              {type === 'allTime' ? '🏆' : ''}
-              {type === 'points' ? '⭐' : ''}
+          <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+            <span className="text-xs font-bold" style={{ color: tierColor }}>
+              {formatStreakDuration(duration)}
+            </span>
+            <span className="text-[10px]">
+              {entry.isCurrentlyInRange ? (
+                <span className="text-[var(--moss-green)]">🟢 IN</span>
+              ) : (
+                <span className="text-red-400/70">⚪ OUT</span>
+              )}
             </span>
           </div>
         </div>
@@ -3654,80 +3715,54 @@ Join the $m00n cabal 🌙`;
 
     if (!currentSeason) return null;
 
+    const positionCount = lpGateState.lpPositions?.length ?? 0;
+
     return (
-      <div
-        className={`${PANEL_CLASS} space-y-4 bg-gradient-to-br from-[#0a0612] to-[#1a0a2e] border border-[var(--monad-purple)]/30`}
-      >
-        {/* Header */}
+      <div className={`${PANEL_CLASS} space-y-3 bg-black/60`}>
+        {/* Header - More Compact */}
         <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold">
-              ⛏️ Season {currentSeason.number}: {currentSeason.name}
-            </h2>
-            <p className="text-xs opacity-50">Stay in range to earn points</p>
-          </div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--moss-green)]/10 border border-[var(--moss-green)]/30">
-            <span className="w-2 h-2 rounded-full bg-[var(--moss-green)] animate-pulse" />
-            <span className="text-[10px] text-[var(--moss-green)] font-semibold uppercase">
-              {currentSeason.status}
-            </span>
-          </div>
+          <p className="text-sm font-bold">⛏️ Season {currentSeason.number}</p>
+          <span className="text-[9px] px-2 py-0.5 rounded-full bg-[var(--moss-green)]/20 text-[var(--moss-green)]">
+            {currentSeason.status}
+          </span>
         </div>
 
-        {/* Full Moon Requirements - Compact */}
-        <div className="flex flex-wrap gap-2 text-[10px]">
-          <span className="px-2 py-1 bg-black/30 rounded-full opacity-70">💰 1M+ m00n</span>
-          <span className="px-2 py-1 bg-black/30 rounded-full opacity-70">⏳ 7d+ old</span>
-          <span className="px-2 py-1 bg-black/30 rounded-full opacity-70">🔥 7d+ streak</span>
-          <span className="px-2 py-1 bg-black/30 rounded-full opacity-70">🎯 In range</span>
-        </div>
-
-        {/* User Stats - Compact */}
-        {userAllocation && userAllocation.positionCount > 0 ? (
-          <div className="grid grid-cols-4 gap-2 text-center">
-            <div className="bg-black/40 rounded-xl p-3 border border-white/10">
-              <p className="text-lg font-bold text-[var(--monad-purple)]">
-                {userAllocation.formattedPoints}
+        {/* User Stats or CTA */}
+        {(userAllocation && userAllocation.positionCount > 0) || positionCount > 0 ? (
+          <div className="grid grid-cols-4 gap-1 text-center">
+            <div className="bg-black/40 rounded-lg p-2">
+              <p className="text-sm font-bold text-[var(--monad-purple)]">
+                {userAllocation?.formattedPoints ?? '0'}
               </p>
-              <p className="text-[10px] opacity-50">Points</p>
+              <p className="text-[8px] opacity-50">Pts</p>
             </div>
-            <div className="bg-black/40 rounded-xl p-3 border border-white/10">
-              <p className="text-lg font-bold">#{userAllocation.rank ?? '—'}</p>
-              <p className="text-[10px] opacity-50">Rank</p>
+            <div className="bg-black/40 rounded-lg p-2">
+              <p className="text-sm font-bold">#{userAllocation?.rank ?? '—'}</p>
+              <p className="text-[8px] opacity-50">Rank</p>
             </div>
-            <div className="bg-black/40 rounded-xl p-3 border border-white/10">
-              <p className="text-lg font-bold text-[var(--moss-green)]">
-                {userAllocation.bestStreakDays ?? 0}d
+            <div className="bg-black/40 rounded-lg p-2">
+              <p className="text-sm font-bold text-[var(--moss-green)]">
+                {userAllocation?.bestStreakDays ?? 0}d
               </p>
-              <p className="text-[10px] opacity-50">Streak</p>
+              <p className="text-[8px] opacity-50">Streak</p>
             </div>
-            <div className="bg-black/40 rounded-xl p-3 border border-white/10">
-              <p className="text-lg font-bold">{userAllocation.shareOfPool}%</p>
-              <p className="text-[10px] opacity-50">Share</p>
+            <div className="bg-black/40 rounded-lg p-2">
+              <p className="text-sm font-bold">{positionCount}</p>
+              <p className="text-[8px] opacity-50">LPs</p>
             </div>
           </div>
         ) : (
-          <div className="bg-black/40 rounded-2xl p-6 border border-white/10 text-center">
-            <p className="text-lg mb-2">🌙 No LP positions yet</p>
-            <p className="text-sm opacity-70 mb-4">
-              Deploy LP to start earning points and climb the leaderboard!
-            </p>
+          <div className="bg-black/40 rounded-xl p-4 border border-white/10 text-center">
+            <p className="text-sm mb-2">🌙 No LP positions</p>
             <button
               type="button"
-              onClick={handleOpenAdvancedLp}
-              className="px-6 py-2 bg-[var(--monad-purple)] text-white rounded-xl font-semibold hover:bg-[var(--monad-purple)]/80 transition-colors"
+              onClick={() => setActiveTab('advanced')}
+              className="text-xs px-4 py-1.5 bg-[var(--monad-purple)] text-white rounded-lg"
             >
-              Deploy LP Now
+              Deploy LP
             </button>
           </div>
         )}
-
-        {/* CTA */}
-        <div className="text-center">
-          <p className="text-xs opacity-40">
-            Rewards distributed every full moon 🌕 • Stay in range to qualify
-          </p>
-        </div>
       </div>
     );
   };
@@ -4864,39 +4899,40 @@ Join the $m00n cabal 🌙`;
       maximumFractionDigits: 0
     });
     const positionCount = lpGateState.lpPositions?.length ?? 0;
+    const wmonPrice = lpGateState.poolWmonUsdPrice ?? 0;
 
     return (
-      <div className="space-y-5">
-        {/* Header */}
-        <div className="text-center space-y-1 pt-2">
-          <h1 className="pixel-font text-2xl glow-purple">$m00n</h1>
-        </div>
-
-        {/* Balance Card */}
-        <div className={`${PANEL_CLASS} space-y-3`}>
-          <div className="flex items-center justify-between">
+      <div className="space-y-4">
+        {/* Balance + Stats Row */}
+        <div className={`${PANEL_CLASS} p-4`}>
+          <div className="grid grid-cols-3 gap-3 text-center">
             <div>
-              <p className="text-xs opacity-50 uppercase tracking-wider">Your Balance</p>
-              <p className="text-2xl font-bold text-[var(--moss-green)]">
-                {formattedBalance} <span className="text-sm opacity-60">$m00n</span>
-              </p>
+              <p className="text-lg font-bold text-[var(--moss-green)]">{formattedBalance}</p>
+              <p className="text-[10px] opacity-50">$m00n</p>
             </div>
-            <div className="text-right">
-              <p className="text-xs opacity-50 uppercase tracking-wider">Positions</p>
-              <p className="text-2xl font-bold text-[var(--monad-purple)]">{positionCount}</p>
+            <div>
+              <p className="text-lg font-bold text-[var(--monad-purple)]">{positionCount}</p>
+              <p className="text-[10px] opacity-50">Positions</p>
+            </div>
+            <div>
+              <p className="text-lg font-bold">${wmonPrice.toFixed(2)}</p>
+              <p className="text-[10px] opacity-50">WMON</p>
             </div>
           </div>
-          {primaryAddress && (
-            <div className="flex items-center gap-2 text-xs opacity-60">
-              <span className="font-mono">{truncateAddress(primaryAddress)}</span>
+          {(miniWalletAddress || primaryAddress) && (
+            <div className="flex items-center justify-center gap-2 text-[10px] opacity-50 mt-3 pt-3 border-t border-white/10">
+              <span className="font-mono">
+                {truncateAddress(miniWalletAddress ?? primaryAddress ?? '')}
+              </span>
               <button
                 type="button"
                 onClick={() => {
-                  navigator.clipboard.writeText(primaryAddress);
+                  const addr = miniWalletAddress ?? primaryAddress ?? '';
+                  navigator.clipboard.writeText(addr);
                   setCopiedWallet(true);
                   setTimeout(() => setCopiedWallet(false), 2000);
                 }}
-                className="text-[var(--monad-purple)] hover:underline"
+                className="text-[var(--monad-purple)]"
               >
                 {copiedWallet ? '✓' : 'Copy'}
               </button>
@@ -4904,48 +4940,98 @@ Join the $m00n cabal 🌙`;
           )}
         </div>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Quick Actions - 4 buttons */}
+        <div className="grid grid-cols-4 gap-2">
           <button
             type="button"
             onClick={() => setActiveTab('lp')}
-            className="px-4 py-4 rounded-2xl bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 text-center hover:bg-[var(--monad-purple)]/30 transition-colors"
+            className="py-3 rounded-xl bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/40 text-center"
           >
-            <span className="text-2xl block mb-1">💧</span>
-            <span className="text-xs font-medium">{positionCount > 0 ? 'My LPs' : 'Add LP'}</span>
+            <span className="text-xl block">💧</span>
+            <span className="text-[9px]">LPs</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('advanced')}
+            className="py-3 rounded-xl bg-white/5 border border-white/20 text-center"
+          >
+            <span className="text-xl block">🫡</span>
+            <span className="text-[9px]">Deploy</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('rewards')}
-            className="px-4 py-4 rounded-2xl bg-[#ffd700]/10 border border-[#ffd700]/30 text-center hover:bg-[#ffd700]/20 transition-colors"
+            className="py-3 rounded-xl bg-[#ffd700]/10 border border-[#ffd700]/30 text-center"
           >
-            <span className="text-2xl block mb-1">🏆</span>
-            <span className="text-xs font-medium">Rewards</span>
+            <span className="text-xl block">🏆</span>
+            <span className="text-[9px]">Rewards</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenMoonLander}
+            className="py-3 rounded-xl bg-white/5 border border-white/20 text-center"
+          >
+            <span className="text-xl block">🚀</span>
+            <span className="text-[9px]">Game</span>
           </button>
         </div>
 
         {/* Buy Tokens */}
-        <div className={`${PANEL_CLASS} space-y-3`}>
-          <p className="text-xs opacity-50 uppercase tracking-wider">Get Tokens</p>
-          <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => handleSwapMonToToken('moon')}
+            disabled={swapInFlight === 'moon'}
+            className="px-3 py-2 bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 rounded-xl text-sm font-semibold text-[var(--moss-green)] disabled:opacity-50"
+          >
+            {swapInFlight === 'moon' ? '...' : '🌙 Buy m00n'}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSwapMonToToken('wmon')}
+            disabled={swapInFlight === 'wmon'}
+            className="px-3 py-2 bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 rounded-xl text-sm font-semibold text-[var(--monad-purple)] disabled:opacity-50"
+          >
+            {swapInFlight === 'wmon' ? '...' : '💎 Buy WMON'}
+          </button>
+        </div>
+
+        {/* Contract Address */}
+        <div className={`${PANEL_CLASS} p-3`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[10px] opacity-50 mb-1">m00n Contract</p>
+              <p className="font-mono text-xs opacity-80">{truncateAddress(TOKEN_ADDRESS)}</p>
+            </div>
             <button
               type="button"
-              onClick={() => handleSwapMonToToken('moon')}
-              disabled={swapInFlight === 'moon'}
-              className="px-4 py-3 bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 rounded-xl text-sm font-semibold text-[var(--moss-green)] hover:bg-[var(--moss-green)]/30 transition-colors disabled:opacity-50"
+              onClick={handleCopyContract}
+              className="text-xs px-3 py-1 rounded-full border border-white/20 hover:bg-white/10"
             >
-              {swapInFlight === 'moon' ? 'Opening...' : '🌙 Buy m00n'}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSwapMonToToken('wmon')}
-              disabled={swapInFlight === 'wmon'}
-              className="px-4 py-3 bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 rounded-xl text-sm font-semibold text-[var(--monad-purple)] hover:bg-[var(--monad-purple)]/30 transition-colors disabled:opacity-50"
-            >
-              {swapInFlight === 'wmon' ? 'Opening...' : '💎 Buy WMON'}
+              {copiedContract ? '✓' : 'Copy'}
             </button>
           </div>
         </div>
+
+        {/* Season Info */}
+        {tokenomicsData?.currentSeason && (
+          <div className={`${PANEL_CLASS} p-3`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span>⛏️</span>
+                <div>
+                  <p className="text-sm font-semibold">
+                    Season {tokenomicsData.currentSeason.number}
+                  </p>
+                  <p className="text-[10px] opacity-50">{tokenomicsData.currentSeason.name}</p>
+                </div>
+              </div>
+              <span className="text-[10px] px-2 py-1 rounded-full bg-[var(--moss-green)]/20 text-[var(--moss-green)]">
+                ACTIVE
+              </span>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -5036,17 +5122,21 @@ Join the $m00n cabal 🌙`;
                       {isInRange ? '✅ In Range' : '⚠️ Out of Range'}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="flex gap-4 text-xs">
                     <div>
                       <span className="opacity-50">Value:</span>{' '}
                       <span className="font-mono">${posValue.toFixed(2)}</span>
                     </div>
-                    <div>
-                      <span className="opacity-50">Fees:</span>{' '}
-                      <span className="font-mono text-[var(--moss-green)]">
-                        {pos.fees?.token0Formatted ?? '0'} / {pos.fees?.token1Formatted ?? '0'}
-                      </span>
-                    </div>
+                    {pos.feesStatus === 'loaded' && pos.fees && (
+                      <div>
+                        <span className="opacity-50">Fees:</span>{' '}
+                        <span className="font-mono text-[var(--moss-green)]">
+                          {pos.fees.unclaimedUsd !== null && pos.fees.unclaimedUsd !== undefined
+                            ? `$${pos.fees.unclaimedUsd.toFixed(2)}`
+                            : `${pos.fees.token0Formatted} / ${pos.fees.token1Formatted}`}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -5123,11 +5213,11 @@ Join the $m00n cabal 🌙`;
 
   // Rewards Tab - Leaderboards & Season info
   const renderRewardsTab = () => (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center space-y-2">
-        <h2 className="pixel-font text-xl text-[#ffd700]">🏆 Rewards</h2>
-        <p className="text-xs opacity-60">Full moon distributions • Stay in range to qualify</p>
+    <div className="space-y-4">
+      {/* Header - Compact */}
+      <div className="text-center">
+        <h2 className="pixel-font text-lg text-[#ffd700]">🏆 Rewards</h2>
+        <p className="text-[10px] opacity-50">Hold 1M+ m00n & 7d+ position to qualify</p>
       </div>
 
       {/* Season Panel */}

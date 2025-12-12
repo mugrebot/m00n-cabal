@@ -41,21 +41,18 @@ const classifyBandType = (position: LpPosition): BandType => {
   if (rangeStatus === 'below-range') return 'crash_band';
   if (rangeStatus === 'above-range') return 'upside_band';
 
-  // In-range: check token balance ratio
-  const token0Value = position.notionalToken0 ?? 0;
-  const token1Value = position.notionalToken1 ?? 0;
-  const total = token0Value + token1Value;
+  // In-range: check if BOTH tokens are present (double-sided)
+  const hasMoon = (position.notionalToken0 ?? 0) > 0;
+  const hasWmon = (position.notionalToken1 ?? 0) > 0;
 
-  if (total === 0) return 'double_sided';
+  // If both tokens present, it's double-sided
+  if (hasMoon && hasWmon) return 'double_sided';
 
-  const token0Ratio = token0Value / total;
-  const token1Ratio = token1Value / total;
+  // Single-sided cases
+  if (hasMoon && !hasWmon) return 'upside_band'; // Only m00n
+  if (!hasMoon && hasWmon) return 'crash_band'; // Only WMON
 
-  // If one side is >80%, it's single-sided
-  if (token0Ratio > 0.8) return 'upside_band'; // Mostly m00n
-  if (token1Ratio > 0.8) return 'crash_band'; // Mostly WMON
-
-  // Otherwise it's double-sided (balanced)
+  // Fallback
   return 'double_sided';
 };
 
