@@ -1,4 +1,6 @@
-import Link from 'next/link';
+'use client';
+
+import { useRouter } from 'next/navigation';
 
 const sections = [
   {
@@ -61,18 +63,30 @@ const sections = [
 ];
 
 export default function HelpPage() {
+  const router = useRouter();
+
+  const handleBack = () => {
+    // Use browser history to go back to wherever user came from
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push('/miniapp');
+    }
+  };
+
   return (
     <main className="fixed inset-0 z-[99999] bg-black text-white overflow-y-auto">
       <div className="max-w-3xl mx-auto px-6 py-10 space-y-8">
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-semibold tracking-tight">Custom LP Planner — Guide</h1>
-          <Link
-            href="/lp-advanced"
-            className="flex items-center gap-1 text-sm font-medium text-white hover:text-white/80 transition"
+          <h1 className="text-2xl font-semibold tracking-tight">LP Guide</h1>
+          <button
+            type="button"
+            onClick={handleBack}
+            className="flex items-center gap-1 text-sm font-medium text-white hover:text-white/80 transition px-3 py-1.5 rounded-lg border border-white/20"
           >
             <span>←</span>
             <span>Back</span>
-          </Link>
+          </button>
         </div>
 
         <p className="text-base text-white leading-relaxed">

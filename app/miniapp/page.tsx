@@ -619,7 +619,7 @@ function MiniAppPageInner() {
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardResponse | null>(null);
 
   // Tab navigation state
-  type AppTab = 'home' | 'lp' | 'rewards';
+  type AppTab = 'home' | 'lp' | 'rewards' | 'advanced';
   const [activeTab, setActiveTab] = useState<AppTab>('home');
   const [leaderboardStatus, setLeaderboardStatus] = useState<
     'idle' | 'loading' | 'error' | 'loaded'
@@ -1212,12 +1212,8 @@ function MiniAppPageInner() {
     void bootstrapSdk();
   }, []);
 
+  // Always fetch LP data when wallet is connected (not gated by persona anymore)
   useEffect(() => {
-    if (!personaNeedsLpData) {
-      setLpPortalMode('closed');
-      return;
-    }
-
     if (!miniWalletAddress) {
       setLpGateState({ lpStatus: 'DISCONNECTED', walletAddress: null, lpPositions: [] });
       return;
@@ -1318,7 +1314,7 @@ function MiniAppPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [personaNeedsLpData, miniWalletAddress, lpRefreshNonce]);
+  }, [miniWalletAddress, lpRefreshNonce]);
 
   useEffect(() => {
     const tick = () => {
@@ -3660,126 +3656,55 @@ Join the $m00n cabal 🌙`;
 
     return (
       <div
-        className={`${PANEL_CLASS} space-y-6 bg-gradient-to-br from-[#0a0612] to-[#1a0a2e] border border-[var(--monad-purple)]/30`}
+        className={`${PANEL_CLASS} space-y-4 bg-gradient-to-br from-[#0a0612] to-[#1a0a2e] border border-[var(--monad-purple)]/30`}
       >
         {/* Header */}
-        <div className="text-center space-y-2">
-          <div className="flex items-center justify-center gap-2">
-            <span className="text-3xl">⛏️</span>
-            <h2 className="text-2xl font-bold bg-gradient-to-r from-[var(--monad-purple)] to-[var(--moss-green)] bg-clip-text text-transparent">
-              Season {currentSeason.number}: {currentSeason.name}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold">
+              ⛏️ Season {currentSeason.number}: {currentSeason.name}
             </h2>
+            <p className="text-xs opacity-50">Stay in range to earn points</p>
           </div>
-          <p className="text-sm opacity-70">
-            Earn points by keeping LP positions in range. Points = future $m00n allocation!
-          </p>
-          <p className="text-xs opacity-40">
-            Total points in system: {totalSystemPoints.toLocaleString()} • Pool:{' '}
-            {currentSeason.formattedLpMiningPool}
-          </p>
-          <div className="flex items-center justify-center gap-2 flex-wrap">
-            <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-[var(--moss-green)]/10 border border-[var(--moss-green)]/30">
-              <span className="w-2 h-2 rounded-full bg-[var(--moss-green)] animate-pulse" />
-              <span className="text-xs text-[var(--moss-green)] font-semibold uppercase tracking-wider">
-                {currentSeason.status}
-              </span>
-            </div>
-            {seasons && seasons.length > 1 && (
-              <span className="text-xs opacity-40">
-                ({seasons.filter((s) => s.status === 'completed').length}/{seasons.length} seasons)
-              </span>
-            )}
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--moss-green)]/10 border border-[var(--moss-green)]/30">
+            <span className="w-2 h-2 rounded-full bg-[var(--moss-green)] animate-pulse" />
+            <span className="text-[10px] text-[var(--moss-green)] font-semibold uppercase">
+              {currentSeason.status}
+            </span>
           </div>
         </div>
 
-        {/* Full Moon Requirements */}
-        <div className="bg-black/30 rounded-xl p-3 border border-white/5">
-          <p className="text-xs opacity-50 uppercase tracking-wider mb-2">
-            🌕 Full Moon Requirements
-          </p>
-          <div className="grid grid-cols-2 gap-2 text-[10px]">
-            <div className="flex items-center gap-1">
-              <span>💰</span>
-              <span className="opacity-70">Hold 1M+ $m00n</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span>⏳</span>
-              <span className="opacity-70">Position 7+ days old</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span>🔥</span>
-              <span className="opacity-70">7+ day streak</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <span>🎯</span>
-              <span className="opacity-70">In range at snapshot</span>
-            </div>
-          </div>
+        {/* Full Moon Requirements - Compact */}
+        <div className="flex flex-wrap gap-2 text-[10px]">
+          <span className="px-2 py-1 bg-black/30 rounded-full opacity-70">💰 1M+ m00n</span>
+          <span className="px-2 py-1 bg-black/30 rounded-full opacity-70">⏳ 7d+ old</span>
+          <span className="px-2 py-1 bg-black/30 rounded-full opacity-70">🔥 7d+ streak</span>
+          <span className="px-2 py-1 bg-black/30 rounded-full opacity-70">🎯 In range</span>
         </div>
 
-        {/* User Stats */}
+        {/* User Stats - Compact */}
         {userAllocation && userAllocation.positionCount > 0 ? (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-black/40 rounded-2xl p-4 border border-white/10">
-                <p className="text-xs opacity-50 uppercase tracking-wider mb-1">Your Points</p>
-                <p className="text-2xl font-bold text-[var(--monad-purple)]">
-                  {userAllocation.formattedPoints}
-                </p>
-                {userAllocation.tier && (
-                  <p className="text-xs mt-1">
-                    <span className="mr-1">{userAllocation.tier.emoji}</span>
-                    <span className="opacity-70">{userAllocation.tier.name} tier</span>
-                  </p>
-                )}
-              </div>
-              <div className="bg-black/40 rounded-2xl p-4 border border-white/10">
-                <p className="text-xs opacity-50 uppercase tracking-wider mb-1">Est. Allocation</p>
-                <p className="text-2xl font-bold text-[var(--moss-green)]">
-                  {userAllocation.formattedEstimatedLpMining ?? '0'}
-                </p>
-                <p className="text-xs opacity-50 mt-1">{userAllocation.shareOfPool}% of pool</p>
-              </div>
-              <div className="bg-black/40 rounded-2xl p-4 border border-white/10">
-                <p className="text-xs opacity-50 uppercase tracking-wider mb-1">Your Rank</p>
-                <p className="text-2xl font-bold">#{userAllocation.rank ?? '—'}</p>
-                <p className="text-xs opacity-50 mt-1">of {userAllocation.totalRanked} LPers</p>
-              </div>
-              <div className="bg-black/40 rounded-2xl p-4 border border-white/10">
-                <p className="text-xs opacity-50 uppercase tracking-wider mb-1">Best Streak</p>
-                <p className="text-2xl font-bold">{userAllocation.bestStreakDays ?? 0}d</p>
-                <p className="text-xs opacity-50 mt-1">Top {userAllocation.percentile}%</p>
-              </div>
+          <div className="grid grid-cols-4 gap-2 text-center">
+            <div className="bg-black/40 rounded-xl p-3 border border-white/10">
+              <p className="text-lg font-bold text-[var(--monad-purple)]">
+                {userAllocation.formattedPoints}
+              </p>
+              <p className="text-[10px] opacity-50">Points</p>
             </div>
-
-            {/* Points Breakdown */}
-            {userAllocation.formattedPointsBreakdown && (
-              <div className="bg-black/30 rounded-xl p-3 border border-white/5">
-                <p className="text-xs opacity-50 uppercase tracking-wider mb-2">
-                  Your Points Breakdown
-                </p>
-                <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                  <div>
-                    <p className="font-bold text-[var(--moss-green)]">
-                      {userAllocation.pointsBreakdown?.notionalPoints?.toLocaleString() ?? 0}
-                    </p>
-                    <p className="opacity-50">{userAllocation.formattedNotionalUsd ?? '$0'}</p>
-                  </div>
-                  <div>
-                    <p className="font-bold text-[var(--monad-purple)]">
-                      {userAllocation.pointsBreakdown?.streakPoints?.toLocaleString() ?? 0}
-                    </p>
-                    <p className="opacity-50">{userAllocation.bestStreakDays ?? 0}d streak</p>
-                  </div>
-                  <div>
-                    <p className="font-bold text-white/70">
-                      {userAllocation.pointsBreakdown?.timePoints?.toLocaleString() ?? 0}
-                    </p>
-                    <p className="opacity-50">{userAllocation.totalHoursInRange ?? 0}h in range</p>
-                  </div>
-                </div>
-              </div>
-            )}
+            <div className="bg-black/40 rounded-xl p-3 border border-white/10">
+              <p className="text-lg font-bold">#{userAllocation.rank ?? '—'}</p>
+              <p className="text-[10px] opacity-50">Rank</p>
+            </div>
+            <div className="bg-black/40 rounded-xl p-3 border border-white/10">
+              <p className="text-lg font-bold text-[var(--moss-green)]">
+                {userAllocation.bestStreakDays ?? 0}d
+              </p>
+              <p className="text-[10px] opacity-50">Streak</p>
+            </div>
+            <div className="bg-black/40 rounded-xl p-3 border border-white/10">
+              <p className="text-lg font-bold">{userAllocation.shareOfPool}%</p>
+              <p className="text-[10px] opacity-50">Share</p>
+            </div>
           </div>
         ) : (
           <div className="bg-black/40 rounded-2xl p-6 border border-white/10 text-center">
@@ -3797,69 +3722,8 @@ Join the $m00n cabal 🌙`;
           </div>
         )}
 
-        {/* Allocation Breakdown */}
-        <div className="space-y-3">
-          <p className="text-xs opacity-50 uppercase tracking-wider">
-            Rewards Breakdown (26.23% of supply)
-          </p>
-          <div className="space-y-2">
-            {formattedAllocations.slice(0, 3).map((alloc) => (
-              <div
-                key={alloc.key}
-                className="flex items-center justify-between bg-black/30 rounded-xl px-4 py-3 border border-white/5"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">{alloc.emoji}</span>
-                  <div>
-                    <p className="text-sm font-semibold">{alloc.name}</p>
-                    <p className="text-xs opacity-50">{alloc.description}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-bold text-[var(--moss-green)]">
-                    {alloc.formattedTokens}
-                  </p>
-                  <p className="text-xs opacity-50">{alloc.percentOfTotal}%</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Top Earners Preview */}
-        {topEarners && topEarners.length > 0 && (
-          <div className="space-y-3">
-            <p className="text-xs opacity-50 uppercase tracking-wider">⭐ Top 5 Earners</p>
-            <div className="space-y-2">
-              {topEarners.map((earner) => (
-                <div
-                  key={earner.rank}
-                  className="flex items-center justify-between bg-black/30 rounded-xl px-4 py-2 border border-white/5"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">{earner.tier?.emoji ?? '🌙'}</span>
-                    <div>
-                      <span className="text-sm font-semibold">
-                        #{earner.rank} {earner.label}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold text-[var(--monad-purple)]">
-                      {earner.formattedPoints}
-                    </p>
-                    <p className="text-xs text-[var(--moss-green)]">
-                      ~{earner.estimatedAllocation}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* CTA */}
-        <div className="text-center pt-2">
+        <div className="text-center">
           <p className="text-xs opacity-40">
             Rewards distributed every full moon 🌕 • Stay in range to qualify
           </p>
@@ -4910,32 +4774,44 @@ Join the $m00n cabal 🌙`;
         <button
           type="button"
           onClick={() => setActiveTab('home')}
-          className={`flex flex-col items-center justify-center gap-1 w-20 h-full transition-colors ${
+          className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${
             activeTab === 'home' ? 'text-[var(--moss-green)]' : 'text-white/50 hover:text-white/80'
           }`}
         >
-          <span className="text-xl">🏠</span>
-          <span className="text-[10px] font-medium tracking-wider">HOME</span>
+          <span className="text-lg">🏠</span>
+          <span className="text-[9px] font-medium">HOME</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveTab('lp')}
-          className={`flex flex-col items-center justify-center gap-1 w-20 h-full transition-colors ${
+          className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${
             activeTab === 'lp' ? 'text-[var(--monad-purple)]' : 'text-white/50 hover:text-white/80'
           }`}
         >
-          <span className="text-xl">💧</span>
-          <span className="text-[10px] font-medium tracking-wider">LP</span>
+          <span className="text-lg">💧</span>
+          <span className="text-[9px] font-medium">POSITIONS</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('advanced')}
+          className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${
+            activeTab === 'advanced'
+              ? 'text-[var(--monad-purple)]'
+              : 'text-white/50 hover:text-white/80'
+          }`}
+        >
+          <span className="text-lg">🫡</span>
+          <span className="text-[9px] font-medium">DEPLOY</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveTab('rewards')}
-          className={`flex flex-col items-center justify-center gap-1 w-20 h-full transition-colors ${
+          className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${
             activeTab === 'rewards' ? 'text-[#ffd700]' : 'text-white/50 hover:text-white/80'
           }`}
         >
-          <span className="text-xl">🏆</span>
-          <span className="text-[10px] font-medium tracking-wider">REWARDS</span>
+          <span className="text-lg">🏆</span>
+          <span className="text-[9px] font-medium">REWARDS</span>
         </button>
       </div>
     </nav>
@@ -4981,23 +4857,23 @@ Join the $m00n cabal 🌙`;
 
   // Home Tab - Overview, wallet info, quick stats
   const renderHomeTab = () => {
-    const moonBalance = primaryAddressMoonBalanceWei
-      ? formatUnits(primaryAddressMoonBalanceWei, 18)
-      : '0';
+    // Use best available balance source (LP funding API has priority, then balance probe)
+    const bestBalanceWei = moonBalanceWei ?? primaryAddressMoonBalanceWei;
+    const moonBalance = bestBalanceWei ? formatUnits(bestBalanceWei, 18) : '0';
     const formattedBalance = Number(moonBalance).toLocaleString(undefined, {
       maximumFractionDigits: 0
     });
+    const positionCount = lpGateState.lpPositions?.length ?? 0;
 
     return (
-      <div className="space-y-6">
+      <div className="space-y-5">
         {/* Header */}
-        <div className="text-center space-y-2">
-          <h1 className="pixel-font text-3xl glow-purple">$m00n</h1>
-          <p className="text-sm opacity-70">Liquidity layer for the lunar economy</p>
+        <div className="text-center space-y-1 pt-2">
+          <h1 className="pixel-font text-2xl glow-purple">$m00n</h1>
         </div>
 
         {/* Balance Card */}
-        <div className={`${PANEL_CLASS} space-y-4`}>
+        <div className={`${PANEL_CLASS} space-y-3`}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs opacity-50 uppercase tracking-wider">Your Balance</p>
@@ -5005,12 +4881,10 @@ Join the $m00n cabal 🌙`;
                 {formattedBalance} <span className="text-sm opacity-60">$m00n</span>
               </p>
             </div>
-            {personaBadge && (
-              <div className="text-right">
-                <p className="text-xs opacity-50 uppercase tracking-wider">Status</p>
-                <p className="text-sm">{PERSONA_BADGE_COPY[personaBadge]?.label || 'Member'}</p>
-              </div>
-            )}
+            <div className="text-right">
+              <p className="text-xs opacity-50 uppercase tracking-wider">Positions</p>
+              <p className="text-2xl font-bold text-[var(--monad-purple)]">{positionCount}</p>
+            </div>
           </div>
           {primaryAddress && (
             <div className="flex items-center gap-2 text-xs opacity-60">
@@ -5030,40 +4904,6 @@ Join the $m00n cabal 🌙`;
           )}
         </div>
 
-        {/* Quick Stats */}
-        <div className="grid grid-cols-2 gap-3">
-          <div className={`${PANEL_CLASS} text-center`}>
-            <p className="text-xs opacity-50 uppercase tracking-wider mb-1">LP Positions</p>
-            <p className="text-xl font-bold text-[var(--monad-purple)]">
-              {lpGateState.lpPositions?.length ?? 0}
-            </p>
-          </div>
-          <div className={`${PANEL_CLASS} text-center`}>
-            <p className="text-xs opacity-50 uppercase tracking-wider mb-1">WMON Price</p>
-            <p className="text-xl font-bold">${lpGateState.poolWmonUsdPrice?.toFixed(4) ?? '—'}</p>
-          </div>
-        </div>
-
-        {/* Contract Info */}
-        <div className={`${PANEL_CLASS} space-y-3`}>
-          <p className="text-xs opacity-50 uppercase tracking-wider">m00n Contract</p>
-          <p className="font-mono text-xs text-white/80 break-all">{TOKEN_ADDRESS}</p>
-          <div className="flex gap-2">
-            <button
-              onClick={handleCopyContract}
-              className="cta-ghost text-[10px] tracking-[0.3em] flex-1"
-            >
-              {copiedContract ? 'COPIED' : 'COPY CA'}
-            </button>
-            <button
-              onClick={handleOpenClaimSite}
-              className="cta-primary text-[10px] tracking-[0.3em] flex-1"
-            >
-              CLAIM SITE
-            </button>
-          </div>
-        </div>
-
         {/* Quick Actions */}
         <div className="grid grid-cols-2 gap-3">
           <button
@@ -5072,7 +4912,7 @@ Join the $m00n cabal 🌙`;
             className="px-4 py-4 rounded-2xl bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 text-center hover:bg-[var(--monad-purple)]/30 transition-colors"
           >
             <span className="text-2xl block mb-1">💧</span>
-            <span className="text-xs font-medium">Add LP</span>
+            <span className="text-xs font-medium">{positionCount > 0 ? 'My LPs' : 'Add LP'}</span>
           </button>
           <button
             type="button"
@@ -5080,14 +4920,13 @@ Join the $m00n cabal 🌙`;
             className="px-4 py-4 rounded-2xl bg-[#ffd700]/10 border border-[#ffd700]/30 text-center hover:bg-[#ffd700]/20 transition-colors"
           >
             <span className="text-2xl block mb-1">🏆</span>
-            <span className="text-xs font-medium">View Rewards</span>
+            <span className="text-xs font-medium">Rewards</span>
           </button>
         </div>
 
         {/* Buy Tokens */}
         <div className={`${PANEL_CLASS} space-y-3`}>
           <p className="text-xs opacity-50 uppercase tracking-wider">Get Tokens</p>
-          <p className="text-xs opacity-70">Swap native MON for m00n or WMON to start LPing</p>
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -5268,30 +5107,6 @@ Join the $m00n cabal 🌙`;
           </div>
         )}
 
-        {/* Quick Deploy Options */}
-        {hasPositions && (
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => handleOpenLpClaimModal('backstop')}
-              className={`${PANEL_CLASS} text-center hover:border-[var(--monad-purple)] transition-colors`}
-            >
-              <span className="text-2xl block mb-1">🛡️</span>
-              <span className="text-xs font-medium">Crash Backstop</span>
-              <p className="text-[10px] opacity-50 mt-1">WMON single-sided</p>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleOpenLpClaimModal('moon_upside')}
-              className={`${PANEL_CLASS} text-center hover:border-[var(--monad-purple)] transition-colors`}
-            >
-              <span className="text-2xl block mb-1">🚀</span>
-              <span className="text-xs font-medium">Sky Ladder</span>
-              <p className="text-[10px] opacity-50 mt-1">m00n single-sided</p>
-            </button>
-          </div>
-        )}
-
         {/* LP Guide Link */}
         <div className="text-center">
           <button
@@ -5323,6 +5138,100 @@ Join the $m00n cabal 🌙`;
     </div>
   );
 
+  // Advanced Tab - Links to full LP Advanced page
+  const renderAdvancedTab = () => (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="text-center space-y-2">
+        <h2 className="pixel-font text-xl glow-purple">🫡 Advanced LP</h2>
+        <p className="text-xs opacity-60">Custom range deployment & position management</p>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={() => handleOpenLpClaimModal('backstop')}
+          className={`${PANEL_CLASS} text-center hover:border-[var(--monad-purple)] transition-colors py-6`}
+        >
+          <span className="text-3xl block mb-2">🛡️</span>
+          <span className="text-sm font-medium">Crash Backstop</span>
+          <p className="text-[10px] opacity-50 mt-1">WMON single-sided</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => handleOpenLpClaimModal('moon_upside')}
+          className={`${PANEL_CLASS} text-center hover:border-[var(--monad-purple)] transition-colors py-6`}
+        >
+          <span className="text-3xl block mb-2">🚀</span>
+          <span className="text-sm font-medium">Sky Ladder</span>
+          <p className="text-[10px] opacity-50 mt-1">m00n single-sided</p>
+        </button>
+      </div>
+
+      {/* Full Advanced LP */}
+      <button
+        type="button"
+        onClick={handleOpenAdvancedLp}
+        className="w-full px-6 py-4 bg-[var(--monad-purple)] text-white rounded-2xl font-semibold hover:bg-[var(--monad-purple)]/80 transition-colors"
+      >
+        Open Full LP Planner →
+      </button>
+
+      {/* LP Guide */}
+      <button
+        type="button"
+        onClick={handleOpenLpHelp}
+        className={`${PANEL_CLASS} w-full text-center hover:border-white/30 transition-colors`}
+      >
+        <span className="text-xl block mb-1">📖</span>
+        <span className="text-sm font-medium">LP Guide & Requirements</span>
+        <p className="text-[10px] opacity-50 mt-1">Learn about ranges, risks & rewards</p>
+      </button>
+
+      {/* Balances */}
+      <div className={`${PANEL_CLASS} space-y-2`}>
+        <p className="text-xs opacity-50 uppercase tracking-wider">Your Balances</p>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <div className="flex justify-between">
+            <span className="opacity-60">m00n:</span>
+            <span className="font-mono">
+              {moonBalanceWei
+                ? Number(formatUnits(moonBalanceWei, 18)).toLocaleString(undefined, {
+                    maximumFractionDigits: 0
+                  })
+                : '—'}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="opacity-60">WMON:</span>
+            <span className="font-mono">
+              {wmonBalanceWei ? Number(formatUnits(wmonBalanceWei, 18)).toFixed(2) : '—'}
+            </span>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 pt-2">
+          <button
+            type="button"
+            onClick={() => handleSwapMonToToken('moon')}
+            disabled={swapInFlight === 'moon'}
+            className="px-3 py-2 text-xs border border-[var(--moss-green)]/50 text-[var(--moss-green)] rounded-lg hover:bg-[var(--moss-green)]/10 transition-colors disabled:opacity-50"
+          >
+            {swapInFlight === 'moon' ? '...' : 'Buy m00n'}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSwapMonToToken('wmon')}
+            disabled={swapInFlight === 'wmon'}
+            className="px-3 py-2 text-xs border border-[var(--monad-purple)]/50 text-[var(--monad-purple)] rounded-lg hover:bg-[var(--monad-purple)]/10 transition-colors disabled:opacity-50"
+          >
+            {swapInFlight === 'wmon' ? '...' : 'Buy WMON'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   // Main tabbed content router
   const renderTabContent = () => {
     switch (activeTab) {
@@ -5330,6 +5239,8 @@ Join the $m00n cabal 🌙`;
         return renderHomeTab();
       case 'lp':
         return renderLpTab();
+      case 'advanced':
+        return renderAdvancedTab();
       case 'rewards':
         return renderRewardsTab();
       default:

@@ -77,8 +77,10 @@ const classifyBandType = (
   token1Amount: bigint
 ): BandType => {
   // Out of range positions show clear directionality
-  if (rangeStatus === 'below-range') return 'upside_band';
-  if (rangeStatus === 'above-range') return 'crash_band';
+  // below-range: price < lower bound, position holds 100% token1 (WMON) = crash_band
+  // above-range: price > upper bound, position holds 100% token0 (m00n) = upside_band
+  if (rangeStatus === 'below-range') return 'crash_band';
+  if (rangeStatus === 'above-range') return 'upside_band';
 
   // In-range: check token balance ratio
   const t0 = Number(token0Amount);

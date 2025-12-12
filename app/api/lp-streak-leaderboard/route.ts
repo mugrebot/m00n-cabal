@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   getStreakLeaderboard,
   buildStreakLeaderboard,
@@ -7,9 +7,33 @@ import {
 
 const FALLBACK_REBUILD_ENABLED = process.env.NODE_ENV !== 'production';
 
-// GET: Fetch the streak leaderboard
-export async function GET() {
+// GET: Fetch the streak leaderboard (also handles Vercel cron)
+export async function GET(request: NextRequest) {
   try {
+    // Check if this is a Vercel cron job
+    const isCronJob = request.headers.get('x-vercel-cron') === '1';
+
+    if (isCronJob) {
+      console.log('[streak-leaderboard] Cron job triggered, updating streaks...');
+      const result = await updateStreaks();
+      console.log('[streak-leaderboard] Cron update complete:', result);
+
+      const leaderboard = await buildStreakLeaderboard();
+      console.log(
+        '[streak-leaderboard] Leaderboard rebuilt with',
+        leaderboard.totalPositionsTracked,
+        'positions'
+      );
+
+      return NextResponse.json({
+        success: true,
+        cronTriggered: true,
+        ...result,
+        totalPositionsTracked: leaderboard.totalPositionsTracked
+      });
+    }
+
+    // Regular GET - just fetch the leaderboard
     let leaderboard = await getStreakLeaderboard();
 
     // In dev mode, rebuild if not available
