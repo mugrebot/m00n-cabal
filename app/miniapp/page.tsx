@@ -617,6 +617,10 @@ function MiniAppPageInner() {
   >('idle');
   const [lpParamHandled, setLpParamHandled] = useState(false);
   const [leaderboardData, setLeaderboardData] = useState<LeaderboardResponse | null>(null);
+
+  // Tab navigation state
+  type AppTab = 'home' | 'lp' | 'rewards';
+  const [activeTab, setActiveTab] = useState<AppTab>('home');
   const [leaderboardStatus, setLeaderboardStatus] = useState<
     'idle' | 'loading' | 'error' | 'loaded'
   >('idle');
@@ -4899,14 +4903,53 @@ Join the $m00n cabal 🌙`;
     );
   };
 
-  const renderShell = (content: ReactNode) => (
+  // Tab navigation component
+  const renderTabNavigation = () => (
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-lg border-t border-white/10 safe-area-pb">
+      <div className="max-w-lg mx-auto flex justify-around items-center h-16">
+        <button
+          type="button"
+          onClick={() => setActiveTab('home')}
+          className={`flex flex-col items-center justify-center gap-1 w-20 h-full transition-colors ${
+            activeTab === 'home' ? 'text-[var(--moss-green)]' : 'text-white/50 hover:text-white/80'
+          }`}
+        >
+          <span className="text-xl">🏠</span>
+          <span className="text-[10px] font-medium tracking-wider">HOME</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('lp')}
+          className={`flex flex-col items-center justify-center gap-1 w-20 h-full transition-colors ${
+            activeTab === 'lp' ? 'text-[var(--monad-purple)]' : 'text-white/50 hover:text-white/80'
+          }`}
+        >
+          <span className="text-xl">💧</span>
+          <span className="text-[10px] font-medium tracking-wider">LP</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('rewards')}
+          className={`flex flex-col items-center justify-center gap-1 w-20 h-full transition-colors ${
+            activeTab === 'rewards' ? 'text-[#ffd700]' : 'text-white/50 hover:text-white/80'
+          }`}
+        >
+          <span className="text-xl">🏆</span>
+          <span className="text-[10px] font-medium tracking-wider">REWARDS</span>
+        </button>
+      </div>
+    </nav>
+  );
+
+  const renderShell = (content: ReactNode, showTabs = false) => (
     <div className="relative min-h-screen">
       {renderAdminPanel()}
       <BackgroundOrbs />
       <StickerRain />
-      <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pb-40 pt-6 sm:px-6 lg:px-8">
+      <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pb-24 pt-6 sm:px-6 lg:px-8">
         <div className="space-y-6">{content}</div>
       </main>
+      {showTabs && renderTabNavigation()}
       {toast && (
         <div
           className={`fixed top-6 left-1/2 z-50 -translate-x-1/2 px-4 py-2 rounded-full border backdrop-blur ${
@@ -4931,6 +4974,368 @@ Join the $m00n cabal 🌙`;
       <span className="floating-orb orb-three pointer-events-none" />
     </>
   );
+
+  // =====================
+  // TAB CONTENT RENDERERS
+  // =====================
+
+  // Home Tab - Overview, wallet info, quick stats
+  const renderHomeTab = () => {
+    const moonBalance = primaryAddressMoonBalanceWei
+      ? formatUnits(primaryAddressMoonBalanceWei, 18)
+      : '0';
+    const formattedBalance = Number(moonBalance).toLocaleString(undefined, {
+      maximumFractionDigits: 0
+    });
+
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="text-center space-y-2">
+          <h1 className="pixel-font text-3xl glow-purple">$m00n</h1>
+          <p className="text-sm opacity-70">Liquidity layer for the lunar economy</p>
+        </div>
+
+        {/* Balance Card */}
+        <div className={`${PANEL_CLASS} space-y-4`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs opacity-50 uppercase tracking-wider">Your Balance</p>
+              <p className="text-2xl font-bold text-[var(--moss-green)]">
+                {formattedBalance} <span className="text-sm opacity-60">$m00n</span>
+              </p>
+            </div>
+            {personaBadge && (
+              <div className="text-right">
+                <p className="text-xs opacity-50 uppercase tracking-wider">Status</p>
+                <p className="text-sm">{PERSONA_BADGE_COPY[personaBadge]?.label || 'Member'}</p>
+              </div>
+            )}
+          </div>
+          {primaryAddress && (
+            <div className="flex items-center gap-2 text-xs opacity-60">
+              <span className="font-mono">{truncateAddress(primaryAddress)}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(primaryAddress);
+                  setCopiedWallet(true);
+                  setTimeout(() => setCopiedWallet(false), 2000);
+                }}
+                className="text-[var(--monad-purple)] hover:underline"
+              >
+                {copiedWallet ? '✓' : 'Copy'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Quick Stats */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className={`${PANEL_CLASS} text-center`}>
+            <p className="text-xs opacity-50 uppercase tracking-wider mb-1">LP Positions</p>
+            <p className="text-xl font-bold text-[var(--monad-purple)]">
+              {lpGateState.lpPositions?.length ?? 0}
+            </p>
+          </div>
+          <div className={`${PANEL_CLASS} text-center`}>
+            <p className="text-xs opacity-50 uppercase tracking-wider mb-1">WMON Price</p>
+            <p className="text-xl font-bold">${lpGateState.poolWmonUsdPrice?.toFixed(4) ?? '—'}</p>
+          </div>
+        </div>
+
+        {/* Contract Info */}
+        <div className={`${PANEL_CLASS} space-y-3`}>
+          <p className="text-xs opacity-50 uppercase tracking-wider">m00n Contract</p>
+          <p className="font-mono text-xs text-white/80 break-all">{TOKEN_ADDRESS}</p>
+          <div className="flex gap-2">
+            <button
+              onClick={handleCopyContract}
+              className="cta-ghost text-[10px] tracking-[0.3em] flex-1"
+            >
+              {copiedContract ? 'COPIED' : 'COPY CA'}
+            </button>
+            <button
+              onClick={handleOpenClaimSite}
+              className="cta-primary text-[10px] tracking-[0.3em] flex-1"
+            >
+              CLAIM SITE
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setActiveTab('lp')}
+            className="px-4 py-4 rounded-2xl bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 text-center hover:bg-[var(--monad-purple)]/30 transition-colors"
+          >
+            <span className="text-2xl block mb-1">💧</span>
+            <span className="text-xs font-medium">Add LP</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('rewards')}
+            className="px-4 py-4 rounded-2xl bg-[#ffd700]/10 border border-[#ffd700]/30 text-center hover:bg-[#ffd700]/20 transition-colors"
+          >
+            <span className="text-2xl block mb-1">🏆</span>
+            <span className="text-xs font-medium">View Rewards</span>
+          </button>
+        </div>
+
+        {/* Buy Tokens */}
+        <div className={`${PANEL_CLASS} space-y-3`}>
+          <p className="text-xs opacity-50 uppercase tracking-wider">Get Tokens</p>
+          <p className="text-xs opacity-70">Swap native MON for m00n or WMON to start LPing</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => handleSwapMonToToken('moon')}
+              disabled={swapInFlight === 'moon'}
+              className="px-4 py-3 bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 rounded-xl text-sm font-semibold text-[var(--moss-green)] hover:bg-[var(--moss-green)]/30 transition-colors disabled:opacity-50"
+            >
+              {swapInFlight === 'moon' ? 'Opening...' : '🌙 Buy m00n'}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSwapMonToToken('wmon')}
+              disabled={swapInFlight === 'wmon'}
+              className="px-4 py-3 bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 rounded-xl text-sm font-semibold text-[var(--monad-purple)] hover:bg-[var(--monad-purple)]/30 transition-colors disabled:opacity-50"
+            >
+              {swapInFlight === 'wmon' ? 'Opening...' : '💎 Buy WMON'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // LP Tab - Positions & Deploy (open to everyone!)
+  const renderLpTab = () => {
+    const positions = lpGateState.lpPositions ?? [];
+    const hasPositions = positions.length > 0;
+    const wmonPrice = lpGateState.poolWmonUsdPrice ?? 0;
+
+    // Calculate position value from token breakdown
+    const getPositionValueUsd = (pos: LpPosition): number => {
+      const token0Amt = pos.token0?.amountWei
+        ? Number(formatUnits(BigInt(pos.token0.amountWei), 18))
+        : 0;
+      const token1Amt = pos.token1?.amountWei
+        ? Number(formatUnits(BigInt(pos.token1.amountWei), 18))
+        : 0;
+      // token0 = m00n, token1 = WMON (priced in USD)
+      const moonPriceUsd = wmonPrice * 0.00000001; // Approximate based on pool ratio
+      return token0Amt * moonPriceUsd + token1Amt * wmonPrice;
+    };
+
+    // Format price range in USD
+    const formatPriceRange = (pos: LpPosition): string => {
+      const lower = pos.priceLowerInToken1
+        ? Number(pos.priceLowerInToken1) * 100000000 * wmonPrice
+        : 0;
+      const upper = pos.priceUpperInToken1
+        ? Number(pos.priceUpperInToken1) * 100000000 * wmonPrice
+        : 0;
+      return `$${lower.toFixed(2)} — $${upper.toFixed(2)}`;
+    };
+
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="pixel-font text-xl glow-purple">LP Positions</h2>
+            <p className="text-xs opacity-60">
+              {positions.length} active position{positions.length !== 1 ? 's' : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleOpenAdvancedLp}
+            className="px-4 py-2 bg-[var(--monad-purple)] text-white rounded-xl text-xs font-semibold hover:bg-[var(--monad-purple)]/80 transition-colors"
+          >
+            + New Position
+          </button>
+        </div>
+
+        {/* Position Cards */}
+        {hasPositions ? (
+          <div className="space-y-4">
+            {positions.map((pos) => {
+              const isInRange = pos.rangeStatus === 'in-range';
+              const posValue = getPositionValueUsd(pos);
+              return (
+                <div
+                  key={pos.tokenId}
+                  className={`${PANEL_CLASS} space-y-3 border-l-4 ${
+                    isInRange ? 'border-l-[var(--moss-green)]' : 'border-l-red-400'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="font-semibold">
+                        #{pos.tokenId}
+                        <span className="ml-2 text-xs opacity-60">
+                          {pos.bandType === 'crash_band'
+                            ? '🛡️ Crash'
+                            : pos.bandType === 'upside_band'
+                              ? '🚀 Sky'
+                              : '↔️ Double'}
+                        </span>
+                      </p>
+                      <p className="text-xs opacity-60">{formatPriceRange(pos)}</p>
+                    </div>
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full ${
+                        isInRange
+                          ? 'bg-[var(--moss-green)]/20 text-[var(--moss-green)]'
+                          : 'bg-red-400/20 text-red-400'
+                      }`}
+                    >
+                      {isInRange ? '✅ In Range' : '⚠️ Out of Range'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="opacity-50">Value:</span>{' '}
+                      <span className="font-mono">${posValue.toFixed(2)}</span>
+                    </div>
+                    <div>
+                      <span className="opacity-50">Fees:</span>{' '}
+                      <span className="font-mono text-[var(--moss-green)]">
+                        {pos.fees?.token0Formatted ?? '0'} / {pos.fees?.token1Formatted ?? '0'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSharePosition(pos)}
+                      className="flex-1 text-xs px-3 py-2 rounded-lg border border-[var(--monad-purple)] text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
+                    >
+                      SHARE 🌙
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveLiquidity(pos.tokenId)}
+                      disabled={pos.removeStatus === 'loading'}
+                      className="flex-1 text-xs px-3 py-2 rounded-lg border border-red-400/50 text-red-400 hover:bg-red-400/20 transition-colors disabled:opacity-50"
+                    >
+                      {pos.removeStatus === 'loading' ? 'Removing...' : 'Remove LP'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className={`${PANEL_CLASS} text-center space-y-4`}>
+            <div className="text-4xl">💧</div>
+            <p className="text-lg font-semibold">No LP positions yet</p>
+            <p className="text-sm opacity-70">
+              Provide liquidity to earn fees and qualify for full moon rewards!
+            </p>
+            <button
+              type="button"
+              onClick={handleOpenAdvancedLp}
+              className="px-6 py-3 bg-[var(--monad-purple)] text-white rounded-xl font-semibold hover:bg-[var(--monad-purple)]/80 transition-colors"
+            >
+              Deploy Your First Position
+            </button>
+            <div className="pt-2 border-t border-white/10">
+              <p className="text-xs opacity-50 mb-2">Need tokens first?</p>
+              <div className="flex gap-2 justify-center">
+                <button
+                  type="button"
+                  onClick={() => handleSwapMonToToken('moon')}
+                  disabled={swapInFlight === 'moon'}
+                  className="px-3 py-2 text-xs border border-[var(--moss-green)]/50 text-[var(--moss-green)] rounded-lg hover:bg-[var(--moss-green)]/10 transition-colors disabled:opacity-50"
+                >
+                  {swapInFlight === 'moon' ? '...' : 'Buy m00n'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSwapMonToToken('wmon')}
+                  disabled={swapInFlight === 'wmon'}
+                  className="px-3 py-2 text-xs border border-[var(--monad-purple)]/50 text-[var(--monad-purple)] rounded-lg hover:bg-[var(--monad-purple)]/10 transition-colors disabled:opacity-50"
+                >
+                  {swapInFlight === 'wmon' ? '...' : 'Buy WMON'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Quick Deploy Options */}
+        {hasPositions && (
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => handleOpenLpClaimModal('backstop')}
+              className={`${PANEL_CLASS} text-center hover:border-[var(--monad-purple)] transition-colors`}
+            >
+              <span className="text-2xl block mb-1">🛡️</span>
+              <span className="text-xs font-medium">Crash Backstop</span>
+              <p className="text-[10px] opacity-50 mt-1">WMON single-sided</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOpenLpClaimModal('moon_upside')}
+              className={`${PANEL_CLASS} text-center hover:border-[var(--monad-purple)] transition-colors`}
+            >
+              <span className="text-2xl block mb-1">🚀</span>
+              <span className="text-xs font-medium">Sky Ladder</span>
+              <p className="text-[10px] opacity-50 mt-1">m00n single-sided</p>
+            </button>
+          </div>
+        )}
+
+        {/* LP Guide Link */}
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={handleOpenLpHelp}
+            className="text-xs text-[var(--monad-purple)] hover:underline"
+          >
+            📖 LP Guide & Requirements
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // Rewards Tab - Leaderboards & Season info
+  const renderRewardsTab = () => (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="text-center space-y-2">
+        <h2 className="pixel-font text-xl text-[#ffd700]">🏆 Rewards</h2>
+        <p className="text-xs opacity-60">Full moon distributions • Stay in range to qualify</p>
+      </div>
+
+      {/* Season Panel */}
+      {renderSeason1Panel()}
+
+      {/* Streak Leaderboard */}
+      {renderStreakLeaderboard()}
+    </div>
+  );
+
+  // Main tabbed content router
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'home':
+        return renderHomeTab();
+      case 'lp':
+        return renderLpTab();
+      case 'rewards':
+        return renderRewardsTab();
+      default:
+        return renderHomeTab();
+    }
+  };
 
   const renderContractCard = (options?: { showClaimButton?: boolean }) => {
     const showClaimButton = options?.showClaimButton ?? true;
@@ -5093,22 +5498,12 @@ Join the $m00n cabal 🌙`;
     );
   }
 
-  if (!isObservationDeckOpen && lpScanInProgress) {
-    return renderSigilScanGate();
+  // LP Claim Modal overlay (can be triggered from any tab)
+  if (isLpClaimModalOpen) {
+    return renderShell(renderTabContent(), true);
   }
 
-  if (isObservationDeckOpen) {
-    return renderObservationDeckPortal();
-  }
-
-  if (lpPortalMode === 'gate') {
-    return renderLpGatePanel();
-  }
-
-  if (lpPortalMode === 'lounge') {
-    return renderLpLoungePanel();
-  }
-
+  // Admin portal override for testing different views
   if (isAdmin && adminPortalView !== 'default') {
     switch (adminPortalView) {
       case 'claimed_sold':
@@ -5128,23 +5523,8 @@ Join the $m00n cabal 🌙`;
     }
   }
 
-  switch (effectivePersona) {
-    case 'claimed_sold':
-      return renderClaimedSoldPortal();
-    case 'claimed_held':
-      return renderClaimedHeldPortal();
-    case 'claimed_bought_more':
-      return renderClaimedBoughtMorePortal();
-    case 'emoji_chat':
-      return observationDeckEligible ? renderObservationDeckPortal() : renderLockedOutPanel();
-    case 'lp_gate':
-      return renderLpGatePanel();
-    case 'eligible_holder':
-      return airdropData?.eligible ? renderEligibleHolderPanel() : renderLockedOutPanel();
-    case 'locked_out':
-    default:
-      return renderLockedOutPanel();
-  }
+  // Main tab-based navigation for all authenticated users
+  return renderShell(renderTabContent(), true);
 }
 
 export default function MiniAppPage() {
