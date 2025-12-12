@@ -467,7 +467,10 @@ function LpAdvancedProviders({ privyConfig }: { privyConfig: PrivyProviderProps[
           await sdk.actions.ready();
           if (!cancelled) {
             const context = await sdk.context;
-            if (!cancelled) setForcedViewerFid(context.user?.fid ?? null);
+            if (!cancelled) {
+              setForcedViewerFid(context.user?.fid ?? null);
+              // username is captured in AdvancedLpContent
+            }
           }
         } catch (error) {
           console.warn('ADV_LP:outer_context_failed', error);
@@ -888,9 +891,11 @@ function AdvancedLpContent({
           await sdk.actions.ready();
           if (cancelled) return;
           const context = await sdk.context;
+          console.log('ADV_LP:context.user=', JSON.stringify(context.user));
           if (!cancelled) {
             setViewerFid(context.user?.fid ?? null);
-            setViewerUsername(context.user?.username ?? null);
+            // Try username first, then displayName
+            setViewerUsername(context.user?.username || context.user?.displayName || null);
           }
         } catch (readyError) {
           console.warn('ADV_LP:sdk_ready_failed', readyError);
@@ -2308,10 +2313,24 @@ function AdvancedLpContent({
                         const amt = Number(singleAmount) || 0;
                         positionValueUsd =
                           depositAsset === 'moon' ? amt * moonPrice : amt * wmonPrice;
+                        console.log('SHARE_CALC:single', {
+                          depositAsset,
+                          amt,
+                          moonPrice,
+                          wmonPrice,
+                          positionValueUsd
+                        });
                       } else {
                         const moonAmt = Number(doubleMoonAmount) || 0;
                         const wmonAmt = Number(doubleWmonAmount) || 0;
                         positionValueUsd = moonAmt * moonPrice + wmonAmt * wmonPrice;
+                        console.log('SHARE_CALC:double', {
+                          moonAmt,
+                          wmonAmt,
+                          moonPrice,
+                          wmonPrice,
+                          positionValueUsd
+                        });
                       }
 
                       // Get username - fallback to fid
