@@ -49,10 +49,13 @@ const sections = [
     ]
   },
   {
-    title: 'Learn More',
+    title: 'Full Moon Rewards',
     bullets: [
-      'Uniswap v4 concentrated liquidity primer: https://docs.uniswap.org/concepts/protocol/concentrated-liquidity',
-      'Pool telemetry is visible in the Custom LP Planner chart.'
+      'Rewards distributed every full moon 🌕',
+      'Must hold 1M+ m00n tokens',
+      'Position must be 7+ days old',
+      'Must have 7+ day streak (consecutive days in range)',
+      'Must be in range at snapshot time'
     ]
   }
 ];

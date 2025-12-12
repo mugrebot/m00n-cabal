@@ -405,7 +405,7 @@ export async function GET(request: NextRequest) {
               letterSpacing: '0.1em'
             }}
           >
-            m00ncabal.xyz
+            m00nad.vercel.app
           </span>
           {points && Number(points) > 0 ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

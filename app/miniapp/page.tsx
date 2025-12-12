@@ -54,9 +54,7 @@ const CLAIM_URL =
   'https://clanker.onchain.cooking/?token=0x22cd99ec337a2811f594340a4a6e41e4a3022b07&risk=warn&riskTag=Warning';
 const CLAIM_UNLOCK_TIMESTAMP_MS = 1764272894 * 1000;
 const LP_GATE_ENABLED = process.env.NEXT_PUBLIC_ENABLE_LP_GATE === 'true';
-const LP_DOCS_URL =
-  process.env.NEXT_PUBLIC_LP_DOCS_URL ??
-  'https://docs.uniswap.org/concepts/protocol/concentrated-liquidity';
+const LP_HELP_PATH = '/lp-advanced/help';
 const ADMIN_FID = 9933;
 const STICKER_EMOJIS = ['🌙', '💜', '🕸️', '🦇', '☠️', '✨', '🧬', '🛸', '🩸', '💾'];
 const STICKER_COLORS = ['#6ce5b1', '#8c54ff', '#ff9b54', '#5ea3ff', '#f7e6ff'];
@@ -2067,9 +2065,9 @@ Join the $m00n cabal 🌙`;
     }
   };
 
-  const handleOpenLpDocs = async () => {
-    await openExternalUrl(LP_DOCS_URL);
-  };
+  const handleOpenLpHelp = useCallback(() => {
+    router.push(LP_HELP_PATH);
+  }, [router]);
 
   const handleOpenHolderChat = async () => {
     await openExternalUrl(HOLDER_CHAT_URL);
@@ -2476,13 +2474,13 @@ Join the $m00n cabal 🌙`;
   const personaActionHandlers: Record<PersonaActionId, (() => void) | undefined> = {
     lp_connect_wallet: handleSignIn,
     lp_become_lp: () => handleOpenLpClaimModal('backstop'),
-    lp_open_docs: handleOpenLpDocs,
+    lp_open_docs: handleOpenLpHelp,
     lp_try_again: handleRetryLpStatus,
     lp_enter_lounge: handleOpenLpManager,
     open_claim: handleOpenClaimSite,
     open_chat: handleOpenHolderChat,
     open_heaven_mode: handleOpenHeavenMode,
-    learn_more: handleOpenLpDocs
+    learn_more: handleOpenLpHelp
   };
 
   const renderCopyBody = (lines: string[]) => (
@@ -3499,8 +3497,7 @@ Join the $m00n cabal 🌙`;
       );
     }
 
-    const { topStreaks, topAllTime, topPoints, totalPositionsTracked, lastCheckAt } =
-      streakLeaderboardData;
+    const { topStreaks, topAllTime, totalPositionsTracked, lastCheckAt } = streakLeaderboardData;
 
     // Find max streak for sizing
     const maxStreak = Math.max(
@@ -3618,20 +3615,6 @@ Join the $m00n cabal 🌙`;
           </div>
         )}
 
-        {/* Top Points */}
-        {topPoints.length > 0 && (
-          <div>
-            <p className="text-[var(--monad-purple)] text-sm font-semibold mb-2 tracking-wide">
-              ⭐ TOP EARNERS (points)
-            </p>
-            <div className="space-y-2">
-              {topPoints
-                .slice(0, 5)
-                .map((entry, index) => renderStreakEntry(entry, index, 'points'))}
-            </div>
-          </div>
-        )}
-
         {/* Points explanation */}
         <div className="text-xs opacity-50 text-center pt-2 border-t border-white/10">
           Weighted: 50% position value • 30% streak days • 20% time in range
@@ -3705,26 +3688,30 @@ Join the $m00n cabal 🌙`;
           </div>
         </div>
 
-        {/* Points Formula Explainer */}
-        {pointsWeights && (
-          <div className="bg-black/30 rounded-xl p-3 border border-white/5">
-            <p className="text-xs opacity-50 uppercase tracking-wider mb-2">Points Formula</p>
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div>
-                <p className="text-lg font-bold text-[var(--moss-green)]">50%</p>
-                <p className="text-[10px] opacity-60">Position $</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-[var(--monad-purple)]">30%</p>
-                <p className="text-[10px] opacity-60">Streak Days</p>
-              </div>
-              <div>
-                <p className="text-lg font-bold text-white/70">20%</p>
-                <p className="text-[10px] opacity-60">Time In Range</p>
-              </div>
+        {/* Full Moon Requirements */}
+        <div className="bg-black/30 rounded-xl p-3 border border-white/5">
+          <p className="text-xs opacity-50 uppercase tracking-wider mb-2">
+            🌕 Full Moon Requirements
+          </p>
+          <div className="grid grid-cols-2 gap-2 text-[10px]">
+            <div className="flex items-center gap-1">
+              <span>💰</span>
+              <span className="opacity-70">Hold 1M+ $m00n</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span>⏳</span>
+              <span className="opacity-70">Position 7+ days old</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span>🔥</span>
+              <span className="opacity-70">7+ day streak</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span>🎯</span>
+              <span className="opacity-70">In range at snapshot</span>
             </div>
           </div>
-        )}
+        </div>
 
         {/* User Stats */}
         {userAllocation && userAllocation.positionCount > 0 ? (
@@ -3870,7 +3857,7 @@ Join the $m00n cabal 🌙`;
         {/* CTA */}
         <div className="text-center pt-2">
           <p className="text-xs opacity-40">
-            Points update every 10 minutes • Stay in range to maximize earnings
+            Rewards distributed every full moon 🌕 • Stay in range to qualify
           </p>
         </div>
       </div>
@@ -3975,8 +3962,8 @@ Join the $m00n cabal 🌙`;
           })}
           <div className="text-xs opacity-60">
             Need help?{' '}
-            <button onClick={handleOpenLpDocs} className="underline hover:text-white transition">
-              Read the LP primer
+            <button onClick={handleOpenLpHelp} className="underline hover:text-white transition">
+              LP Guide
             </button>
           </div>
           {renderLpDiagnostics()}

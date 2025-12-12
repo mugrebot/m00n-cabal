@@ -2526,11 +2526,11 @@ Join the $m00n cabal 🌙`;
       <footer className="text-center text-xs text-white/60 space-y-2">
         <p>Need an exotic preset or want us to deploy on your behalf? Ping @m00npapi.eth.</p>
         <p>
-          Crafted with the lunar design language.{' '}
-          <Link href="/advanced_lp.md" className="underline hover:text-white">
-            View docs
+          <Link href="/lp-advanced/help" className="underline hover:text-white">
+            LP Guide
           </Link>
-          .
+          {' • '}
+          <span className="opacity-60">m00nad.vercel.app</span>
         </p>
       </footer>
     </>
