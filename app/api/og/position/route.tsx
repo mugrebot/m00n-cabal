@@ -8,7 +8,7 @@ const MOSS_GREEN = '#6ce5b1';
 const DEEP_PURPLE = '#0a0612';
 const ACCENT_PURPLE = '#8c54ff';
 
-// Generate star positions
+// Star positions for background
 const STAR_POSITIONS = [
   { x: 50, y: 60, s: 2 },
   { x: 120, y: 180, s: 1 },
@@ -61,7 +61,6 @@ export async function GET(request: NextRequest) {
   const rangeStatus = searchParams.get('rangeStatus') ?? 'unknown';
   const rangeLower = searchParams.get('rangeLower') ?? '0';
   const rangeUpper = searchParams.get('rangeUpper') ?? '0';
-  const feesUsd = searchParams.get('feesUsd');
   const username = searchParams.get('username') ?? 'anon';
   const valueUsd = searchParams.get('valueUsd');
 
@@ -73,11 +72,22 @@ export async function GET(request: NextRequest) {
 
   // Format band type for display
   let bandDisplay = '🎯 CUSTOM';
-  if (bandType === 'crash_band') bandDisplay = '🔻 CRASH BAND';
-  else if (bandType === 'upside_band') bandDisplay = '🚀 SKY BAND';
+  let bandDescription = 'Custom price range';
+  if (bandType === 'crash_band') {
+    bandDisplay = '🔻 CRASH BAND';
+    bandDescription = 'Hedging against downside';
+  } else if (bandType === 'upside_band') {
+    bandDisplay = '🚀 SKY BAND';
+    bandDescription = 'Betting on the moon';
+  }
 
   // Position ID display
-  const positionDisplay = tokenId === 'new' ? '✨ JUST DEPLOYED' : `#${tokenId}`;
+  const positionDisplay = tokenId === 'new' ? '✨ JUST DEPLOYED' : `Position #${tokenId}`;
+
+  // Calculate range width percentage
+  const lowerNum = Number(rangeLower) || 0;
+  const upperNum = Number(rangeUpper) || 0;
+  const rangeWidth = lowerNum > 0 ? Math.round(((upperNum - lowerNum) / lowerNum) * 100) : 0;
 
   return new ImageResponse(
     (
@@ -94,7 +104,7 @@ export async function GET(request: NextRequest) {
           overflow: 'hidden'
         }}
       >
-        {/* Starry background - static positions for satori compatibility */}
+        {/* Starry background */}
         {STAR_POSITIONS.map((star, i) => (
           <div
             key={i}
@@ -143,7 +153,7 @@ export async function GET(request: NextRequest) {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: '24px',
+            marginBottom: '20px',
             position: 'relative',
             zIndex: 10
           }}
@@ -155,13 +165,13 @@ export async function GET(request: NextRequest) {
               gap: '12px'
             }}
           >
-            <span style={{ fontSize: '48px' }}>🌙</span>
+            <span style={{ fontSize: '44px' }}>🌙</span>
             <span
               style={{
-                fontSize: '32px',
+                fontSize: '28px',
                 fontWeight: 'bold',
                 color: 'white',
-                letterSpacing: '0.1em'
+                letterSpacing: '0.08em'
               }}
             >
               $m00n position
@@ -178,7 +188,7 @@ export async function GET(request: NextRequest) {
               border: '1px solid rgba(255,255,255,0.2)'
             }}
           >
-            <span style={{ color: 'white', fontSize: '18px', fontWeight: 500 }}>@{username}</span>
+            <span style={{ color: 'white', fontSize: '16px', fontWeight: 500 }}>@{username}</span>
           </div>
         </div>
 
@@ -187,43 +197,60 @@ export async function GET(request: NextRequest) {
           style={{
             display: 'flex',
             flexDirection: 'column',
-            backgroundColor: 'rgba(26, 10, 46, 0.8)',
+            backgroundColor: 'rgba(26, 10, 46, 0.85)',
             borderRadius: '24px',
-            padding: '32px',
+            padding: '28px',
             border: '1px solid rgba(140, 84, 255, 0.3)',
             flex: 1,
             position: 'relative',
             zIndex: 10
           }}
         >
-          {/* Position ID + Type */}
+          {/* Top row: Position ID + Band Type */}
           <div
             style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              marginBottom: '20px'
+              marginBottom: '16px'
             }}
           >
             <span
               style={{
-                fontSize: '24px',
-                color: 'rgba(255,255,255,0.6)',
-                fontFamily: 'monospace'
+                fontSize: '20px',
+                color: 'rgba(255,255,255,0.7)',
+                fontWeight: 600
               }}
             >
               {positionDisplay}
             </span>
-            <span
+            <div
               style={{
-                fontSize: '20px',
-                color: ACCENT_PURPLE,
-                letterSpacing: '0.15em',
-                fontWeight: 'bold'
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-end'
               }}
             >
-              {bandDisplay}
-            </span>
+              <span
+                style={{
+                  fontSize: '18px',
+                  color: ACCENT_PURPLE,
+                  letterSpacing: '0.12em',
+                  fontWeight: 'bold'
+                }}
+              >
+                {bandDisplay}
+              </span>
+              <span
+                style={{
+                  fontSize: '12px',
+                  color: 'rgba(255,255,255,0.4)',
+                  marginTop: '4px'
+                }}
+              >
+                {bandDescription}
+              </span>
+            </div>
           </div>
 
           {/* Status Badge */}
@@ -231,8 +258,8 @@ export async function GET(request: NextRequest) {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '12px',
-              marginBottom: '28px'
+              gap: '16px',
+              marginBottom: '24px'
             }}
           >
             <div
@@ -246,117 +273,180 @@ export async function GET(request: NextRequest) {
                 border: `1px solid ${statusColor}`
               }}
             >
-              <span style={{ fontSize: '22px' }}>{statusEmoji}</span>
+              <span style={{ fontSize: '20px' }}>{statusEmoji}</span>
               <span
                 style={{
-                  fontSize: '18px',
+                  fontSize: '16px',
                   fontWeight: 'bold',
                   color: statusColor,
-                  letterSpacing: '0.1em'
+                  letterSpacing: '0.08em'
                 }}
               >
                 {statusText}
               </span>
             </div>
+            {isInRange && (
+              <span
+                style={{
+                  fontSize: '14px',
+                  color: MOSS_GREEN,
+                  fontWeight: 500
+                }}
+              >
+                💰 Earning fees
+              </span>
+            )}
           </div>
 
-          {/* Stats Grid */}
+          {/* Stats Grid - 2 columns */}
           <div
             style={{
               display: 'flex',
-              flexDirection: 'column',
-              gap: '20px'
+              gap: '24px',
+              flex: 1
             }}
           >
-            {/* Range */}
+            {/* Left column - Range info */}
             <div
               style={{
                 display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
+                flexDirection: 'column',
+                flex: 1,
+                gap: '16px'
               }}
             >
-              <span
-                style={{ fontSize: '16px', color: 'rgba(255,255,255,0.5)', letterSpacing: '0.1em' }}
-              >
-                RANGE
-              </span>
-              <span
-                style={{
-                  fontSize: '28px',
-                  fontWeight: 'bold',
-                  color: 'white',
-                  fontFamily: 'monospace'
-                }}
-              >
-                ${Number(rangeLower).toLocaleString()} → ${Number(rangeUpper).toLocaleString()}
-              </span>
-            </div>
-
-            {/* Position Value */}
-            {valueUsd && (
               <div
                 style={{
                   display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
+                  flexDirection: 'column',
+                  backgroundColor: 'rgba(255,255,255,0.03)',
+                  padding: '16px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(255,255,255,0.05)'
                 }}
               >
                 <span
                   style={{
-                    fontSize: '16px',
-                    color: 'rgba(255,255,255,0.5)',
-                    letterSpacing: '0.1em'
+                    fontSize: '12px',
+                    color: 'rgba(255,255,255,0.4)',
+                    letterSpacing: '0.1em',
+                    marginBottom: '8px'
                   }}
                 >
-                  POSITION VALUE
-                </span>
-                <span
-                  style={{
-                    fontSize: '26px',
-                    color: MOSS_GREEN,
-                    fontFamily: 'monospace',
-                    fontWeight: 'bold'
-                  }}
-                >
-                  $
-                  {Number(valueUsd).toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                  })}
-                </span>
-              </div>
-            )}
-
-            {/* Fees Earned */}
-            {feesUsd && Number(feesUsd) > 0 && (
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: '16px',
-                    color: 'rgba(255,255,255,0.5)',
-                    letterSpacing: '0.1em'
-                  }}
-                >
-                  FEES EARNED
+                  PRICE RANGE
                 </span>
                 <span
                   style={{
                     fontSize: '24px',
-                    color: MOSS_GREEN,
-                    fontWeight: 'bold'
+                    fontWeight: 'bold',
+                    color: 'white',
+                    fontFamily: 'monospace'
                   }}
                 >
-                  +${Number(feesUsd).toFixed(2)}
+                  ${lowerNum.toLocaleString()}
+                </span>
+                <span
+                  style={{
+                    fontSize: '14px',
+                    color: 'rgba(255,255,255,0.5)',
+                    margin: '4px 0'
+                  }}
+                >
+                  ↓ to ↑
+                </span>
+                <span
+                  style={{
+                    fontSize: '24px',
+                    fontWeight: 'bold',
+                    color: 'white',
+                    fontFamily: 'monospace'
+                  }}
+                >
+                  ${upperNum.toLocaleString()}
                 </span>
               </div>
-            )}
+            </div>
+
+            {/* Right column - Additional stats */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                flex: 1,
+                gap: '16px'
+              }}
+            >
+              {/* Range Width */}
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  backgroundColor: 'rgba(255,255,255,0.03)',
+                  padding: '16px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(255,255,255,0.05)'
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '12px',
+                    color: 'rgba(255,255,255,0.4)',
+                    letterSpacing: '0.1em',
+                    marginBottom: '8px'
+                  }}
+                >
+                  RANGE WIDTH
+                </span>
+                <span
+                  style={{
+                    fontSize: '28px',
+                    fontWeight: 'bold',
+                    color: ACCENT_PURPLE,
+                    fontFamily: 'monospace'
+                  }}
+                >
+                  +{rangeWidth}%
+                </span>
+              </div>
+
+              {/* Position Value or Potential */}
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  backgroundColor: 'rgba(108, 229, 177, 0.08)',
+                  padding: '16px',
+                  borderRadius: '12px',
+                  border: `1px solid ${MOSS_GREEN}30`
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '12px',
+                    color: 'rgba(255,255,255,0.4)',
+                    letterSpacing: '0.1em',
+                    marginBottom: '8px'
+                  }}
+                >
+                  {valueUsd ? 'POSITION VALUE' : 'UPSIDE TARGET'}
+                </span>
+                <span
+                  style={{
+                    fontSize: '26px',
+                    fontWeight: 'bold',
+                    color: MOSS_GREEN,
+                    fontFamily: 'monospace'
+                  }}
+                >
+                  {valueUsd
+                    ? `$${Number(valueUsd).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                      })}`
+                    : `$${upperNum.toLocaleString()}`}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -366,23 +456,23 @@ export async function GET(request: NextRequest) {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginTop: '16px',
+            marginTop: '14px',
             position: 'relative',
             zIndex: 10
           }}
         >
           <span
             style={{
-              fontSize: '14px',
+              fontSize: '13px',
               color: 'rgba(255,255,255,0.4)',
-              letterSpacing: '0.15em'
+              letterSpacing: '0.12em'
             }}
           >
             m00ncabal.xyz
           </span>
           <span
             style={{
-              fontSize: '14px',
+              fontSize: '13px',
               color: MOSS_GREEN,
               letterSpacing: '0.05em'
             }}
@@ -394,7 +484,7 @@ export async function GET(request: NextRequest) {
     ),
     {
       width: 1200,
-      height: 800 // 3:2 aspect ratio required for Farcaster Mini App embeds
+      height: 800
     }
   );
 }
