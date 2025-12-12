@@ -552,6 +552,7 @@ function AdvancedLpContent({
 }) {
   const [miniAppState, setMiniAppState] = useState<MiniAppState>(forcedMiniAppState ?? 'unknown');
   const [viewerFid, setViewerFid] = useState<number | null>(forcedViewerFid ?? null);
+  const [viewerUsername, setViewerUsername] = useState<string | null>(null);
   const [, setMiniAppError] = useState<string | null>(null);
   const [privyError, setPrivyError] = useState<string | null>(null);
   const [privyActivating, setPrivyActivating] = useState(false);
@@ -889,6 +890,7 @@ function AdvancedLpContent({
           const context = await sdk.context;
           if (!cancelled) {
             setViewerFid(context.user?.fid ?? null);
+            setViewerUsername(context.user?.username ?? null);
           }
         } catch (readyError) {
           console.warn('ADV_LP:sdk_ready_failed', readyError);
@@ -2297,13 +2299,33 @@ function AdvancedLpContent({
                       const bandEmoji =
                         bandType === 'crash_band' ? '🔻' : bandType === 'upside_band' ? '🚀' : '🎯';
 
+                      // Calculate position value in USD from deposit amounts
+                      const wmonPrice = marketState?.wmonUsdPrice ?? 0;
+                      const moonPrice = moonSpotPriceUsd ?? 0;
+                      let positionValueUsd = 0;
+
+                      if (bandSide === 'single') {
+                        const amt = Number(singleAmount) || 0;
+                        positionValueUsd =
+                          depositAsset === 'moon' ? amt * moonPrice : amt * wmonPrice;
+                      } else {
+                        const moonAmt = Number(doubleMoonAmount) || 0;
+                        const wmonAmt = Number(doubleWmonAmount) || 0;
+                        positionValueUsd = moonAmt * moonPrice + wmonAmt * wmonPrice;
+                      }
+
+                      // Get username - fallback to fid
+                      const displayUsername =
+                        viewerUsername || (viewerFid ? `fid:${viewerFid}` : 'anon');
+
                       // Build share URL with position data for OG image
                       const shareParams = new URLSearchParams({
                         bandType,
                         rangeStatus: 'in-range',
                         rangeLower: String(Math.round(Number(rangeLowerUsd) || 0)),
                         rangeUpper: String(Math.round(Number(rangeUpperUsd) || 0)),
-                        username: 'anon'
+                        username: displayUsername,
+                        ...(positionValueUsd > 0 ? { valueUsd: positionValueUsd.toFixed(2) } : {})
                       });
                       const shareUrl = `${baseUrl}/share/position/new?${shareParams.toString()}`;
 
