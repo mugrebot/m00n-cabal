@@ -8,7 +8,7 @@ const MOSS_GREEN = '#6ce5b1';
 const DEEP_PURPLE = '#0a0612';
 const ACCENT_PURPLE = '#8c54ff';
 
-// Fewer stars for cleaner look
+// Stars for 1200x800 canvas
 const STAR_POSITIONS = [
   { x: 80, y: 50, s: 2 },
   { x: 200, y: 120, s: 1 },
@@ -18,16 +18,25 @@ const STAR_POSITIONS = [
   { x: 800, y: 130, s: 1 },
   { x: 950, y: 45, s: 2 },
   { x: 1100, y: 110, s: 1 },
-  { x: 120, y: 280, s: 1 },
-  { x: 300, y: 350, s: 2 },
-  { x: 550, y: 300, s: 1 },
-  { x: 750, y: 380, s: 2 },
-  { x: 1000, y: 320, s: 1 },
-  { x: 180, y: 480, s: 2 },
-  { x: 450, y: 520, s: 1 },
-  { x: 700, y: 460, s: 2 },
-  { x: 900, y: 540, s: 1 },
-  { x: 1080, y: 480, s: 2 }
+  { x: 120, y: 250, s: 1 },
+  { x: 300, y: 320, s: 2 },
+  { x: 550, y: 280, s: 1 },
+  { x: 750, y: 350, s: 2 },
+  { x: 1000, y: 290, s: 1 },
+  { x: 180, y: 450, s: 2 },
+  { x: 450, y: 500, s: 1 },
+  { x: 700, y: 440, s: 2 },
+  { x: 900, y: 520, s: 1 },
+  { x: 1080, y: 460, s: 2 },
+  { x: 100, y: 620, s: 1 },
+  { x: 350, y: 680, s: 2 },
+  { x: 600, y: 640, s: 1 },
+  { x: 850, y: 700, s: 2 },
+  { x: 1050, y: 650, s: 1 },
+  { x: 250, y: 750, s: 2 },
+  { x: 500, y: 770, s: 1 },
+  { x: 780, y: 760, s: 2 },
+  { x: 1000, y: 780, s: 1 }
 ];
 
 export async function GET(request: NextRequest) {
@@ -77,10 +86,11 @@ export async function GET(request: NextRequest) {
           display: 'flex',
           flexDirection: 'column',
           backgroundColor: DEEP_PURPLE,
-          padding: '48px',
+          padding: '50px 80px',
           fontFamily: 'system-ui, sans-serif',
           position: 'relative',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          boxSizing: 'border-box'
         }}
       >
         {/* Starry background */}
@@ -120,9 +130,10 @@ export async function GET(request: NextRequest) {
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: '40px',
+            marginBottom: '32px',
             position: 'relative',
-            zIndex: 10
+            zIndex: 10,
+            width: '100%'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
@@ -323,7 +334,9 @@ export async function GET(request: NextRequest) {
             justifyContent: 'space-between',
             alignItems: 'center',
             position: 'relative',
-            zIndex: 10
+            zIndex: 10,
+            width: '100%',
+            marginTop: 'auto'
           }}
         >
           <span
@@ -349,7 +362,7 @@ export async function GET(request: NextRequest) {
     ),
     {
       width: 1200,
-      height: 630 // Standard OG size - more compact
+      height: 800 // Farcaster requires 3:2 aspect ratio
     }
   );
 }
