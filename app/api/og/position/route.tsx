@@ -171,6 +171,7 @@ export async function GET(request: NextRequest) {
             flexDirection: 'column',
             flex: 1,
             justifyContent: 'center',
+            alignItems: 'center',
             position: 'relative',
             zIndex: 10
           }}
@@ -180,8 +181,10 @@ export async function GET(request: NextRequest) {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '20px',
-              marginBottom: '24px'
+              justifyContent: 'center',
+              gap: '16px',
+              marginBottom: '28px',
+              flexWrap: 'wrap'
             }}
           >
             <div
@@ -251,7 +254,14 @@ export async function GET(request: NextRequest) {
           </div>
 
           {/* Price range - big and bold */}
-          <div style={{ display: 'flex', flexDirection: 'column', marginBottom: '20px' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              marginBottom: '20px'
+            }}
+          >
             <span
               style={{
                 fontSize: '14px',
