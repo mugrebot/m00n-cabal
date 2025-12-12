@@ -34,7 +34,10 @@ export async function GET(
         ? '🚀 Sky Band'
         : '🎯 Custom';
 
-  const title = `m00n LP #${tokenId} | ${bandLabel}`;
+  const title =
+    tokenId === 'new'
+      ? `$m00n position | ${bandLabel}`
+      : `$m00n position #${tokenId} | ${bandLabel}`;
   const description = isInRange
     ? `This position is currently in range and earning fees! 🌙`
     : `Watching the market from the m00n cabal 🌙`;

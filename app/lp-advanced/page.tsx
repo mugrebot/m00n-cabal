@@ -2298,12 +2298,15 @@ function AdvancedLpContent({
                         bandType === 'crash_band' ? '🔻' : bandType === 'upside_band' ? '🚀' : '🎯';
 
                       // Build share URL with position data for OG image
+                      const displayName = address
+                        ? `${address.slice(0, 6)}...${address.slice(-4)}`
+                        : 'anon';
                       const shareParams = new URLSearchParams({
                         bandType,
                         rangeStatus: 'in-range',
                         rangeLower: String(Math.round(Number(rangeLowerUsd) || 0)),
                         rangeUpper: String(Math.round(Number(rangeUpperUsd) || 0)),
-                        username: 'anon'
+                        username: displayName
                       });
                       const shareUrl = `${baseUrl}/share/position/new?${shareParams.toString()}`;
 
