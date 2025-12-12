@@ -14,7 +14,7 @@ interface LpPoolKey {
   hooks: string;
 }
 
-type BandType = 'crash_band' | 'upside_band' | 'in_range';
+type BandType = 'crash_band' | 'upside_band' | 'double_sided' | 'in_range';
 
 interface TokenBreakdown {
   address: string;
@@ -71,15 +71,31 @@ const formatTokenAmount = (value: bigint, decimals: number) => {
   return trimTrailingZeros(formatted);
 };
 
-const mapRangeToBand = (rangeStatus: PositionWithAmounts['rangeStatus']): BandType => {
-  switch (rangeStatus) {
-    case 'below-range':
-      return 'upside_band';
-    case 'above-range':
-      return 'crash_band';
-    default:
-      return 'in_range';
-  }
+const classifyBandType = (
+  rangeStatus: PositionWithAmounts['rangeStatus'],
+  token0Amount: bigint,
+  token1Amount: bigint
+): BandType => {
+  // Out of range positions show clear directionality
+  if (rangeStatus === 'below-range') return 'upside_band';
+  if (rangeStatus === 'above-range') return 'crash_band';
+
+  // In-range: check token balance ratio
+  const t0 = Number(token0Amount);
+  const t1 = Number(token1Amount);
+  const total = t0 + t1;
+
+  if (total === 0) return 'double_sided';
+
+  const token0Ratio = t0 / total;
+  const token1Ratio = t1 / total;
+
+  // If one side is >80%, it's single-sided
+  if (token0Ratio > 0.8) return 'upside_band'; // Mostly m00n
+  if (token1Ratio > 0.8) return 'crash_band'; // Mostly WMON
+
+  // Otherwise it's double-sided (balanced)
+  return 'double_sided';
 };
 
 const describeToken = (address: string): { symbol: string; label: string; decimals: number } => {
@@ -133,7 +149,7 @@ const serializePosition = (position: PositionWithAmounts): LpPositionApi => {
     currentTick: position.currentTick,
     sqrtPriceX96: position.sqrtPriceX96.toString(),
     rangeStatus: position.rangeStatus,
-    bandType: mapRangeToBand(position.rangeStatus),
+    bandType: classifyBandType(position.rangeStatus, position.amount0, position.amount1),
     token0,
     token1,
     priceLowerInToken1: priceLower.toString(),

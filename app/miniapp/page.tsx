@@ -189,13 +189,15 @@ const LP_PRESET_CONTENT: Record<
 const describeBandTypeLabel = (bandType?: LpPosition['bandType']) => {
   switch (bandType) {
     case 'crash_band':
-      return 'Crash band (scales into WMON for m00n ~10% under spot)';
+      return 'Crash band (WMON-heavy, hedging downside)';
     case 'upside_band':
-      return 'Upside band (scales out of m00n into WMON from 1.2× → 5×)';
+      return 'Sky band (m00n-heavy, betting on upside)';
+    case 'double_sided':
+      return 'Double-sided (balanced, earning fees both ways)';
     case 'in_range':
       return 'Active band (earning fees)';
     default:
-      return 'Band type unknown';
+      return 'Custom band';
   }
 };
 
@@ -264,7 +266,7 @@ interface LpPosition {
   currentTick?: number;
   sqrtPriceX96?: string;
   rangeStatus?: 'below-range' | 'in-range' | 'above-range';
-  bandType?: 'crash_band' | 'upside_band' | 'in_range';
+  bandType?: 'crash_band' | 'upside_band' | 'double_sided' | 'in_range';
   token0?: TokenBreakdown;
   token1?: TokenBreakdown;
   priceLowerInToken1?: string;
@@ -1748,7 +1750,9 @@ function MiniAppPageInner() {
           ? '🔻'
           : position.bandType === 'upside_band'
             ? '🚀'
-            : '🎯';
+            : position.bandType === 'double_sided'
+              ? '⚖️'
+              : '🎯';
       const statusEmoji = isInRange ? '✅' : '⚠️';
 
       // Check if there are fees (non-zero token amounts)

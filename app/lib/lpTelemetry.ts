@@ -31,17 +31,30 @@ export async function buildSolarSystemPayload(
 // Leaderboard payload builder
 // -----------------------------
 
-type BandType = 'crash_band' | 'upside_band' | 'in_range';
+type BandType = 'crash_band' | 'upside_band' | 'double_sided' | 'in_range';
 
 const classifyBandType = (position: LpPosition): BandType => {
   const rangeStatus = position.rangeStatus ?? 'in-range';
+  // Out of range positions show clear directionality
   if (rangeStatus === 'below-range') return 'upside_band';
   if (rangeStatus === 'above-range') return 'crash_band';
+
+  // In-range: check token balance ratio
   const token0Value = position.notionalToken0 ?? 0;
   const token1Value = position.notionalToken1 ?? 0;
-  if (token0Value > token1Value) return 'upside_band';
-  if (token1Value > token0Value) return 'crash_band';
-  return 'in_range';
+  const total = token0Value + token1Value;
+
+  if (total === 0) return 'double_sided';
+
+  const token0Ratio = token0Value / total;
+  const token1Ratio = token1Value / total;
+
+  // If one side is >80%, it's single-sided
+  if (token0Ratio > 0.8) return 'upside_band'; // Mostly m00n
+  if (token1Ratio > 0.8) return 'crash_band'; // Mostly WMON
+
+  // Otherwise it's double-sided (balanced)
+  return 'double_sided';
 };
 
 const tickToPrice = (tick: number) => Math.pow(1.0001, tick);
@@ -113,7 +126,9 @@ export async function buildLeaderboardSnapshot(): Promise<LeaderboardSnapshot> {
 
   const crashBand = entries.filter((entry) => entry.bandType === 'crash_band').slice(0, 10);
   const upsideBand = entries.filter((entry) => entry.bandType === 'upside_band').slice(0, 10);
-  const mixedBand = entries.filter((entry) => entry.bandType === 'in_range').slice(0, 10);
+  const mixedBand = entries
+    .filter((entry) => entry.bandType === 'double_sided' || entry.bandType === 'in_range')
+    .slice(0, 10);
   const overall = entries.slice(0, TOP_OVERALL_COUNT);
 
   return {
