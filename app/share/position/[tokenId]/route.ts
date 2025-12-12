@@ -2,6 +2,36 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
+const NEYNAR_API_KEY = process.env.NEYNAR_API_KEY || '';
+
+// Resolve FID to username using Neynar API
+async function resolveUsername(rawUsername: string): Promise<string> {
+  // Check if it's a fid:XXXX format
+  const fidMatch = rawUsername.match(/^fid[:\-]?(\d+)$/i);
+  if (!fidMatch || !NEYNAR_API_KEY) {
+    return rawUsername;
+  }
+
+  const fid = fidMatch[1];
+  try {
+    const res = await fetch(`https://api.neynar.com/v2/farcaster/user/bulk?fids=${fid}`, {
+      headers: { api_key: NEYNAR_API_KEY },
+      next: { revalidate: 3600 } // Cache for 1 hour
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const user = data.users?.[0];
+      if (user?.username) {
+        console.log('[SHARE_ROUTE] Resolved fid:', fid, '→', user.username);
+        return user.username;
+      }
+    }
+  } catch (err) {
+    console.warn('[SHARE_ROUTE] Failed to resolve fid:', fid, err);
+  }
+  return rawUsername;
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ tokenId: string }> }
@@ -10,17 +40,21 @@ export async function GET(
   const { searchParams } = new URL(request.url);
 
   // Log incoming params for debugging
-  const incomingUsername = searchParams.get('username');
+  const incomingUsername = searchParams.get('username') || 'anon';
   const incomingValueUsd = searchParams.get('valueUsd');
+
+  // Resolve username if it's just a FID
+  const resolvedUsername = await resolveUsername(incomingUsername);
+
   console.log(
     '[SHARE_ROUTE] tokenId:',
     tokenId,
     'username:',
     incomingUsername,
+    '→',
+    resolvedUsername,
     'valueUsd:',
-    incomingValueUsd,
-    'fullUrl:',
-    request.url
+    incomingValueUsd
   );
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://m00nad.vercel.app';
@@ -32,7 +66,7 @@ export async function GET(
     rangeStatus: searchParams.get('rangeStatus') || 'unknown',
     rangeLower: searchParams.get('rangeLower') || '0',
     rangeUpper: searchParams.get('rangeUpper') || '0',
-    username: incomingUsername || 'anon',
+    username: resolvedUsername,
     ...(incomingValueUsd ? { valueUsd: incomingValueUsd } : {})
   });
 

@@ -298,46 +298,42 @@ export async function GET(request: NextRequest) {
             )}
           </div>
 
-          {/* Stats Grid - 2 columns */}
+          {/* Stats Grid - 3 equal columns */}
           <div
             style={{
               display: 'flex',
-              gap: '24px',
+              gap: '20px',
               flex: 1
             }}
           >
-            {/* Left column - Range info */}
+            {/* Column 1 - Price Range */}
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
                 flex: 1,
-                gap: '16px'
+                backgroundColor: 'rgba(255,255,255,0.03)',
+                padding: '20px',
+                borderRadius: '16px',
+                border: '1px solid rgba(255,255,255,0.08)',
+                justifyContent: 'center'
               }}
             >
-              <div
+              <span
                 style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  backgroundColor: 'rgba(255,255,255,0.03)',
-                  padding: '16px',
-                  borderRadius: '12px',
-                  border: '1px solid rgba(255,255,255,0.05)'
+                  fontSize: '11px',
+                  color: 'rgba(255,255,255,0.4)',
+                  letterSpacing: '0.12em',
+                  marginBottom: '12px',
+                  textTransform: 'uppercase'
                 }}
               >
+                Price Range
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <span
                   style={{
-                    fontSize: '12px',
-                    color: 'rgba(255,255,255,0.4)',
-                    letterSpacing: '0.1em',
-                    marginBottom: '8px'
-                  }}
-                >
-                  PRICE RANGE
-                </span>
-                <span
-                  style={{
-                    fontSize: '24px',
+                    fontSize: '22px',
                     fontWeight: 'bold',
                     color: 'white',
                     fontFamily: 'monospace'
@@ -347,16 +343,15 @@ export async function GET(request: NextRequest) {
                 </span>
                 <span
                   style={{
-                    fontSize: '14px',
-                    color: 'rgba(255,255,255,0.5)',
-                    margin: '4px 0'
+                    fontSize: '12px',
+                    color: 'rgba(255,255,255,0.4)'
                   }}
                 >
-                  ↓ to ↑
+                  to
                 </span>
                 <span
                   style={{
-                    fontSize: '24px',
+                    fontSize: '22px',
                     fontWeight: 'bold',
                     color: 'white',
                     fontFamily: 'monospace'
@@ -367,85 +362,81 @@ export async function GET(request: NextRequest) {
               </div>
             </div>
 
-            {/* Right column - Additional stats */}
+            {/* Column 2 - Range Width */}
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
                 flex: 1,
-                gap: '16px'
+                backgroundColor: 'rgba(140, 84, 255, 0.08)',
+                padding: '20px',
+                borderRadius: '16px',
+                border: `1px solid ${ACCENT_PURPLE}30`,
+                justifyContent: 'center'
               }}
             >
-              {/* Range Width */}
-              <div
+              <span
                 style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  backgroundColor: 'rgba(255,255,255,0.03)',
-                  padding: '16px',
-                  borderRadius: '12px',
-                  border: '1px solid rgba(255,255,255,0.05)'
+                  fontSize: '11px',
+                  color: 'rgba(255,255,255,0.4)',
+                  letterSpacing: '0.12em',
+                  marginBottom: '12px',
+                  textTransform: 'uppercase'
                 }}
               >
-                <span
-                  style={{
-                    fontSize: '12px',
-                    color: 'rgba(255,255,255,0.4)',
-                    letterSpacing: '0.1em',
-                    marginBottom: '8px'
-                  }}
-                >
-                  RANGE WIDTH
-                </span>
-                <span
-                  style={{
-                    fontSize: '28px',
-                    fontWeight: 'bold',
-                    color: ACCENT_PURPLE,
-                    fontFamily: 'monospace'
-                  }}
-                >
-                  +{rangeWidth}%
-                </span>
-              </div>
+                Range Width
+              </span>
+              <span
+                style={{
+                  fontSize: '32px',
+                  fontWeight: 'bold',
+                  color: ACCENT_PURPLE,
+                  fontFamily: 'monospace'
+                }}
+              >
+                +{rangeWidth}%
+              </span>
+            </div>
 
-              {/* Position Value or Potential */}
-              <div
+            {/* Column 3 - Position Value */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                flex: 1,
+                backgroundColor: 'rgba(108, 229, 177, 0.08)',
+                padding: '20px',
+                borderRadius: '16px',
+                border: `1px solid ${MOSS_GREEN}30`,
+                justifyContent: 'center'
+              }}
+            >
+              <span
                 style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  backgroundColor: 'rgba(108, 229, 177, 0.08)',
-                  padding: '16px',
-                  borderRadius: '12px',
-                  border: `1px solid ${MOSS_GREEN}30`
+                  fontSize: '11px',
+                  color: 'rgba(255,255,255,0.4)',
+                  letterSpacing: '0.12em',
+                  marginBottom: '12px',
+                  textTransform: 'uppercase'
                 }}
               >
-                <span
-                  style={{
-                    fontSize: '12px',
-                    color: 'rgba(255,255,255,0.4)',
-                    letterSpacing: '0.1em',
-                    marginBottom: '8px'
-                  }}
-                >
-                  {valueUsd ? 'POSITION VALUE' : 'UPSIDE TARGET'}
-                </span>
-                <span
-                  style={{
-                    fontSize: '26px',
-                    fontWeight: 'bold',
-                    color: MOSS_GREEN,
-                    fontFamily: 'monospace'
-                  }}
-                >
-                  {valueUsd
-                    ? `$${Number(valueUsd).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                      })}`
-                    : `$${upperNum.toLocaleString()}`}
-                </span>
-              </div>
+                {valueUsd ? 'Position Value' : 'Upside Target'}
+              </span>
+              <span
+                style={{
+                  fontSize: '32px',
+                  fontWeight: 'bold',
+                  color: MOSS_GREEN,
+                  fontFamily: 'monospace'
+                }}
+              >
+                {valueUsd
+                  ? `$${Number(valueUsd).toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2
+                    })}`
+                  : `$${upperNum.toLocaleString()}`}
+              </span>
             </div>
           </div>
         </div>

@@ -890,6 +890,16 @@ function AdvancedLpContent({
         try {
           await sdk.actions.ready();
           if (cancelled) return;
+
+          // Try to sign in to get full user profile with username
+          try {
+            const nonce = crypto.randomUUID();
+            await sdk.actions.signIn({ nonce });
+          } catch (signInErr) {
+            console.warn('ADV_LP:signIn_skipped', signInErr);
+            // Continue without sign-in - we can still get basic context
+          }
+
           const context = await sdk.context;
           console.log('ADV_LP:context.user=', JSON.stringify(context.user));
           if (!cancelled) {
