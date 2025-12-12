@@ -2305,14 +2305,24 @@ function AdvancedLpContent({
                           : 'https://m00nad.vercel.app';
 
                       const currentMcap = moonMarketCapUsd ?? 0;
-                      const bandType =
-                        rangeTouched && rangeMin != null && rangeMin < currentMcap
-                          ? 'crash_band'
-                          : rangeTouched && rangeMax != null && rangeMax > currentMcap
-                            ? 'upside_band'
-                            : 'custom';
+
+                      // Classify band type based on position type and range
+                      let bandType: 'crash_band' | 'upside_band' | 'double_sided' = 'double_sided';
+
+                      if (bandSide === 'single') {
+                        // Single-sided: crash band if WMON only (below current), sky band if m00n only (above current)
+                        if (depositAsset === 'wmon') {
+                          bandType = 'crash_band'; // Betting on price drop
+                        } else {
+                          bandType = 'upside_band'; // Betting on price rise
+                        }
+                      } else {
+                        // Double-sided: both tokens deposited
+                        bandType = 'double_sided';
+                      }
+
                       const bandEmoji =
-                        bandType === 'crash_band' ? '🔻' : bandType === 'upside_band' ? '🚀' : '🎯';
+                        bandType === 'crash_band' ? '🔻' : bandType === 'upside_band' ? '🚀' : '⚖️';
 
                       // Calculate position value in USD from deposit amounts
                       const wmonPrice = marketState?.wmonUsdPrice ?? 0;
