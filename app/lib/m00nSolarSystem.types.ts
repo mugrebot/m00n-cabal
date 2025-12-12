@@ -14,4 +14,5 @@ export interface LpPosition {
   currentTick?: number;
   planetKind?: 'jupiter' | 'neptune';
   planetColor?: string;
+  createdAtTimestamp?: number; // Unix timestamp when position was created
 }

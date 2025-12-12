@@ -299,6 +299,8 @@ export async function getTopM00nLpPositions(limit = MAX_SOLAR_POSITIONS): Promis
 
   const candidatePositions = [...recentPositions, ...ownerScopedPositions, ...seedPositions];
 
+  const createdAtMap = new Map<string, number>();
+
   for (const entry of candidatePositions) {
     if (!entry.tokenId) continue;
     try {
@@ -306,6 +308,9 @@ export async function getTopM00nLpPositions(limit = MAX_SOLAR_POSITIONS): Promis
       tokenIdSet.add(id);
       if (entry.owner) {
         ownerMap.set(entry.tokenId, normalizeAddress(entry.owner) ?? entry.owner);
+      }
+      if (entry.createdAtTimestamp) {
+        createdAtMap.set(entry.tokenId, Number(entry.createdAtTimestamp));
       }
     } catch {
       // ignore malformed ids
@@ -462,7 +467,8 @@ export async function getTopM00nLpPositions(limit = MAX_SOLAR_POSITIONS): Promis
         rangeStatus: position.rangeStatus,
         currentTick: position.currentTick,
         planetKind: special?.planetKind,
-        planetColor: special?.planetColor
+        planetColor: special?.planetColor,
+        createdAtTimestamp: createdAtMap.get(tokenId)
       };
     })
     .filter((entry) => !EXCLUDED_OWNER_ADDRESSES.has(entry.owner.toLowerCase()));

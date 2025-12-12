@@ -201,6 +201,11 @@ export async function updateStreaks(): Promise<{
       continue;
     }
 
+    // Skip positions with value < $5
+    if (position.notionalUsd < 5) {
+      continue;
+    }
+
     const isInRange = position.rangeStatus === 'in-range';
     const existing = streakData[tokenId];
 
@@ -208,18 +213,32 @@ export async function updateStreaks(): Promise<{
       // New position - initialize tracking
       newPositions++;
 
-      const streakDays = 0;
+      // If position is in-range and we know when it was created,
+      // give credit for the full time since creation
+      let initialDuration = 0;
+      let initialTotalInRange = 0;
+      if (isInRange && position.createdAtTimestamp) {
+        initialDuration = now - position.createdAtTimestamp;
+        initialTotalInRange = initialDuration;
+        // Sanity check - don't exceed 1 year
+        if (initialDuration > 365 * 24 * 3600) {
+          initialDuration = 365 * 24 * 3600;
+          initialTotalInRange = initialDuration;
+        }
+      }
+
+      const streakDays = Math.floor(initialDuration / 86400);
       const tier = getStreakTier(streakDays);
 
       const streak: PositionStreak = {
         tokenId,
         owner: position.owner,
         label: position.label ?? getAddressLabel(position.owner),
-        currentStreakStartedAt: isInRange ? now : null,
-        currentStreakDuration: 0,
-        longestStreakDuration: 0,
+        currentStreakStartedAt: isInRange ? (position.createdAtTimestamp ?? now) : null,
+        currentStreakDuration: initialDuration,
+        longestStreakDuration: initialDuration,
         longestStreakEndedAt: null,
-        totalInRangeTime: 0,
+        totalInRangeTime: initialTotalInRange,
         totalOutOfRangeTime: 0,
         checkCount: 1,
         lastCheckedAt: now,
@@ -322,7 +341,7 @@ export async function buildStreakLeaderboard(): Promise<StreakLeaderboard> {
   const seasonId = currentSeason?.id ?? 'season-1';
 
   const allEntries: StreakLeaderboardEntry[] = Object.values(streakData)
-    .filter((streak) => streak.checkCount > 0)
+    .filter((streak) => streak.checkCount > 0 && (streak.valueUsd ?? 0) >= 5)
     .map((streak) => ({
       tokenId: streak.tokenId,
       owner: streak.owner,

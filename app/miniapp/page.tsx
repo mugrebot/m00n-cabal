@@ -3688,71 +3688,61 @@ Join the $m00n cabal 🌙`;
             </div>
           </div>
           <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
-            <span className="text-xs font-bold" style={{ color: tierColor }}>
-              {formatStreakDuration(duration)}
+            {/* Points display - primary metric */}
+            <span className="text-sm font-bold" style={{ color: tierColor }}>
+              {entry.points?.toLocaleString() ?? 0} pts
             </span>
-            <span className="text-[10px]">
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <span className="opacity-60">{formatStreakDuration(duration)}</span>
               {entry.isCurrentlyInRange ? (
-                <span className="text-[var(--moss-green)]">🟢 IN</span>
+                <span className="text-[var(--moss-green)]">🟢</span>
               ) : (
-                <span className="text-red-400/70">⚪ OUT</span>
+                <span className="text-red-400/70">⚪</span>
               )}
-            </span>
+            </div>
           </div>
         </div>
       );
     };
 
+    // Sort all entries by points for unified leaderboard
+    const allEntriesByPoints = [...topStreaks, ...topAllTime]
+      .filter((entry, index, arr) => arr.findIndex((e) => e.tokenId === entry.tokenId) === index)
+      .sort((a, b) => (b.points ?? 0) - (a.points ?? 0))
+      .slice(0, 10);
+
     return (
-      <div className={`${PANEL_CLASS} space-y-6 bg-black/60`}>
+      <div className={`${PANEL_CLASS} space-y-4 bg-black/60`}>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="text-xl font-bold">🔥 LP Streak Leaderboard</p>
-            <p className="text-sm opacity-70">
-              {totalPositionsTracked} positions tracked • Updated{' '}
+            <p className="text-lg font-bold">🏆 Points Leaderboard</p>
+            <p className="text-[10px] opacity-60">
+              {totalPositionsTracked} positions • Updated{' '}
               {new Date(lastCheckAt).toLocaleTimeString()}
             </p>
           </div>
           <button
             type="button"
             onClick={refreshStreakLeaderboard}
-            className="self-start sm:self-auto pixel-font text-[10px] px-[5px] py-[5px] border border-white/20 rounded-full text-white hover:bg-white/10 transition-colors"
+            className="self-start sm:self-auto pixel-font text-[10px] px-3 py-1 border border-white/20 rounded-full text-white hover:bg-white/10 transition-colors"
           >
             Refresh
           </button>
         </div>
 
-        {/* Hot Streaks - Currently in range */}
-        {topStreaks.length > 0 && (
-          <div>
-            <p className="text-[var(--moss-green)] text-sm font-semibold mb-2 tracking-wide">
-              🔥 HOT STREAKS (in range now)
-            </p>
-            <div className="space-y-2">
-              {topStreaks
-                .slice(0, 5)
-                .map((entry, index) => renderStreakEntry(entry, index, 'current'))}
-            </div>
+        {/* Unified Points Leaderboard */}
+        {allEntriesByPoints.length > 0 ? (
+          <div className="space-y-2">
+            {allEntriesByPoints.map((entry, index) => renderStreakEntry(entry, index, 'points'))}
           </div>
+        ) : (
+          <p className="text-sm opacity-50 text-center py-4">No qualifying positions yet</p>
         )}
 
-        {/* All-Time Legends */}
-        {topAllTime.length > 0 && (
-          <div>
-            <p className="text-[#ffd700] text-sm font-semibold mb-2 tracking-wide">
-              🏆 ALL-TIME LEGENDS
-            </p>
-            <div className="space-y-2">
-              {topAllTime
-                .slice(0, 5)
-                .map((entry, index) => renderStreakEntry(entry, index, 'allTime'))}
-            </div>
-          </div>
-        )}
-
-        {/* Points explanation */}
-        <div className="text-xs opacity-50 text-center pt-2 border-t border-white/10">
-          Weighted: 50% position value • 30% streak days • 20% time in range
+        {/* Points breakdown legend */}
+        <div className="text-[10px] opacity-40 text-center pt-2 border-t border-white/10">
+          <p>50% value + 30% streak + 20% time in range</p>
+          <p className="mt-1">× Yap multiplier (up to 5x)</p>
         </div>
       </div>
     );
@@ -5336,6 +5326,10 @@ Join the $m00n cabal 🌙`;
           <span className="opacity-70">Hold 1M+ m00n</span>
         </div>
         <div className="flex items-center gap-2 bg-black/40 rounded-lg p-2">
+          <span>💵</span>
+          <span className="opacity-70">Position &gt;$5 value</span>
+        </div>
+        <div className="flex items-center gap-2 bg-black/40 rounded-lg p-2">
           <span>⏳</span>
           <span className="opacity-70">Position 7d+ old</span>
         </div>
@@ -5343,12 +5337,10 @@ Join the $m00n cabal 🌙`;
           <span>🔥</span>
           <span className="opacity-70">7d+ streak</span>
         </div>
-        <div className="flex items-center gap-2 bg-black/40 rounded-lg p-2">
-          <span>🎯</span>
-          <span className="opacity-70">In range at snapshot</span>
-        </div>
       </div>
-      <p className="text-[9px] opacity-40 mt-2 text-center">Snapshots taken each full moon 🌕</p>
+      <p className="text-[9px] opacity-40 mt-2 text-center">
+        🎯 Must be in range at full moon snapshot 🌕
+      </p>
     </div>
   );
 
