@@ -1737,12 +1737,12 @@ function MiniAppPageInner() {
         (BigInt(position.fees.token0Wei || '0') > BigInt(0) ||
           BigInt(position.fees.token1Wei || '0') > BigInt(0));
 
-      const shareText = `${bandEmoji} My m00n LP position #${position.tokenId}
+      const shareText = `${bandEmoji} My $m00n LP position #${position.tokenId}
 
 ${statusEmoji} ${isInRange ? 'Currently in range and earning!' : 'Out of range - watching the market'}
 ${hasFees ? `💰 Earning fees!` : ''}
 
-Join the m00n cabal 🌙`;
+Join the $m00n cabal 🌙`;
 
       try {
         await sdk.actions.composeCast({

@@ -2298,23 +2298,20 @@ function AdvancedLpContent({
                         bandType === 'crash_band' ? '🔻' : bandType === 'upside_band' ? '🚀' : '🎯';
 
                       // Build share URL with position data for OG image
-                      const displayName = address
-                        ? `${address.slice(0, 6)}...${address.slice(-4)}`
-                        : 'anon';
                       const shareParams = new URLSearchParams({
                         bandType,
                         rangeStatus: 'in-range',
                         rangeLower: String(Math.round(Number(rangeLowerUsd) || 0)),
                         rangeUpper: String(Math.round(Number(rangeUpperUsd) || 0)),
-                        username: displayName
+                        username: 'anon'
                       });
                       const shareUrl = `${baseUrl}/share/position/new?${shareParams.toString()}`;
 
-                      const shareText = `${bandEmoji} Just deployed a m00n LP position!
+                      const shareText = `${bandEmoji} Just deployed a $m00n LP position!
 
 Range: $${Number(rangeLowerUsd).toLocaleString()} → $${Number(rangeUpperUsd).toLocaleString()}
 
-Join the m00n cabal 🌙`;
+Join the $m00n cabal 🌙`;
 
                       try {
                         await sdk.actions.composeCast({

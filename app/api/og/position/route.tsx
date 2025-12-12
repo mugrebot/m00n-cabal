@@ -8,18 +8,49 @@ const MOSS_GREEN = '#6ce5b1';
 const DEEP_PURPLE = '#0a0612';
 const ACCENT_PURPLE = '#8c54ff';
 
-// Generate deterministic stars based on seed
-function generateStars(count: number, seed: number) {
-  const stars = [];
-  for (let i = 0; i < count; i++) {
-    const x = (seed * (i + 1) * 17) % 1200;
-    const y = (seed * (i + 1) * 23) % 800;
-    const size = ((seed * (i + 1)) % 3) + 1;
-    const opacity = 0.3 + ((seed * (i + 1)) % 7) / 10;
-    stars.push({ x, y, size, opacity });
-  }
-  return stars;
-}
+// Generate star positions
+const STAR_POSITIONS = [
+  { x: 50, y: 60, s: 2 },
+  { x: 120, y: 180, s: 1 },
+  { x: 200, y: 40, s: 3 },
+  { x: 300, y: 120, s: 2 },
+  { x: 380, y: 200, s: 1 },
+  { x: 450, y: 80, s: 2 },
+  { x: 520, y: 150, s: 1 },
+  { x: 600, y: 30, s: 3 },
+  { x: 680, y: 100, s: 2 },
+  { x: 750, y: 180, s: 1 },
+  { x: 820, y: 50, s: 2 },
+  { x: 900, y: 130, s: 1 },
+  { x: 980, y: 70, s: 3 },
+  { x: 1050, y: 160, s: 2 },
+  { x: 1120, y: 40, s: 1 },
+  { x: 80, y: 350, s: 1 },
+  { x: 180, y: 400, s: 2 },
+  { x: 280, y: 320, s: 1 },
+  { x: 420, y: 380, s: 3 },
+  { x: 550, y: 340, s: 1 },
+  { x: 680, y: 420, s: 2 },
+  { x: 800, y: 360, s: 1 },
+  { x: 920, y: 400, s: 2 },
+  { x: 1040, y: 340, s: 1 },
+  { x: 60, y: 550, s: 2 },
+  { x: 160, y: 620, s: 1 },
+  { x: 260, y: 500, s: 3 },
+  { x: 360, y: 580, s: 1 },
+  { x: 500, y: 530, s: 2 },
+  { x: 620, y: 600, s: 1 },
+  { x: 740, y: 540, s: 2 },
+  { x: 860, y: 610, s: 1 },
+  { x: 980, y: 560, s: 3 },
+  { x: 1100, y: 520, s: 1 },
+  { x: 100, y: 700, s: 1 },
+  { x: 300, y: 720, s: 2 },
+  { x: 500, y: 680, s: 1 },
+  { x: 700, y: 740, s: 2 },
+  { x: 900, y: 700, s: 1 },
+  { x: 1100, y: 750, s: 2 }
+];
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -48,9 +79,6 @@ export async function GET(request: NextRequest) {
   // Position ID display
   const positionDisplay = tokenId === 'new' ? '✨ JUST DEPLOYED' : `#${tokenId}`;
 
-  // Generate stars for background
-  const stars = generateStars(80, 42);
-
   return new ImageResponse(
     (
       <div
@@ -66,33 +94,45 @@ export async function GET(request: NextRequest) {
           overflow: 'hidden'
         }}
       >
-        {/* Starry background */}
-        {stars.map((star, i) => (
+        {/* Starry background - static positions for satori compatibility */}
+        {STAR_POSITIONS.map((star, i) => (
           <div
             key={i}
             style={{
               position: 'absolute',
-              left: star.x,
-              top: star.y,
-              width: star.size,
-              height: star.size,
+              left: `${star.x}px`,
+              top: `${star.y}px`,
+              width: `${star.s}px`,
+              height: `${star.s}px`,
               borderRadius: '50%',
               backgroundColor: 'white',
-              opacity: star.opacity
+              opacity: 0.4 + (i % 5) * 0.1
             }}
           />
         ))}
 
-        {/* Gradient overlay for depth */}
+        {/* Subtle gradient glow */}
         <div
           style={{
             position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background:
-              'radial-gradient(ellipse at 30% 20%, rgba(140, 84, 255, 0.15) 0%, transparent 50%), radial-gradient(ellipse at 70% 80%, rgba(108, 229, 177, 0.1) 0%, transparent 40%)',
+            top: '-100px',
+            left: '200px',
+            width: '400px',
+            height: '400px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(140, 84, 255, 0.2) 0%, transparent 70%)',
+            display: 'flex'
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '-50px',
+            right: '100px',
+            width: '300px',
+            height: '300px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(108, 229, 177, 0.15) 0%, transparent 70%)',
             display: 'flex'
           }}
         />
