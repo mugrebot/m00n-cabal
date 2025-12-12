@@ -338,6 +338,95 @@ interface StreakLeaderboardResponse {
   topPoints: StreakLeaderboardEntry[];
 }
 
+// Tokenomics types
+interface TokenomicsAllocation {
+  key: string;
+  name: string;
+  emoji: string;
+  percentOfTotal: number;
+  tokens: number;
+  formattedTokens: string;
+  description: string;
+}
+
+interface TokenomicsUserAllocation {
+  address: string;
+  positionCount: number;
+  totalPoints: number;
+  formattedPoints: string;
+  pointsBreakdown?: {
+    notionalPoints: number;
+    streakPoints: number;
+    timePoints: number;
+  };
+  formattedPointsBreakdown?: {
+    notional: string;
+    streak: string;
+    time: string;
+  };
+  totalNotionalUsd?: number;
+  formattedNotionalUsd?: string;
+  bestStreakDays?: number;
+  totalHoursInRange?: number;
+  tier?: {
+    name: string;
+    multiplier: number;
+    emoji: string;
+  };
+  estimatedLpMining?: number;
+  formattedEstimatedLpMining?: string;
+  shareOfPool?: string;
+  rank?: number;
+  totalRanked?: number;
+  percentile?: string;
+  message?: string;
+  seasonId?: string;
+}
+
+interface TokenomicsSeason {
+  id: string;
+  name: string;
+  number: number;
+  status: string;
+  startDate: string;
+  endDate: string | null;
+  lpMiningPool: number;
+  formattedLpMiningPool: string;
+  streakRewardsPool: number;
+  formattedStreakRewardsPool: string;
+  isCurrent?: boolean;
+}
+
+interface TokenomicsResponse {
+  totalAllocationPercent: number;
+  totalAllocatedTokens: number;
+  totalSystemPoints: number;
+  totalParticipants: number;
+  formattedAllocations: TokenomicsAllocation[];
+  seasons: TokenomicsSeason[];
+  currentSeason: TokenomicsSeason | null;
+  pointsWeights: {
+    notionalUsd: { weight: number; description: string };
+    streakDays: { weight: number; description: string };
+    timeInRangeHours: { weight: number; description: string };
+  };
+  userAllocation?: TokenomicsUserAllocation;
+  topEarners?: {
+    rank: number;
+    label: string;
+    points: number;
+    formattedPoints: string;
+    estimatedAllocation: string;
+    tier?: { name: string; emoji: string };
+  }[];
+  topWhales?: {
+    rank: number;
+    label: string;
+    valueUsd: number;
+    formattedValueUsd: string;
+  }[];
+}
+
 interface LpGateState {
   lpStatus: LpStatus;
   walletAddress?: string | null;
@@ -540,6 +629,10 @@ function MiniAppPageInner() {
     'idle' | 'loading' | 'error' | 'loaded'
   >('idle');
   const [streakLeaderboardRefreshNonce, setStreakLeaderboardRefreshNonce] = useState(0);
+  const [tokenomicsData, setTokenomicsData] = useState<TokenomicsResponse | null>(null);
+  const [tokenomicsStatus, setTokenomicsStatus] = useState<'idle' | 'loading' | 'error' | 'loaded'>(
+    'idle'
+  );
   const [solarSystemData, setSolarSystemData] = useState<{
     positions: LeaderboardLpPosition[];
     updatedAt: string;
@@ -707,6 +800,37 @@ function MiniAppPageInner() {
       cancelled = true;
     };
   }, [streakLeaderboardRefreshNonce]);
+
+  // Fetch tokenomics data when we have a wallet address
+  useEffect(() => {
+    const walletAddress = lpGateState.walletAddress;
+    if (!walletAddress) return;
+
+    let cancelled = false;
+    const loadTokenomics = async () => {
+      setTokenomicsStatus('loading');
+      try {
+        const response = await fetch(`/api/tokenomics?address=${walletAddress}`);
+        if (!response.ok) {
+          throw new Error('tokenomics_failed');
+        }
+        const data = (await response.json()) as TokenomicsResponse;
+        if (!cancelled) {
+          setTokenomicsData(data);
+          setTokenomicsStatus('loaded');
+        }
+      } catch (err) {
+        console.error('Failed to load tokenomics', err);
+        if (!cancelled) {
+          setTokenomicsStatus('error');
+        }
+      }
+    };
+    loadTokenomics();
+    return () => {
+      cancelled = true;
+    };
+  }, [lpGateState.walletAddress, streakLeaderboardRefreshNonce]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3510,7 +3634,244 @@ Join the $m00n cabal 🌙`;
 
         {/* Points explanation */}
         <div className="text-xs opacity-50 text-center pt-2 border-t border-white/10">
-          Points: 10/hr in-range • +50 bonus/day streak • 2× after 7 days
+          Weighted: 50% position value • 30% streak days • 20% time in range
+        </div>
+      </div>
+    );
+  };
+
+  // Season 1 Rewards Panel
+  const renderSeason1Panel = () => {
+    if (tokenomicsStatus === 'loading') {
+      return (
+        <div className={`${PANEL_CLASS} animate-pulse bg-black/60`}>
+          <div className="h-6 bg-white/10 rounded w-48 mb-4" />
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-12 bg-white/10 rounded-xl" />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (tokenomicsStatus === 'error' || !tokenomicsData) {
+      return null; // Don't show if no data
+    }
+
+    const {
+      userAllocation,
+      currentSeason,
+      formattedAllocations,
+      totalSystemPoints,
+      topEarners,
+      seasons,
+      pointsWeights
+    } = tokenomicsData;
+
+    if (!currentSeason) return null;
+
+    return (
+      <div
+        className={`${PANEL_CLASS} space-y-6 bg-gradient-to-br from-[#0a0612] to-[#1a0a2e] border border-[var(--monad-purple)]/30`}
+      >
+        {/* Header */}
+        <div className="text-center space-y-2">
+          <div className="flex items-center justify-center gap-2">
+            <span className="text-3xl">⛏️</span>
+            <h2 className="text-2xl font-bold bg-gradient-to-r from-[var(--monad-purple)] to-[var(--moss-green)] bg-clip-text text-transparent">
+              Season {currentSeason.number}: {currentSeason.name}
+            </h2>
+          </div>
+          <p className="text-sm opacity-70">
+            Earn points by keeping LP positions in range. Points = future $m00n allocation!
+          </p>
+          <p className="text-xs opacity-40">
+            Total points in system: {totalSystemPoints.toLocaleString()} • Pool:{' '}
+            {currentSeason.formattedLpMiningPool}
+          </p>
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-[var(--moss-green)]/10 border border-[var(--moss-green)]/30">
+              <span className="w-2 h-2 rounded-full bg-[var(--moss-green)] animate-pulse" />
+              <span className="text-xs text-[var(--moss-green)] font-semibold uppercase tracking-wider">
+                {currentSeason.status}
+              </span>
+            </div>
+            {seasons && seasons.length > 1 && (
+              <span className="text-xs opacity-40">
+                ({seasons.filter((s) => s.status === 'completed').length}/{seasons.length} seasons)
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Points Formula Explainer */}
+        {pointsWeights && (
+          <div className="bg-black/30 rounded-xl p-3 border border-white/5">
+            <p className="text-xs opacity-50 uppercase tracking-wider mb-2">Points Formula</p>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <p className="text-lg font-bold text-[var(--moss-green)]">50%</p>
+                <p className="text-[10px] opacity-60">Position $</p>
+              </div>
+              <div>
+                <p className="text-lg font-bold text-[var(--monad-purple)]">30%</p>
+                <p className="text-[10px] opacity-60">Streak Days</p>
+              </div>
+              <div>
+                <p className="text-lg font-bold text-white/70">20%</p>
+                <p className="text-[10px] opacity-60">Time In Range</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* User Stats */}
+        {userAllocation && userAllocation.positionCount > 0 ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-black/40 rounded-2xl p-4 border border-white/10">
+                <p className="text-xs opacity-50 uppercase tracking-wider mb-1">Your Points</p>
+                <p className="text-2xl font-bold text-[var(--monad-purple)]">
+                  {userAllocation.formattedPoints}
+                </p>
+                {userAllocation.tier && (
+                  <p className="text-xs mt-1">
+                    <span className="mr-1">{userAllocation.tier.emoji}</span>
+                    <span className="opacity-70">{userAllocation.tier.name} tier</span>
+                  </p>
+                )}
+              </div>
+              <div className="bg-black/40 rounded-2xl p-4 border border-white/10">
+                <p className="text-xs opacity-50 uppercase tracking-wider mb-1">Est. Allocation</p>
+                <p className="text-2xl font-bold text-[var(--moss-green)]">
+                  {userAllocation.formattedEstimatedLpMining ?? '0'}
+                </p>
+                <p className="text-xs opacity-50 mt-1">{userAllocation.shareOfPool}% of pool</p>
+              </div>
+              <div className="bg-black/40 rounded-2xl p-4 border border-white/10">
+                <p className="text-xs opacity-50 uppercase tracking-wider mb-1">Your Rank</p>
+                <p className="text-2xl font-bold">#{userAllocation.rank ?? '—'}</p>
+                <p className="text-xs opacity-50 mt-1">of {userAllocation.totalRanked} LPers</p>
+              </div>
+              <div className="bg-black/40 rounded-2xl p-4 border border-white/10">
+                <p className="text-xs opacity-50 uppercase tracking-wider mb-1">Best Streak</p>
+                <p className="text-2xl font-bold">{userAllocation.bestStreakDays ?? 0}d</p>
+                <p className="text-xs opacity-50 mt-1">Top {userAllocation.percentile}%</p>
+              </div>
+            </div>
+
+            {/* Points Breakdown */}
+            {userAllocation.formattedPointsBreakdown && (
+              <div className="bg-black/30 rounded-xl p-3 border border-white/5">
+                <p className="text-xs opacity-50 uppercase tracking-wider mb-2">
+                  Your Points Breakdown
+                </p>
+                <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                  <div>
+                    <p className="font-bold text-[var(--moss-green)]">
+                      {userAllocation.pointsBreakdown?.notionalPoints?.toLocaleString() ?? 0}
+                    </p>
+                    <p className="opacity-50">{userAllocation.formattedNotionalUsd ?? '$0'}</p>
+                  </div>
+                  <div>
+                    <p className="font-bold text-[var(--monad-purple)]">
+                      {userAllocation.pointsBreakdown?.streakPoints?.toLocaleString() ?? 0}
+                    </p>
+                    <p className="opacity-50">{userAllocation.bestStreakDays ?? 0}d streak</p>
+                  </div>
+                  <div>
+                    <p className="font-bold text-white/70">
+                      {userAllocation.pointsBreakdown?.timePoints?.toLocaleString() ?? 0}
+                    </p>
+                    <p className="opacity-50">{userAllocation.totalHoursInRange ?? 0}h in range</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="bg-black/40 rounded-2xl p-6 border border-white/10 text-center">
+            <p className="text-lg mb-2">🌙 No LP positions yet</p>
+            <p className="text-sm opacity-70 mb-4">
+              Deploy LP to start earning points and climb the leaderboard!
+            </p>
+            <button
+              type="button"
+              onClick={handleOpenAdvancedLp}
+              className="px-6 py-2 bg-[var(--monad-purple)] text-white rounded-xl font-semibold hover:bg-[var(--monad-purple)]/80 transition-colors"
+            >
+              Deploy LP Now
+            </button>
+          </div>
+        )}
+
+        {/* Allocation Breakdown */}
+        <div className="space-y-3">
+          <p className="text-xs opacity-50 uppercase tracking-wider">
+            Rewards Breakdown (26.23% of supply)
+          </p>
+          <div className="space-y-2">
+            {formattedAllocations.slice(0, 3).map((alloc) => (
+              <div
+                key={alloc.key}
+                className="flex items-center justify-between bg-black/30 rounded-xl px-4 py-3 border border-white/5"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">{alloc.emoji}</span>
+                  <div>
+                    <p className="text-sm font-semibold">{alloc.name}</p>
+                    <p className="text-xs opacity-50">{alloc.description}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-[var(--moss-green)]">
+                    {alloc.formattedTokens}
+                  </p>
+                  <p className="text-xs opacity-50">{alloc.percentOfTotal}%</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Top Earners Preview */}
+        {topEarners && topEarners.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-xs opacity-50 uppercase tracking-wider">⭐ Top 5 Earners</p>
+            <div className="space-y-2">
+              {topEarners.map((earner) => (
+                <div
+                  key={earner.rank}
+                  className="flex items-center justify-between bg-black/30 rounded-xl px-4 py-2 border border-white/5"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg">{earner.tier?.emoji ?? '🌙'}</span>
+                    <div>
+                      <span className="text-sm font-semibold">
+                        #{earner.rank} {earner.label}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-[var(--monad-purple)]">
+                      {earner.formattedPoints}
+                    </p>
+                    <p className="text-xs text-[var(--moss-green)]">
+                      ~{earner.estimatedAllocation}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* CTA */}
+        <div className="text-center pt-2">
+          <p className="text-xs opacity-40">
+            Points update every 10 minutes • Stay in range to maximize earnings
+          </p>
         </div>
       </div>
     );
@@ -4220,6 +4581,8 @@ Join the $m00n cabal 🌙`;
           })}
           {/* Streak Leaderboard */}
           {renderStreakLeaderboard()}
+          {/* Season 1 Rewards Panel */}
+          {renderSeason1Panel()}
           {personaLookupStatus === 'loading' && (
             <p className="text-center text-xs text-yellow-300">Syncing cabal dossier…</p>
           )}

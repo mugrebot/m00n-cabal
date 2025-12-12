@@ -2,13 +2,17 @@
  * Streak Tracker for LP Positions
  *
  * Tracks how long each position stays in-range continuously.
- * Points are awarded based on streak duration.
+ * Points are calculated using weighted formula:
+ * - 50% weight: Notional USD value
+ * - 30% weight: Streak duration (days)
+ * - 20% weight: Total time in range (hours)
  */
 
 import { kv } from '@vercel/kv';
 import { getTopM00nLpPositions } from '@/app/lib/m00nSolarSystem.server';
 import type { LpPosition } from '@/app/lib/m00nSolarSystem.types';
 import { getAddressLabel } from '@/app/lib/addressLabels';
+import { calculateWeightedPoints, getStreakTier, getCurrentSeason } from '@/app/lib/tokenomics';
 
 // -----------------------------
 // Types
@@ -40,8 +44,23 @@ export interface PositionStreak {
   tickLower?: number;
   tickUpper?: number;
 
-  // Points calculation
+  // Points calculation (weighted)
   points: number;
+  pointsBreakdown?: {
+    notionalPoints: number;
+    streakPoints: number;
+    timePoints: number;
+  };
+
+  // Tier info
+  tier?: {
+    name: string;
+    emoji: string;
+    multiplier: number;
+  };
+
+  // Season tracking
+  seasonId?: string;
 }
 
 export interface StreakLeaderboardEntry {
@@ -52,18 +71,31 @@ export interface StreakLeaderboardEntry {
   longestStreakDuration: number;
   isCurrentlyInRange: boolean;
   points: number;
+  pointsBreakdown?: {
+    notionalPoints: number;
+    streakPoints: number;
+    timePoints: number;
+  };
   valueUsd?: number;
   rank?: number;
+  tier?: {
+    name: string;
+    emoji: string;
+    multiplier: number;
+  };
 }
 
 export interface StreakLeaderboard {
   updatedAt: string;
   lastCheckAt: string;
+  seasonId: string;
   totalPositionsTracked: number;
+  totalSystemPoints: number;
   entries: StreakLeaderboardEntry[];
   topStreaks: StreakLeaderboardEntry[]; // Sorted by current streak
   topAllTime: StreakLeaderboardEntry[]; // Sorted by longest streak ever
   topPoints: StreakLeaderboardEntry[]; // Sorted by total points
+  topNotional: StreakLeaderboardEntry[]; // Sorted by notional value
 }
 
 // -----------------------------
@@ -74,32 +106,9 @@ const STREAK_DATA_KEY = 'm00n:lp-streaks';
 const STREAK_LEADERBOARD_KEY = 'm00n:lp-streak-leaderboard';
 const STREAK_LAST_CHECK_KEY = 'm00n:lp-streak-last-check';
 
-// Points formula constants
-const POINTS_PER_HOUR_IN_RANGE = 10;
-const POINTS_BONUS_PER_DAY_STREAK = 50; // Bonus for maintaining streak
-const POINTS_MULTIPLIER_WEEK_STREAK = 2; // 2x points after 7 days continuous
-
 const isKvConfigured =
   Boolean(process.env.KV_URL) ||
   (Boolean(process.env.KV_REST_API_URL) && Boolean(process.env.KV_REST_API_TOKEN));
-
-// -----------------------------
-// Points Calculation
-// -----------------------------
-
-function calculatePoints(streak: PositionStreak): number {
-  const hoursInRange = streak.totalInRangeTime / 3600;
-  const basePoints = hoursInRange * POINTS_PER_HOUR_IN_RANGE;
-
-  // Current streak bonus
-  const currentStreakDays = streak.currentStreakDuration / 86400;
-  const streakBonus = Math.floor(currentStreakDays) * POINTS_BONUS_PER_DAY_STREAK;
-
-  // Week streak multiplier
-  const weekMultiplier = currentStreakDays >= 7 ? POINTS_MULTIPLIER_WEEK_STREAK : 1;
-
-  return Math.floor((basePoints + streakBonus) * weekMultiplier);
-}
 
 // -----------------------------
 // Duration formatting
@@ -159,10 +168,15 @@ export async function updateStreaks(): Promise<{
   newPositions: number;
   streaksStarted: number;
   streaksEnded: number;
+  totalPoints: number;
 }> {
   const now = Date.now();
   const lastCheck = await getLastCheckTimestamp();
   const timeSinceLastCheck = lastCheck ? (now - lastCheck) / 1000 : 0;
+
+  // Get current season
+  const currentSeason = await getCurrentSeason();
+  const seasonId = currentSeason?.id ?? 'season-1';
 
   // Fetch current positions
   const positions = await getTopM00nLpPositions(200); // Get top 200 positions
@@ -174,6 +188,7 @@ export async function updateStreaks(): Promise<{
   let newPositions = 0;
   let streaksStarted = 0;
   let streaksEnded = 0;
+  let totalPoints = 0;
 
   for (const position of positions) {
     const tokenId = position.tokenId;
@@ -183,6 +198,10 @@ export async function updateStreaks(): Promise<{
     if (!existing) {
       // New position - initialize tracking
       newPositions++;
+
+      const streakDays = 0;
+      const tier = getStreakTier(streakDays);
+
       const streak: PositionStreak = {
         tokenId,
         owner: position.owner,
@@ -200,7 +219,10 @@ export async function updateStreaks(): Promise<{
         valueUsd: position.notionalUsd,
         tickLower: position.tickLower,
         tickUpper: position.tickUpper,
-        points: 0
+        points: 0,
+        pointsBreakdown: { notionalPoints: 0, streakPoints: 0, timePoints: 0 },
+        tier,
+        seasonId
       };
 
       if (isInRange) {
@@ -254,9 +276,22 @@ export async function updateStreaks(): Promise<{
       existing.valueUsd = position.notionalUsd;
       existing.tickLower = position.tickLower;
       existing.tickUpper = position.tickUpper;
+      existing.seasonId = seasonId;
 
-      // Recalculate points
-      existing.points = calculatePoints(existing);
+      // Calculate weighted points
+      const streakDays = existing.currentStreakDuration / 86400;
+      existing.tier = getStreakTier(streakDays);
+
+      const pointsResult = calculateWeightedPoints({
+        notionalUsd: existing.valueUsd ?? 0,
+        streakDurationSeconds: existing.currentStreakDuration,
+        totalInRangeSeconds: existing.totalInRangeTime
+      });
+
+      existing.points = pointsResult.total;
+      existing.pointsBreakdown = pointsResult.breakdown;
+
+      totalPoints += existing.points;
     }
   }
 
@@ -264,7 +299,7 @@ export async function updateStreaks(): Promise<{
   await kvSafeSet(STREAK_DATA_KEY, streakData);
   await kvSafeSet(STREAK_LAST_CHECK_KEY, now);
 
-  return { updated, newPositions, streaksStarted, streaksEnded };
+  return { updated, newPositions, streaksStarted, streaksEnded, totalPoints };
 }
 
 // -----------------------------
@@ -274,6 +309,8 @@ export async function updateStreaks(): Promise<{
 export async function buildStreakLeaderboard(): Promise<StreakLeaderboard> {
   const streakData = await getStreakData();
   const lastCheck = await getLastCheckTimestamp();
+  const currentSeason = await getCurrentSeason();
+  const seasonId = currentSeason?.id ?? 'season-1';
 
   const allEntries: StreakLeaderboardEntry[] = Object.values(streakData)
     .filter((streak) => streak.checkCount > 0)
@@ -285,8 +322,12 @@ export async function buildStreakLeaderboard(): Promise<StreakLeaderboard> {
       longestStreakDuration: streak.longestStreakDuration,
       isCurrentlyInRange: streak.isCurrentlyInRange,
       points: streak.points,
-      valueUsd: streak.valueUsd
+      pointsBreakdown: streak.pointsBreakdown,
+      valueUsd: streak.valueUsd,
+      tier: streak.tier
     }));
+
+  const totalSystemPoints = allEntries.reduce((sum, e) => sum + e.points, 0);
 
   // Sort by current streak for "🔥 Hot Streaks"
   const topStreaks = [...allEntries]
@@ -309,14 +350,24 @@ export async function buildStreakLeaderboard(): Promise<StreakLeaderboard> {
     .slice(0, 10)
     .map((entry, index) => ({ ...entry, rank: index + 1 }));
 
+  // Sort by notional value for "💰 Top Whales"
+  const topNotional = [...allEntries]
+    .filter((e) => (e.valueUsd ?? 0) > 0)
+    .sort((a, b) => (b.valueUsd ?? 0) - (a.valueUsd ?? 0))
+    .slice(0, 10)
+    .map((entry, index) => ({ ...entry, rank: index + 1 }));
+
   const leaderboard: StreakLeaderboard = {
     updatedAt: new Date().toISOString(),
     lastCheckAt: lastCheck ? new Date(lastCheck).toISOString() : new Date().toISOString(),
+    seasonId,
     totalPositionsTracked: allEntries.length,
+    totalSystemPoints,
     entries: allEntries,
     topStreaks,
     topAllTime,
-    topPoints
+    topPoints,
+    topNotional
   };
 
   // Persist leaderboard
@@ -339,6 +390,67 @@ export async function getPositionStreak(tokenId: string): Promise<PositionStreak
 }
 
 // -----------------------------
+// Get all streaks for an owner
+// -----------------------------
+
+export async function getOwnerStreaks(ownerAddress: string): Promise<PositionStreak[]> {
+  const data = await getStreakData();
+  const lowerAddress = ownerAddress.toLowerCase();
+  return Object.values(data).filter((streak) => streak.owner.toLowerCase() === lowerAddress);
+}
+
+// -----------------------------
+// Get owner aggregate stats
+// -----------------------------
+
+export async function getOwnerStats(ownerAddress: string): Promise<{
+  positionCount: number;
+  totalPoints: number;
+  totalNotionalUsd: number;
+  bestStreakDays: number;
+  totalHoursInRange: number;
+  breakdown: {
+    notionalPoints: number;
+    streakPoints: number;
+    timePoints: number;
+  };
+  tier: { name: string; emoji: string; multiplier: number };
+} | null> {
+  const streaks = await getOwnerStreaks(ownerAddress);
+  if (streaks.length === 0) return null;
+
+  const totalPoints = streaks.reduce((sum, s) => sum + s.points, 0);
+  const totalNotionalUsd = streaks.reduce((sum, s) => sum + (s.valueUsd ?? 0), 0);
+  const bestStreakSeconds = Math.max(...streaks.map((s) => s.currentStreakDuration));
+  const bestStreakDays = bestStreakSeconds / 86400;
+  const totalHoursInRange = streaks.reduce((sum, s) => sum + s.totalInRangeTime, 0) / 3600;
+
+  const breakdown = streaks.reduce(
+    (acc, s) => {
+      const pb = s.pointsBreakdown ?? { notionalPoints: 0, streakPoints: 0, timePoints: 0 };
+      return {
+        notionalPoints: acc.notionalPoints + pb.notionalPoints,
+        streakPoints: acc.streakPoints + pb.streakPoints,
+        timePoints: acc.timePoints + pb.timePoints
+      };
+    },
+    { notionalPoints: 0, streakPoints: 0, timePoints: 0 }
+  );
+
+  const tier = getStreakTier(bestStreakDays);
+
+  return {
+    positionCount: streaks.length,
+    totalPoints,
+    totalNotionalUsd,
+    bestStreakDays: Math.floor(bestStreakDays),
+    totalHoursInRange: Math.floor(totalHoursInRange),
+    breakdown,
+    tier
+  };
+}
+
+// -----------------------------
 // Admin: Reset all streaks
 // -----------------------------
 
@@ -346,4 +458,29 @@ export async function resetAllStreaks(): Promise<void> {
   await kvSafeSet(STREAK_DATA_KEY, {});
   await kvSafeSet(STREAK_LEADERBOARD_KEY, null);
   await kvSafeSet(STREAK_LAST_CHECK_KEY, null);
+}
+
+// -----------------------------
+// Admin: Reset streaks for new season
+// -----------------------------
+
+export async function resetStreaksForNewSeason(newSeasonId: string): Promise<{
+  positionsReset: number;
+}> {
+  const streakData = await getStreakData();
+  let positionsReset = 0;
+
+  for (const tokenId of Object.keys(streakData)) {
+    const streak = streakData[tokenId];
+    // Reset points but keep streak tracking
+    streak.points = 0;
+    streak.pointsBreakdown = { notionalPoints: 0, streakPoints: 0, timePoints: 0 };
+    streak.seasonId = newSeasonId;
+    positionsReset++;
+  }
+
+  await kvSafeSet(STREAK_DATA_KEY, streakData);
+  await kvSafeSet(STREAK_LEADERBOARD_KEY, null);
+
+  return { positionsReset };
 }
