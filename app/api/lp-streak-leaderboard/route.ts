@@ -4,6 +4,7 @@ import {
   buildStreakLeaderboard,
   updateStreaks
 } from '@/app/lib/streakTracker';
+import { checkRateLimit, getClientIp, RATE_LIMITS } from '@/app/lib/rateLimit';
 
 const FALLBACK_REBUILD_ENABLED = process.env.NODE_ENV !== 'production';
 
@@ -57,6 +58,20 @@ export async function GET(request: NextRequest) {
 // POST: Trigger a streak update (for cron jobs or admin)
 export async function POST(request: Request) {
   try {
+    // Rate limiting
+    const ip = getClientIp(request);
+    const rateLimit = await checkRateLimit({
+      ...RATE_LIMITS.streakUpdate,
+      identifier: `streak-update:${ip}`
+    });
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'rate_limit_exceeded', resetAt: rateLimit.resetAt },
+        { status: 429 }
+      );
+    }
+
     // Optional: Check for admin secret
     const secret = request.headers.get('x-admin-secret');
     const expectedSecret = process.env.LP_TELEMETRY_SECRET;

@@ -10,6 +10,7 @@ import {
   type RewardsDistribution
 } from '@/app/lib/tokenomics';
 import { getStreakData, getStreakLeaderboard } from '@/app/lib/streakTracker';
+import { checkRateLimit, getClientIp, RATE_LIMITS } from '@/app/lib/rateLimit';
 import { randomUUID } from 'crypto';
 
 const ADMIN_SECRET = process.env.LP_TELEMETRY_SECRET ?? '';
@@ -17,6 +18,24 @@ const ADMIN_SECRET = process.env.LP_TELEMETRY_SECRET ?? '';
 function checkAuth(request: NextRequest): boolean {
   const secret = request.headers.get('x-admin-secret');
   return ADMIN_SECRET !== '' && secret === ADMIN_SECRET;
+}
+
+async function rateLimitCheck(
+  request: NextRequest,
+  endpoint: string
+): Promise<NextResponse | null> {
+  const ip = getClientIp(request);
+  const rateLimit = await checkRateLimit({
+    ...RATE_LIMITS.admin,
+    identifier: `${endpoint}:${ip}`
+  });
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: 'rate_limit_exceeded', resetAt: rateLimit.resetAt },
+      { status: 429 }
+    );
+  }
+  return null;
 }
 
 // GET: List distributions
@@ -61,6 +80,9 @@ export async function GET(request: NextRequest) {
 // POST: Create or manage distributions
 export async function POST(request: NextRequest) {
   try {
+    const rateLimited = await rateLimitCheck(request, 'admin-distributions');
+    if (rateLimited) return rateLimited;
+
     if (!checkAuth(request)) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     }

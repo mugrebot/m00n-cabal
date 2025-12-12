@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/lp-streak-leaderboard",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 12 * * *"
     }
   ]
 }
