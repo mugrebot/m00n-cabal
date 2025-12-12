@@ -14,6 +14,9 @@ import type { LpPosition } from '@/app/lib/m00nSolarSystem.types';
 import { getAddressLabel } from '@/app/lib/addressLabels';
 import { calculateWeightedPoints, getStreakTier, getCurrentSeason } from '@/app/lib/tokenomics';
 
+// Clanker pool should never appear in leaderboards
+const CLANKER_TOKEN_ID = '6914';
+
 // -----------------------------
 // Types
 // -----------------------------
@@ -342,7 +345,10 @@ export async function buildStreakLeaderboard(): Promise<StreakLeaderboard> {
   const seasonId = currentSeason?.id ?? 'season-1';
 
   const allEntries: StreakLeaderboardEntry[] = Object.values(streakData)
-    .filter((streak) => streak.checkCount > 0 && (streak.valueUsd ?? 0) >= 5)
+    .filter(
+      (streak) =>
+        streak.checkCount > 0 && (streak.valueUsd ?? 0) >= 5 && streak.tokenId !== CLANKER_TOKEN_ID
+    )
     .map((streak) => ({
       tokenId: streak.tokenId,
       owner: streak.owner,

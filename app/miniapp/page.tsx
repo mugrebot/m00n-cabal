@@ -4962,7 +4962,7 @@ Join the $m00n cabal 🌙`;
     const wmonPrice = lpGateState.poolWmonUsdPrice ?? 0;
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-6 pt-4">
         {/* Balance + Stats Row */}
         <div className={`${PANEL_CLASS} p-4`}>
           <div className="grid grid-cols-3 gap-3 text-center">
@@ -5312,26 +5312,24 @@ Join the $m00n cabal 🌙`;
   // Qualification Requirements Card
   const renderQualificationCard = () => (
     <div className={`${PANEL_CLASS} p-3 bg-black/60`}>
-      <p className="text-xs font-semibold mb-2">📋 Qualification Requirements</p>
-      <div className="grid grid-cols-2 gap-2 text-[10px]">
-        <div className="flex items-center gap-2 bg-black/40 rounded-lg p-2">
+      <p className="text-xs font-semibold mb-2">📋 Qualification</p>
+      <div className="grid grid-cols-3 gap-2 text-[10px]">
+        <div className="flex flex-col items-center gap-1 bg-black/40 rounded-lg p-2">
           <span>💰</span>
-          <span className="opacity-70">Hold 1M+ m00n</span>
+          <span className="opacity-70 text-center">1M+ m00n</span>
         </div>
-        <div className="flex items-center gap-2 bg-black/40 rounded-lg p-2">
+        <div className="flex flex-col items-center gap-1 bg-black/40 rounded-lg p-2">
           <span>💵</span>
-          <span className="opacity-70">Position &gt;$5 value</span>
+          <span className="opacity-70 text-center">&gt;$5 LP</span>
         </div>
-        <div className="flex items-center gap-2 bg-black/40 rounded-lg p-2">
+        <div className="flex flex-col items-center gap-1 bg-black/40 rounded-lg p-2">
           <span>⏳</span>
-          <span className="opacity-70">Position 7d+ old</span>
-        </div>
-        <div className="flex items-center gap-2 bg-black/40 rounded-lg p-2">
-          <span>🎯</span>
-          <span className="opacity-70">In range = bonus pts</span>
+          <span className="opacity-70 text-center">7d+ old</span>
         </div>
       </div>
-      <p className="text-[9px] opacity-40 mt-2 text-center">Snapshots taken each full moon 🌕</p>
+      <p className="text-[9px] opacity-40 mt-2 text-center">
+        🎯 In-range = bonus • Full moon snapshots 🌕
+      </p>
     </div>
   );
 
