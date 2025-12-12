@@ -3741,8 +3741,8 @@ Join the $m00n cabal 🌙`;
 
         {/* Points breakdown legend */}
         <div className="text-[10px] opacity-40 text-center pt-2 border-t border-white/10">
-          <p>50% value + 30% streak + 20% time in range</p>
-          <p className="mt-1">× Yap multiplier (up to 5x)</p>
+          <p>50% value + 30% streak + 20% time</p>
+          <p className="mt-1">× In-range bonus × Yap multiplier</p>
         </div>
       </div>
     );
@@ -5101,31 +5101,29 @@ Join the $m00n cabal 🌙`;
     const positions = lpGateState.lpPositions ?? [];
     const hasPositions = positions.length > 0;
     const wmonPrice = lpGateState.poolWmonUsdPrice ?? 0;
+    const currentTick = lpGateState.poolCurrentTick ?? 0;
 
-    // Calculate position value from token breakdown
+    // Calculate moon price from current tick
+    const moonPriceInWmon = currentTick ? Math.pow(1.0001, currentTick) : 0;
+    const moonPriceUsd = moonPriceInWmon * wmonPrice;
+
+    // Calculate position value from token breakdown (same logic as desktop)
     const getPositionValueUsd = (pos: LpPosition): number => {
       const token0Amt = pos.token0?.amountWei
-        ? Number(formatUnits(BigInt(pos.token0.amountWei), 18))
+        ? Number(formatUnits(BigInt(pos.token0.amountWei), pos.token0.decimals ?? 18))
         : 0;
       const token1Amt = pos.token1?.amountWei
-        ? Number(formatUnits(BigInt(pos.token1.amountWei), 18))
+        ? Number(formatUnits(BigInt(pos.token1.amountWei), pos.token1.decimals ?? 18))
         : 0;
-      // token0 = m00n, token1 = WMON (priced in USD)
-      const moonPriceUsd = wmonPrice * 0.00000001; // Approximate based on pool ratio
+      // token0 = m00n, token1 = WMON
       return token0Amt * moonPriceUsd + token1Amt * wmonPrice;
     };
 
-    // Format price range in USD
-    const formatPriceRange = (pos: LpPosition): string => {
-      if (!pos.priceLowerInToken1 || !pos.priceUpperInToken1 || !wmonPrice) {
-        return `Tick ${pos.tickLower ?? '?'} → ${pos.tickUpper ?? '?'}`;
-      }
-      const lower = Number(pos.priceLowerInToken1) * 100000000 * wmonPrice;
-      const upper = Number(pos.priceUpperInToken1) * 100000000 * wmonPrice;
-      if (!Number.isFinite(lower) || !Number.isFinite(upper)) {
-        return `Tick ${pos.tickLower ?? '?'} → ${pos.tickUpper ?? '?'}`;
-      }
-      return `$${lower.toFixed(2)} — $${upper.toFixed(2)}`;
+    // Get band type label matching desktop
+    const getBandLabel = (bandType?: string): string => {
+      if (bandType === 'crash_band') return 'CRASH BAND';
+      if (bandType === 'upside_band') return 'SKY BAND';
+      return 'DOUBLE SIDED';
     };
 
     return (
@@ -5147,74 +5145,69 @@ Join the $m00n cabal 🌙`;
           </button>
         </div>
 
-        {/* Position Cards */}
+        {/* Position Cards - matches desktop layout */}
         {hasPositions ? (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {positions.map((pos) => {
               const isInRange = pos.rangeStatus === 'in-range';
-              const posValue = getPositionValueUsd(pos);
+              const fees = pos.fees;
               return (
                 <div
                   key={pos.tokenId}
-                  className={`${PANEL_CLASS} space-y-3 border-l-4 ${
-                    isInRange ? 'border-l-[var(--moss-green)]' : 'border-l-red-400'
-                  }`}
+                  className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-white space-y-1"
                 >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-semibold">
-                        #{pos.tokenId}
-                        <span className="ml-2 text-xs opacity-60">
-                          {pos.bandType === 'crash_band'
-                            ? '🛡️ Crash'
-                            : pos.bandType === 'upside_band'
-                              ? '🚀 Sky'
-                              : '↔️ Double'}
-                        </span>
-                      </p>
-                      <p className="text-xs opacity-60">{formatPriceRange(pos)}</p>
-                    </div>
-                    <span
-                      className={`text-xs px-2 py-1 rounded-full ${
-                        isInRange
-                          ? 'bg-[var(--moss-green)]/20 text-[var(--moss-green)]'
-                          : 'bg-red-400/20 text-red-400'
-                      }`}
-                    >
-                      {isInRange ? '✅ In Range' : '⚠️ Out of Range'}
+                  {/* Row 1: Token ID + Band Type */}
+                  <div className="flex justify-between">
+                    <span className="font-mono text-white/90">#{pos.tokenId}</span>
+                    <span className="uppercase tracking-[0.15em] text-[10px] text-[var(--moss-green)]">
+                      {getBandLabel(pos.bandType)}
                     </span>
                   </div>
-                  <div className="flex gap-4 text-xs">
-                    <div>
-                      <span className="opacity-50">Value:</span>{' '}
-                      <span className="font-mono">${posValue.toFixed(2)}</span>
-                    </div>
-                    {pos.feesStatus === 'loaded' && pos.fees && (
-                      <div>
-                        <span className="opacity-50">Fees:</span>{' '}
-                        <span className="font-mono text-[var(--moss-green)]">
-                          {pos.fees.unclaimedUsd !== null && pos.fees.unclaimedUsd !== undefined
-                            ? `$${pos.fees.unclaimedUsd.toFixed(2)}`
-                            : `${pos.fees.token0Formatted} / ${pos.fees.token1Formatted}`}
-                        </span>
-                      </div>
-                    )}
+                  {/* Row 2: Range (ticks) */}
+                  <div className="flex justify-between text-white/70">
+                    <span>Range</span>
+                    <span>
+                      {pos.tickLower ?? '?'} → {pos.tickUpper ?? '?'}
+                    </span>
                   </div>
-                  <div className="flex gap-2">
+                  {/* Row 3: Status */}
+                  <div className="flex justify-between text-white/70">
+                    <span>Status</span>
+                    <span className={isInRange ? 'text-[var(--moss-green)]' : 'text-red-400'}>
+                      {pos.rangeStatus ?? 'unknown'}
+                    </span>
+                  </div>
+                  {/* Row 4: Unclaimed fees */}
+                  <div className="flex justify-between text-white/70">
+                    <span>Unclaimed</span>
+                    <span>
+                      {fees?.token0Formatted ?? '0'} m00n / {fees?.token1Formatted ?? '0'} WMON
+                    </span>
+                  </div>
+                  {/* Buttons row */}
+                  <div className="flex items-center gap-2 pt-1">
                     <button
                       type="button"
-                      onClick={() => handleSharePosition(pos)}
-                      className="flex-1 text-xs px-3 py-2 rounded-lg border border-[var(--monad-purple)] text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-white transition-colors"
+                      onClick={() => handleCollectLpFees(pos.tokenId)}
+                      disabled={pos.collectStatus === 'loading'}
+                      className="px-3 py-1 rounded-full border border-[var(--moss-green)] text-[var(--moss-green)] hover:bg-[var(--moss-green)] hover:text-black transition disabled:opacity-50"
                     >
-                      SHARE 🌙
+                      {pos.collectStatus === 'loading' ? 'Collecting…' : 'Collect'}
                     </button>
                     <button
                       type="button"
                       onClick={() => handleRemoveLiquidity(pos.tokenId)}
                       disabled={pos.removeStatus === 'loading'}
-                      className="flex-1 text-xs px-3 py-2 rounded-lg border border-red-400/50 text-red-400 hover:bg-red-400/20 transition-colors disabled:opacity-50"
+                      className="px-3 py-1 rounded-full border border-red-400 text-red-400 hover:bg-red-400 hover:text-black transition disabled:opacity-50"
                     >
-                      {pos.removeStatus === 'loading' ? 'Removing...' : 'Remove LP'}
+                      {pos.removeStatus === 'loading' ? 'Removing…' : 'Remove'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSharePosition(pos)}
+                      className="ml-auto px-3 py-1 rounded-full border border-[var(--monad-purple)] text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-white transition"
+                    >
+                      Share
                     </button>
                   </div>
                 </div>
@@ -5334,13 +5327,11 @@ Join the $m00n cabal 🌙`;
           <span className="opacity-70">Position 7d+ old</span>
         </div>
         <div className="flex items-center gap-2 bg-black/40 rounded-lg p-2">
-          <span>🔥</span>
-          <span className="opacity-70">7d+ streak</span>
+          <span>🎯</span>
+          <span className="opacity-70">In range = bonus pts</span>
         </div>
       </div>
-      <p className="text-[9px] opacity-40 mt-2 text-center">
-        🎯 Must be in range at full moon snapshot 🌕
-      </p>
+      <p className="text-[9px] opacity-40 mt-2 text-center">Snapshots taken each full moon 🌕</p>
     </div>
   );
 

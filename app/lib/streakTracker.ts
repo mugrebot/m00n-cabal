@@ -313,7 +313,8 @@ export async function updateStreaks(): Promise<{
       const pointsResult = calculateWeightedPoints({
         notionalUsd: existing.valueUsd ?? 0,
         streakDurationSeconds: existing.currentStreakDuration,
-        totalInRangeSeconds: existing.totalInRangeTime
+        totalInRangeSeconds: existing.totalInRangeTime,
+        isCurrentlyInRange: existing.isCurrentlyInRange
       });
 
       existing.points = pointsResult.total;

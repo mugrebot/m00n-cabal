@@ -186,17 +186,24 @@ export const POINTS_WEIGHTS = {
 
 /**
  * Calculate weighted points for a position
+ * - Being in-range is a bonus multiplier (1.5x), not a hard requirement
+ * - Out-of-range positions still earn points, just fewer
  */
 export function calculateWeightedPoints(params: {
   notionalUsd: number;
   streakDurationSeconds: number;
   totalInRangeSeconds: number;
+  isCurrentlyInRange?: boolean;
 }): {
   total: number;
   breakdown: {
     notionalPoints: number;
     streakPoints: number;
     timePoints: number;
+  };
+  multipliers: {
+    streak: number;
+    inRange: number;
   };
 } {
   const streakDays = params.streakDurationSeconds / 86400;
@@ -222,7 +229,11 @@ export function calculateWeightedPoints(params: {
     streakMultiplier = 1.5; // 1.5x for 7+ day streaks
   }
 
-  const total = Math.floor((notionalPoints + streakPoints + timePoints) * streakMultiplier);
+  // In-range bonus: 1.5x if currently in range, 1x otherwise
+  const inRangeMultiplier = params.isCurrentlyInRange ? 1.5 : 1;
+
+  const baseTotal = notionalPoints + streakPoints + timePoints;
+  const total = Math.floor(baseTotal * streakMultiplier * inRangeMultiplier);
 
   return {
     total,
@@ -230,6 +241,10 @@ export function calculateWeightedPoints(params: {
       notionalPoints: Math.floor(notionalPoints),
       streakPoints: Math.floor(streakPoints * streakMultiplier),
       timePoints: Math.floor(timePoints)
+    },
+    multipliers: {
+      streak: streakMultiplier,
+      inRange: inRangeMultiplier
     }
   };
 }
