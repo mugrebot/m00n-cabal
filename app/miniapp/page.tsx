@@ -1703,6 +1703,25 @@ function MiniAppPageInner() {
 
       const wmonPrice = lpGateState.poolWmonUsdPrice ?? 0;
 
+      // Calculate position value in USD
+      // token0 is m00n, token1 is WMON
+      const wmonValueUsd = position.token1?.amountFormatted
+        ? Number(position.token1.amountFormatted) * wmonPrice
+        : 0;
+      const moonValueUsd = position.token0?.amountFormatted
+        ? Number(position.token0.amountFormatted) * (wmonPrice / 100000000) // m00n price = wmon price / 100M supply ratio
+        : 0;
+      const positionValueUsd = wmonValueUsd + moonValueUsd;
+
+      // Get username - fallback to displayName then fid
+      const displayUsername = userData.username || userData.displayName || `fid${userData.fid}`;
+      console.log(
+        'SHARE_POSITION: userData=',
+        JSON.stringify(userData),
+        'displayUsername=',
+        displayUsername
+      );
+
       // Build OG image URL with position data
       const baseUrl =
         typeof window !== 'undefined' ? window.location.origin : 'https://m00nad.vercel.app';
@@ -1716,7 +1735,8 @@ function MiniAppPageInner() {
         rangeUpper: position.priceUpperInToken1
           ? String(Math.round(Number(position.priceUpperInToken1) * 100000000 * wmonPrice))
           : '0',
-        username: userData.username || `fid:${userData.fid}`
+        username: displayUsername,
+        valueUsd: positionValueUsd > 0 ? String(positionValueUsd.toFixed(2)) : ''
       });
 
       const shareUrl = `${baseUrl}/share/position/${position.tokenId}?${shareParams.toString()}`;

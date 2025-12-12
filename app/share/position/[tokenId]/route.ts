@@ -9,6 +9,20 @@ export async function GET(
   const { tokenId } = await params;
   const { searchParams } = new URL(request.url);
 
+  // Log incoming params for debugging
+  const incomingUsername = searchParams.get('username');
+  const incomingValueUsd = searchParams.get('valueUsd');
+  console.log(
+    '[SHARE_ROUTE] tokenId:',
+    tokenId,
+    'username:',
+    incomingUsername,
+    'valueUsd:',
+    incomingValueUsd,
+    'fullUrl:',
+    request.url
+  );
+
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://m00nad.vercel.app';
 
   // Build OG image URL with all the position data
@@ -18,7 +32,8 @@ export async function GET(
     rangeStatus: searchParams.get('rangeStatus') || 'unknown',
     rangeLower: searchParams.get('rangeLower') || '0',
     rangeUpper: searchParams.get('rangeUpper') || '0',
-    username: searchParams.get('username') || 'anon'
+    username: incomingUsername || 'anon',
+    ...(incomingValueUsd ? { valueUsd: incomingValueUsd } : {})
   });
 
   const ogImageUrl = `${baseUrl}/api/og/position?${ogParams.toString()}`;
@@ -47,11 +62,11 @@ export async function GET(
     version: '1',
     imageUrl: ogImageUrl,
     button: {
-      title: 'View Position 🌙',
+      title: 'Deploy LP 🌙',
       action: {
         type: 'launch_frame',
         name: 'm00n cabal',
-        url: `${baseUrl}/miniapp?position=${tokenId}`,
+        url: `${baseUrl}/lp-advanced`,
         splashImageUrl: `${baseUrl}/brand/splash.svg`,
         splashBackgroundColor: '#0a0612'
       }
