@@ -632,6 +632,11 @@ function MiniAppPageInner() {
     'idle' | 'loading' | 'error' | 'loaded'
   >('idle');
   const [streakLeaderboardRefreshNonce, setStreakLeaderboardRefreshNonce] = useState(0);
+  const [yapMultiplier, setYapMultiplier] = useState<{
+    multiplier: number;
+    tier: string;
+    castCount: number;
+  } | null>(null);
   const [tokenomicsData, setTokenomicsData] = useState<TokenomicsResponse | null>(null);
   const [tokenomicsStatus, setTokenomicsStatus] = useState<'idle' | 'loading' | 'error' | 'loaded'>(
     'idle'
@@ -834,6 +839,50 @@ function MiniAppPageInner() {
       cancelled = true;
     };
   }, [lpGateState.walletAddress, streakLeaderboardRefreshNonce]);
+
+  // Fetch yap multiplier when we have user FID
+  useEffect(() => {
+    const fid = userData?.fid;
+    if (!fid) {
+      setYapMultiplier(null);
+      return;
+    }
+
+    let cancelled = false;
+    const loadYapMultiplier = async () => {
+      try {
+        // First update stats (check for new casts)
+        await fetch('/api/yap-multiplier', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'update_stats',
+            fid,
+            username: userData.username ?? `fid:${fid}`,
+            address: miniWalletAddress ?? primaryAddress
+          })
+        });
+
+        // Then get the stats
+        const response = await fetch(`/api/yap-multiplier?fid=${fid}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled) {
+          setYapMultiplier({
+            multiplier: data.multiplier ?? 1,
+            tier: data.multiplierTier ?? '—',
+            castCount: data.castCount ?? 0
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to load yap multiplier', err);
+      }
+    };
+    loadYapMultiplier();
+    return () => {
+      cancelled = true;
+    };
+  }, [userData?.fid, userData?.username, miniWalletAddress, primaryAddress]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1381,12 +1430,15 @@ function MiniAppPageInner() {
     return () => window.clearInterval(intervalId);
   }, []);
 
+  // Consolidated balance fetch - uses same logic as refreshFundingStatus
   useEffect(() => {
     const targetAddress = miniWalletAddress ?? primaryAddress;
     setBalanceProbeAddress(targetAddress);
 
     if (!targetAddress) {
       setPrimaryAddressMoonBalanceWei(null);
+      setMoonBalanceWei(null);
+      setWmonBalanceWei(null);
       setPrimaryBalanceStatus('idle');
       return;
     }
@@ -1402,14 +1454,30 @@ function MiniAppPageInner() {
         if (!response.ok) {
           throw new Error('funding_lookup_failed');
         }
-        const data = await response.json();
+        const data = (await response.json()) as {
+          wmonBalanceWei?: string;
+          wmonAllowanceWei?: string;
+          moonBalanceWei?: string;
+          moonAllowanceWei?: string;
+        };
         if (cancelled) return;
-        setPrimaryAddressMoonBalanceWei(BigInt(data.moonBalanceWei ?? '0'));
+
+        // Set all balance states from the same source
+        const moonBal = BigInt(data.moonBalanceWei ?? '0');
+        const wmonBal = BigInt(data.wmonBalanceWei ?? '0');
+
+        setPrimaryAddressMoonBalanceWei(moonBal);
+        setMoonBalanceWei(moonBal);
+        setWmonBalanceWei(wmonBal);
+        setWmonAllowanceWei(BigInt(data.wmonAllowanceWei ?? '0'));
+        setMoonAllowanceWei(BigInt(data.moonAllowanceWei ?? '0'));
         setPrimaryBalanceStatus('loaded');
       } catch (err) {
         if (cancelled) return;
-        console.error('Failed to fetch wallet m00n balance', err);
+        console.error('Failed to fetch wallet balances', err);
         setPrimaryAddressMoonBalanceWei(null);
+        setMoonBalanceWei(null);
+        setWmonBalanceWei(null);
         setPrimaryBalanceStatus('error');
       }
     };
@@ -2211,6 +2279,12 @@ Join the $m00n cabal 🌙`;
       setFundingStatus('error');
     }
   }, [miniWalletAddress]);
+
+  // Always fetch balances when wallet is connected
+  useEffect(() => {
+    if (!miniWalletAddress) return;
+    refreshFundingStatus();
+  }, [miniWalletAddress, refreshFundingStatus]);
 
   useEffect(() => {
     if (!isLpClaimModalOpen || !miniWalletAddress) return;
@@ -4828,12 +4902,8 @@ Join the $m00n cabal 🌙`;
         </button>
         <button
           type="button"
-          onClick={() => setActiveTab('advanced')}
-          className={`flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors ${
-            activeTab === 'advanced'
-              ? 'text-[var(--monad-purple)]'
-              : 'text-white/50 hover:text-white/80'
-          }`}
+          onClick={handleOpenAdvancedLp}
+          className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full transition-colors text-white/50 hover:text-white/80"
         >
           <span className="text-lg">🫡</span>
           <span className="text-[9px] font-medium">DEPLOY</span>
@@ -4940,39 +5010,39 @@ Join the $m00n cabal 🌙`;
           )}
         </div>
 
-        {/* Quick Actions - 4 buttons */}
-        <div className="grid grid-cols-4 gap-2">
+        {/* Quick Actions - 2x2 grid */}
+        <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => setActiveTab('lp')}
-            className="py-3 rounded-xl bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/40 text-center"
+            className="py-4 rounded-xl bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/40 text-center"
           >
-            <span className="text-xl block">💧</span>
-            <span className="text-[9px]">LPs</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('advanced')}
-            className="py-3 rounded-xl bg-white/5 border border-white/20 text-center"
-          >
-            <span className="text-xl block">🫡</span>
-            <span className="text-[9px]">Deploy</span>
+            <span className="text-2xl block mb-1">💧</span>
+            <span className="text-xs">My LPs</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('rewards')}
-            className="py-3 rounded-xl bg-[#ffd700]/10 border border-[#ffd700]/30 text-center"
+            className="py-4 rounded-xl bg-[#ffd700]/10 border border-[#ffd700]/30 text-center"
           >
-            <span className="text-xl block">🏆</span>
-            <span className="text-[9px]">Rewards</span>
+            <span className="text-2xl block mb-1">🏆</span>
+            <span className="text-xs">Rewards</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenAdvancedLp}
+            className="py-4 rounded-xl bg-white/5 border border-white/20 text-center"
+          >
+            <span className="text-2xl block mb-1">🫡</span>
+            <span className="text-xs">Deploy LP</span>
           </button>
           <button
             type="button"
             onClick={handleOpenMoonLander}
-            className="py-3 rounded-xl bg-white/5 border border-white/20 text-center"
+            className="py-4 rounded-xl bg-white/5 border border-white/20 text-center"
           >
-            <span className="text-xl block">🚀</span>
-            <span className="text-[9px]">Game</span>
+            <span className="text-2xl block mb-1">🚀</span>
+            <span className="text-xs">Game</span>
           </button>
         </div>
 
@@ -5057,12 +5127,14 @@ Join the $m00n cabal 🌙`;
 
     // Format price range in USD
     const formatPriceRange = (pos: LpPosition): string => {
-      const lower = pos.priceLowerInToken1
-        ? Number(pos.priceLowerInToken1) * 100000000 * wmonPrice
-        : 0;
-      const upper = pos.priceUpperInToken1
-        ? Number(pos.priceUpperInToken1) * 100000000 * wmonPrice
-        : 0;
+      if (!pos.priceLowerInToken1 || !pos.priceUpperInToken1 || !wmonPrice) {
+        return `Tick ${pos.tickLower ?? '?'} → ${pos.tickUpper ?? '?'}`;
+      }
+      const lower = Number(pos.priceLowerInToken1) * 100000000 * wmonPrice;
+      const upper = Number(pos.priceUpperInToken1) * 100000000 * wmonPrice;
+      if (!Number.isFinite(lower) || !Number.isFinite(upper)) {
+        return `Tick ${pos.tickLower ?? '?'} → ${pos.tickUpper ?? '?'}`;
+      }
       return `$${lower.toFixed(2)} — $${upper.toFixed(2)}`;
     };
 
@@ -5211,114 +5283,101 @@ Join the $m00n cabal 🌙`;
     );
   };
 
+  // Yap Multiplier Card
+  const renderYapMultiplierCard = () => {
+    if (!yapMultiplier) return null;
+
+    const isActive = yapMultiplier.multiplier > 1;
+
+    return (
+      <div className={`${PANEL_CLASS} p-3 bg-black/60`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">📣</span>
+            <div>
+              <p className="text-sm font-bold">Yap Boost</p>
+              <p className="text-[10px] opacity-50">
+                {isActive
+                  ? `${yapMultiplier.castCount} casts • ${yapMultiplier.tier}`
+                  : 'Yap about $m00n to boost!'}
+              </p>
+            </div>
+          </div>
+          <div
+            className={`text-lg font-bold ${
+              yapMultiplier.multiplier >= 3
+                ? 'text-[#ffd700]'
+                : yapMultiplier.multiplier >= 2
+                  ? 'text-[var(--monad-purple)]'
+                  : yapMultiplier.multiplier > 1
+                    ? 'text-[var(--moss-green)]'
+                    : 'opacity-50'
+            }`}
+          >
+            {yapMultiplier.multiplier}x
+          </div>
+        </div>
+        {!isActive && (
+          <p className="text-[9px] opacity-40 mt-2 text-center">
+            Mention $m00n in casts to boost points up to 5x!
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  // Qualification Requirements Card
+  const renderQualificationCard = () => (
+    <div className={`${PANEL_CLASS} p-3 bg-black/60`}>
+      <p className="text-xs font-semibold mb-2">📋 Qualification Requirements</p>
+      <div className="grid grid-cols-2 gap-2 text-[10px]">
+        <div className="flex items-center gap-2 bg-black/40 rounded-lg p-2">
+          <span>💰</span>
+          <span className="opacity-70">Hold 1M+ m00n</span>
+        </div>
+        <div className="flex items-center gap-2 bg-black/40 rounded-lg p-2">
+          <span>⏳</span>
+          <span className="opacity-70">Position 7d+ old</span>
+        </div>
+        <div className="flex items-center gap-2 bg-black/40 rounded-lg p-2">
+          <span>🔥</span>
+          <span className="opacity-70">7d+ streak</span>
+        </div>
+        <div className="flex items-center gap-2 bg-black/40 rounded-lg p-2">
+          <span>🎯</span>
+          <span className="opacity-70">In range at snapshot</span>
+        </div>
+      </div>
+      <p className="text-[9px] opacity-40 mt-2 text-center">Snapshots taken each full moon 🌕</p>
+    </div>
+  );
+
   // Rewards Tab - Leaderboards & Season info
   const renderRewardsTab = () => (
     <div className="space-y-4">
       {/* Header - Compact */}
       <div className="text-center">
         <h2 className="pixel-font text-lg text-[#ffd700]">🏆 Rewards</h2>
-        <p className="text-[10px] opacity-50">Hold 1M+ m00n & 7d+ position to qualify</p>
       </div>
 
       {/* Season Panel */}
       {renderSeason1Panel()}
+
+      {/* Qualification Requirements */}
+      {renderQualificationCard()}
+
+      {/* Yap Multiplier */}
+      {renderYapMultiplierCard()}
 
       {/* Streak Leaderboard */}
       {renderStreakLeaderboard()}
     </div>
   );
 
-  // Advanced Tab - Links to full LP Advanced page
+  // Advanced Tab - Just shows loading while redirect happens
   const renderAdvancedTab = () => (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="text-center space-y-2">
-        <h2 className="pixel-font text-xl glow-purple">🫡 Advanced LP</h2>
-        <p className="text-xs opacity-60">Custom range deployment & position management</p>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          type="button"
-          onClick={() => handleOpenLpClaimModal('backstop')}
-          className={`${PANEL_CLASS} text-center hover:border-[var(--monad-purple)] transition-colors py-6`}
-        >
-          <span className="text-3xl block mb-2">🛡️</span>
-          <span className="text-sm font-medium">Crash Backstop</span>
-          <p className="text-[10px] opacity-50 mt-1">WMON single-sided</p>
-        </button>
-        <button
-          type="button"
-          onClick={() => handleOpenLpClaimModal('moon_upside')}
-          className={`${PANEL_CLASS} text-center hover:border-[var(--monad-purple)] transition-colors py-6`}
-        >
-          <span className="text-3xl block mb-2">🚀</span>
-          <span className="text-sm font-medium">Sky Ladder</span>
-          <p className="text-[10px] opacity-50 mt-1">m00n single-sided</p>
-        </button>
-      </div>
-
-      {/* Full Advanced LP */}
-      <button
-        type="button"
-        onClick={handleOpenAdvancedLp}
-        className="w-full px-6 py-4 bg-[var(--monad-purple)] text-white rounded-2xl font-semibold hover:bg-[var(--monad-purple)]/80 transition-colors"
-      >
-        Open Full LP Planner →
-      </button>
-
-      {/* LP Guide */}
-      <button
-        type="button"
-        onClick={handleOpenLpHelp}
-        className={`${PANEL_CLASS} w-full text-center hover:border-white/30 transition-colors`}
-      >
-        <span className="text-xl block mb-1">📖</span>
-        <span className="text-sm font-medium">LP Guide & Requirements</span>
-        <p className="text-[10px] opacity-50 mt-1">Learn about ranges, risks & rewards</p>
-      </button>
-
-      {/* Balances */}
-      <div className={`${PANEL_CLASS} space-y-2`}>
-        <p className="text-xs opacity-50 uppercase tracking-wider">Your Balances</p>
-        <div className="grid grid-cols-2 gap-2 text-sm">
-          <div className="flex justify-between">
-            <span className="opacity-60">m00n:</span>
-            <span className="font-mono">
-              {moonBalanceWei
-                ? Number(formatUnits(moonBalanceWei, 18)).toLocaleString(undefined, {
-                    maximumFractionDigits: 0
-                  })
-                : '—'}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="opacity-60">WMON:</span>
-            <span className="font-mono">
-              {wmonBalanceWei ? Number(formatUnits(wmonBalanceWei, 18)).toFixed(2) : '—'}
-            </span>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-2 pt-2">
-          <button
-            type="button"
-            onClick={() => handleSwapMonToToken('moon')}
-            disabled={swapInFlight === 'moon'}
-            className="px-3 py-2 text-xs border border-[var(--moss-green)]/50 text-[var(--moss-green)] rounded-lg hover:bg-[var(--moss-green)]/10 transition-colors disabled:opacity-50"
-          >
-            {swapInFlight === 'moon' ? '...' : 'Buy m00n'}
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSwapMonToToken('wmon')}
-            disabled={swapInFlight === 'wmon'}
-            className="px-3 py-2 text-xs border border-[var(--monad-purple)]/50 text-[var(--monad-purple)] rounded-lg hover:bg-[var(--monad-purple)]/10 transition-colors disabled:opacity-50"
-          >
-            {swapInFlight === 'wmon' ? '...' : 'Buy WMON'}
-          </button>
-        </div>
-      </div>
+    <div className="text-center py-12">
+      <p className="opacity-60">Loading Advanced LP...</p>
     </div>
   );
 

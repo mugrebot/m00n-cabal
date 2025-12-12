@@ -107,19 +107,23 @@ export async function buildLeaderboardSnapshot(): Promise<LeaderboardSnapshot> {
       ? tickToPrice(referenceTick) * wmonPriceUsd
       : null;
 
-  const entries = filtered.map((position) => {
-    const bandType = classifyBandType(position);
-    const specialLabel = position.isClankerPool ? SPECIAL_CLANKER_LABEL : null;
-    const ownerLabel = specialLabel ?? getAddressLabel(position.owner);
+  // Filter out Clanker pool from leaderboard
+  const CLANKER_TOKEN_ID = '6914';
 
-    return {
-      tokenId: position.tokenId,
-      owner: position.owner,
-      bandType,
-      valueUsd: position.notionalUsd,
-      label: ownerLabel
-    };
-  });
+  const entries = filtered
+    .filter((position) => position.tokenId !== CLANKER_TOKEN_ID && !position.isClankerPool)
+    .map((position) => {
+      const bandType = classifyBandType(position);
+      const ownerLabel = getAddressLabel(position.owner);
+
+      return {
+        tokenId: position.tokenId,
+        owner: position.owner,
+        bandType,
+        valueUsd: position.notionalUsd,
+        label: ownerLabel
+      };
+    });
 
   entries.sort((a, b) => b.valueUsd - a.valueUsd);
 

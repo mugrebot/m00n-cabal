@@ -184,6 +184,9 @@ export async function updateStreaks(): Promise<{
   // Load existing streak data
   const streakData = await getStreakData();
 
+  // Clanker pool should not appear on leaderboard
+  const CLANKER_TOKEN_ID = '6914';
+
   let updated = 0;
   let newPositions = 0;
   let streaksStarted = 0;
@@ -192,6 +195,12 @@ export async function updateStreaks(): Promise<{
 
   for (const position of positions) {
     const tokenId = position.tokenId;
+
+    // Skip Clanker pool
+    if (tokenId === CLANKER_TOKEN_ID || position.isClankerPool) {
+      continue;
+    }
+
     const isInRange = position.rangeStatus === 'in-range';
     const existing = streakData[tokenId];
 
