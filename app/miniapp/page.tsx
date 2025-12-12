@@ -155,6 +155,19 @@ const formatUsd = (value?: number | null) => {
   return formatter.format(value ?? 0);
 };
 
+const formatStreakDuration = (seconds: number): string => {
+  if (seconds < 60) return `${Math.floor(seconds)}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  }
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+};
+
 const LP_PRESET_CONTENT: Record<
   LpClaimPreset,
   {
@@ -301,6 +314,28 @@ interface LeaderboardResponse {
   upsideBand: LeaderboardEntry[];
   mixedBand: LeaderboardEntry[];
   overall: LeaderboardEntry[];
+}
+
+// Streak leaderboard types
+interface StreakLeaderboardEntry {
+  tokenId: string;
+  owner: string;
+  label?: string | null;
+  currentStreakDuration: number;
+  longestStreakDuration: number;
+  isCurrentlyInRange: boolean;
+  points: number;
+  valueUsd?: number;
+  rank?: number;
+}
+
+interface StreakLeaderboardResponse {
+  updatedAt: string;
+  lastCheckAt: string;
+  totalPositionsTracked: number;
+  topStreaks: StreakLeaderboardEntry[];
+  topAllTime: StreakLeaderboardEntry[];
+  topPoints: StreakLeaderboardEntry[];
 }
 
 interface LpGateState {
@@ -499,6 +534,12 @@ function MiniAppPageInner() {
     'idle' | 'loading' | 'error' | 'loaded'
   >('idle');
   const [leaderboardRefreshNonce, setLeaderboardRefreshNonce] = useState(0);
+  const [streakLeaderboardData, setStreakLeaderboardData] =
+    useState<StreakLeaderboardResponse | null>(null);
+  const [streakLeaderboardStatus, setStreakLeaderboardStatus] = useState<
+    'idle' | 'loading' | 'error' | 'loaded'
+  >('idle');
+  const [streakLeaderboardRefreshNonce, setStreakLeaderboardRefreshNonce] = useState(0);
   const [solarSystemData, setSolarSystemData] = useState<{
     positions: LeaderboardLpPosition[];
     updatedAt: string;
@@ -589,6 +630,10 @@ function MiniAppPageInner() {
     setLeaderboardRefreshNonce((nonce) => nonce + 1);
   }, []);
 
+  const refreshStreakLeaderboard = useCallback(() => {
+    setStreakLeaderboardRefreshNonce((nonce) => nonce + 1);
+  }, []);
+
   const refreshSolarTelemetry = useCallback(() => {
     setSolarSystemRefreshNonce((nonce) => nonce + 1);
   }, []);
@@ -634,6 +679,34 @@ function MiniAppPageInner() {
       cancelled = true;
     };
   }, [leaderboardRefreshNonce]);
+
+  // Fetch streak leaderboard
+  useEffect(() => {
+    let cancelled = false;
+    const loadStreakLeaderboard = async () => {
+      setStreakLeaderboardStatus('loading');
+      try {
+        const response = await fetch('/api/lp-streak-leaderboard');
+        if (!response.ok) {
+          throw new Error('streak_leaderboard_failed');
+        }
+        const data = (await response.json()) as StreakLeaderboardResponse;
+        if (!cancelled) {
+          setStreakLeaderboardData(data);
+          setStreakLeaderboardStatus('loaded');
+        }
+      } catch (err) {
+        console.error('Failed to load streak leaderboard', err);
+        if (!cancelled) {
+          setStreakLeaderboardStatus('error');
+        }
+      }
+    };
+    loadStreakLeaderboard();
+    return () => {
+      cancelled = true;
+    };
+  }, [streakLeaderboardRefreshNonce]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3272,6 +3345,177 @@ Join the $m00n cabal 🌙`;
     );
   };
 
+  // Streak Leaderboard Renderer
+  const renderStreakLeaderboard = () => {
+    if (streakLeaderboardStatus === 'loading') {
+      return (
+        <div className={`${PANEL_CLASS} animate-pulse bg-black/60`}>
+          <div className="h-6 bg-white/10 rounded w-48 mb-4" />
+          <div className="space-y-3">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="h-16 bg-white/10 rounded-2xl" />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (streakLeaderboardStatus === 'error' || !streakLeaderboardData) {
+      return (
+        <div className={`${PANEL_CLASS} text-center text-sm opacity-70 bg-black/60`}>
+          <p>Streak data not available yet.</p>
+          <button
+            type="button"
+            onClick={refreshStreakLeaderboard}
+            className="mt-2 text-[var(--moss-green)] underline"
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
+
+    const { topStreaks, topAllTime, topPoints, totalPositionsTracked, lastCheckAt } =
+      streakLeaderboardData;
+
+    // Find max streak for sizing
+    const maxStreak = Math.max(
+      ...topStreaks.map((e) => e.currentStreakDuration),
+      ...topAllTime.map((e) => e.longestStreakDuration),
+      1
+    );
+
+    const renderStreakEntry = (
+      entry: StreakLeaderboardEntry,
+      index: number,
+      type: 'current' | 'allTime' | 'points'
+    ) => {
+      const duration =
+        type === 'allTime' ? entry.longestStreakDuration : entry.currentStreakDuration;
+      const ratio = maxStreak > 0 ? duration / maxStreak : 0;
+      const fireSize = 24 + ratio * 40;
+      const resolvedLabel = entry.label ?? truncateAddress(entry.owner);
+
+      // Streak tier colors
+      const days = duration / 86400;
+      let tierColor = 'var(--moss-green)';
+      let tierEmoji = '🔥';
+      if (days >= 7) {
+        tierColor = '#ffd700'; // Gold
+        tierEmoji = '👑';
+      } else if (days >= 3) {
+        tierColor = '#c0c0c0'; // Silver
+        tierEmoji = '⭐';
+      } else if (days >= 1) {
+        tierColor = '#cd7f32'; // Bronze
+        tierEmoji = '🔥';
+      }
+
+      return (
+        <div
+          key={`streak-${type}-${entry.tokenId}`}
+          className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/40 px-4 py-3"
+        >
+          <div className="flex items-center gap-3">
+            <span
+              className="select-none"
+              style={{ fontSize: `${fireSize}px`, lineHeight: 1 }}
+              aria-hidden="true"
+            >
+              {tierEmoji}
+            </span>
+            <div>
+              <p className="text-sm font-semibold">
+                #{index + 1} <span className="opacity-80">{resolvedLabel}</span>
+              </p>
+              <p className="text-xs opacity-60">
+                {type === 'points'
+                  ? `${entry.points.toLocaleString()} pts`
+                  : formatStreakDuration(duration)}
+                {entry.valueUsd ? ` • ${formatUsd(entry.valueUsd)}` : ''}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-[11px] font-bold" style={{ color: tierColor }}>
+              {type === 'current' && entry.isCurrentlyInRange ? '🟢 LIVE' : ''}
+              {type === 'allTime' ? '🏆' : ''}
+              {type === 'points' ? '⭐' : ''}
+            </span>
+          </div>
+        </div>
+      );
+    };
+
+    return (
+      <div className={`${PANEL_CLASS} space-y-6 bg-black/60`}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xl font-bold">🔥 LP Streak Leaderboard</p>
+            <p className="text-sm opacity-70">
+              {totalPositionsTracked} positions tracked • Updated{' '}
+              {new Date(lastCheckAt).toLocaleTimeString()}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={refreshStreakLeaderboard}
+            className="self-start sm:self-auto pixel-font text-[10px] px-[5px] py-[5px] border border-white/20 rounded-full text-white hover:bg-white/10 transition-colors"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {/* Hot Streaks - Currently in range */}
+        {topStreaks.length > 0 && (
+          <div>
+            <p className="text-[var(--moss-green)] text-sm font-semibold mb-2 tracking-wide">
+              🔥 HOT STREAKS (in range now)
+            </p>
+            <div className="space-y-2">
+              {topStreaks
+                .slice(0, 5)
+                .map((entry, index) => renderStreakEntry(entry, index, 'current'))}
+            </div>
+          </div>
+        )}
+
+        {/* All-Time Legends */}
+        {topAllTime.length > 0 && (
+          <div>
+            <p className="text-[#ffd700] text-sm font-semibold mb-2 tracking-wide">
+              🏆 ALL-TIME LEGENDS
+            </p>
+            <div className="space-y-2">
+              {topAllTime
+                .slice(0, 5)
+                .map((entry, index) => renderStreakEntry(entry, index, 'allTime'))}
+            </div>
+          </div>
+        )}
+
+        {/* Top Points */}
+        {topPoints.length > 0 && (
+          <div>
+            <p className="text-[var(--monad-purple)] text-sm font-semibold mb-2 tracking-wide">
+              ⭐ TOP EARNERS (points)
+            </p>
+            <div className="space-y-2">
+              {topPoints
+                .slice(0, 5)
+                .map((entry, index) => renderStreakEntry(entry, index, 'points'))}
+            </div>
+          </div>
+        )}
+
+        {/* Points explanation */}
+        <div className="text-xs opacity-50 text-center pt-2 border-t border-white/10">
+          Points: 10/hr in-range • +50 bonus/day streak • 2× after 7 days
+        </div>
+      </div>
+    );
+  };
+
   const renderLpGateInlineButton = () => (
     <div className="flex flex-wrap gap-2 justify-center">
       <button
@@ -3974,6 +4218,8 @@ Join the $m00n cabal 🌙`;
                 ? 'Top WMON crash backstops in the Monad pool.'
                 : 'Top m00n ladders pushing the upside.'
           })}
+          {/* Streak Leaderboard */}
+          {renderStreakLeaderboard()}
           {personaLookupStatus === 'loading' && (
             <p className="text-center text-xs text-yellow-300">Syncing cabal dossier…</p>
           )}

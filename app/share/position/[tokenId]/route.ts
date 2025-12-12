@@ -42,6 +42,8 @@ export async function GET(
   // Log incoming params for debugging
   const incomingUsername = searchParams.get('username') || 'anon';
   const incomingValueUsd = searchParams.get('valueUsd');
+  const incomingStreak = searchParams.get('streak'); // Streak duration in seconds
+  const incomingPoints = searchParams.get('points'); // Points earned
 
   // Resolve username if it's just a FID
   const resolvedUsername = await resolveUsername(incomingUsername);
@@ -54,7 +56,11 @@ export async function GET(
     '→',
     resolvedUsername,
     'valueUsd:',
-    incomingValueUsd
+    incomingValueUsd,
+    'streak:',
+    incomingStreak,
+    'points:',
+    incomingPoints
   );
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://m00nad.vercel.app';
@@ -67,7 +73,9 @@ export async function GET(
     rangeLower: searchParams.get('rangeLower') || '0',
     rangeUpper: searchParams.get('rangeUpper') || '0',
     username: resolvedUsername,
-    ...(incomingValueUsd ? { valueUsd: incomingValueUsd } : {})
+    ...(incomingValueUsd ? { valueUsd: incomingValueUsd } : {}),
+    ...(incomingStreak ? { streak: incomingStreak } : {}),
+    ...(incomingPoints ? { points: incomingPoints } : {})
   });
 
   const ogImageUrl = `${baseUrl}/api/og/position?${ogParams.toString()}`;
@@ -83,13 +91,26 @@ export async function GET(
         ? '🚀 Sky Band'
         : '🎯 Custom';
 
+  // Format streak for title/description
+  const streakDays = incomingStreak ? Math.floor(Number(incomingStreak) / 86400) : 0;
+  const streakLabel = streakDays > 0 ? ` | ${streakDays}d streak 🔥` : '';
+
   const title =
     tokenId === 'new'
-      ? `$m00n position | ${bandLabel}`
-      : `$m00n position #${tokenId} | ${bandLabel}`;
-  const description = isInRange
+      ? `$m00n position | ${bandLabel}${streakLabel}`
+      : `$m00n position #${tokenId} | ${bandLabel}${streakLabel}`;
+
+  let description = isInRange
     ? `This position is currently in range and earning fees! 🌙`
     : `Watching the market from the m00n cabal 🌙`;
+
+  if (streakDays >= 7) {
+    description = `👑 ${streakDays}+ day streak! This position is crushing it on the LP Leaderboard! 🌙`;
+  } else if (streakDays >= 3) {
+    description = `⭐ ${streakDays} day streak! Earning fees and climbing the leaderboard 🌙`;
+  } else if (streakDays >= 1) {
+    description = `🔥 ${streakDays} day streak! In range and earning 🌙`;
+  }
 
   // Farcaster Mini App Embed JSON
   const miniAppEmbed = JSON.stringify({

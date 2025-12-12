@@ -39,6 +39,20 @@ const STAR_POSITIONS = [
   { x: 1000, y: 780, s: 1 }
 ];
 
+// Format streak duration
+function formatStreakDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.floor(seconds)}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  }
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
 
@@ -50,10 +64,28 @@ export async function GET(request: NextRequest) {
   const rangeUpper = searchParams.get('rangeUpper') ?? '0';
   const username = searchParams.get('username') ?? 'anon';
   const valueUsd = searchParams.get('valueUsd');
+  const streakSeconds = searchParams.get('streak'); // Streak duration in seconds
+  const points = searchParams.get('points'); // Points earned
 
   // Determine status
   const isInRange = rangeStatus === 'in-range';
   const statusColor = isInRange ? MOSS_GREEN : '#ff6b6b';
+
+  // Streak display
+  const hasStreak = streakSeconds && Number(streakSeconds) > 0;
+  const streakDuration = hasStreak ? formatStreakDuration(Number(streakSeconds)) : null;
+  const streakDays = hasStreak ? Number(streakSeconds) / 86400 : 0;
+
+  // Streak tier for badge
+  let streakTierColor = MOSS_GREEN;
+  let streakTierEmoji = '🔥';
+  if (streakDays >= 7) {
+    streakTierColor = '#ffd700'; // Gold
+    streakTierEmoji = '👑';
+  } else if (streakDays >= 3) {
+    streakTierColor = '#c0c0c0'; // Silver
+    streakTierEmoji = '⭐';
+  }
 
   // Format band type
   let bandEmoji = '⚖️';
@@ -262,6 +294,33 @@ export async function GET(request: NextRequest) {
                 ✨ Just deployed
               </span>
             )}
+
+            {/* Streak badge */}
+            {hasStreak && streakDuration && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  backgroundColor: `${streakTierColor}15`,
+                  padding: '12px 24px',
+                  borderRadius: '16px',
+                  border: `1px solid ${streakTierColor}50`
+                }}
+              >
+                <span style={{ fontSize: '20px' }}>{streakTierEmoji}</span>
+                <span
+                  style={{
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    color: streakTierColor,
+                    letterSpacing: '0.08em'
+                  }}
+                >
+                  {streakDuration} STREAK
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Price range - big and bold */}
@@ -348,15 +407,30 @@ export async function GET(request: NextRequest) {
           >
             m00ncabal.xyz
           </span>
-          <span
-            style={{
-              fontSize: '15px',
-              color: ACCENT_PURPLE,
-              fontWeight: 500
-            }}
-          >
-            Deploy LP 🌙
-          </span>
+          {points && Number(points) > 0 ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.5)' }}>⭐</span>
+              <span
+                style={{
+                  fontSize: '16px',
+                  color: '#ffd700',
+                  fontWeight: 'bold'
+                }}
+              >
+                {Number(points).toLocaleString()} pts
+              </span>
+            </div>
+          ) : (
+            <span
+              style={{
+                fontSize: '15px',
+                color: ACCENT_PURPLE,
+                fontWeight: 500
+              }}
+            >
+              Deploy LP 🌙
+            </span>
+          )}
         </div>
       </div>
     ),
