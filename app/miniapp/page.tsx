@@ -3692,14 +3692,13 @@ Join the $m00n cabal 🌙`;
             <span className="text-sm font-bold" style={{ color: tierColor }}>
               {entry.points?.toLocaleString() ?? 0} pts
             </span>
-            <div className="flex items-center gap-1.5 text-[10px]">
-              <span className="opacity-60">{formatStreakDuration(duration)}</span>
+            <span className="text-[10px]">
               {entry.isCurrentlyInRange ? (
-                <span className="text-[var(--moss-green)]">🟢</span>
+                <span className="text-[var(--moss-green)]">🟢 In Range</span>
               ) : (
-                <span className="text-red-400/70">⚪</span>
+                <span className="text-white/50">⚪ Out</span>
               )}
-            </div>
+            </span>
           </div>
         </div>
       );
@@ -3792,23 +3791,17 @@ Join the $m00n cabal 🌙`;
         </div>
 
         {/* User Stats or CTA */}
-        {(userAllocation && userAllocation.positionCount > 0) || positionCount > 0 ? (
-          <div className="grid grid-cols-4 gap-1 text-center">
+        {positionCount > 0 ? (
+          <div className="grid grid-cols-3 gap-2 text-center">
             <div className="bg-black/40 rounded-lg p-2">
               <p className="text-sm font-bold text-[var(--monad-purple)]">
-                {userAllocation?.formattedPoints ?? '0'}
+                {userAllocation?.formattedPoints ?? '—'}
               </p>
-              <p className="text-[8px] opacity-50">Pts</p>
+              <p className="text-[8px] opacity-50">Points</p>
             </div>
             <div className="bg-black/40 rounded-lg p-2">
               <p className="text-sm font-bold">#{userAllocation?.rank ?? '—'}</p>
               <p className="text-[8px] opacity-50">Rank</p>
-            </div>
-            <div className="bg-black/40 rounded-lg p-2">
-              <p className="text-sm font-bold text-[var(--moss-green)]">
-                {userAllocation?.bestStreakDays ?? 0}d
-              </p>
-              <p className="text-[8px] opacity-50">Streak</p>
             </div>
             <div className="bg-black/40 rounded-lg p-2">
               <p className="text-sm font-bold">{positionCount}</p>
@@ -3816,8 +3809,8 @@ Join the $m00n cabal 🌙`;
             </div>
           </div>
         ) : (
-          <div className="bg-black/40 rounded-xl p-4 border border-white/10 text-center">
-            <p className="text-sm mb-2">🌙 No LP positions</p>
+          <div className="bg-black/40 rounded-xl p-3 border border-white/10 text-center">
+            <p className="text-xs opacity-70 mb-2">No qualifying positions yet</p>
             <button
               type="button"
               onClick={() => setActiveTab('advanced')}
@@ -4962,7 +4955,7 @@ Join the $m00n cabal 🌙`;
     const wmonPrice = lpGateState.poolWmonUsdPrice ?? 0;
 
     return (
-      <div className="space-y-6 pt-4">
+      <div className="space-y-5 pt-8">
         {/* Balance + Stats Row */}
         <div className={`${PANEL_CLASS} p-4`}>
           <div className="grid grid-cols-3 gap-3 text-center">
@@ -5000,12 +4993,12 @@ Join the $m00n cabal 🌙`;
           )}
         </div>
 
-        {/* Quick Actions - 2x2 grid */}
-        <div className="grid grid-cols-2 gap-2">
+        {/* Quick Actions - 2x2 grid with more spacing */}
+        <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
             onClick={() => setActiveTab('lp')}
-            className="py-4 rounded-xl bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/40 text-center"
+            className="py-5 rounded-xl bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/40 text-center"
           >
             <span className="text-2xl block mb-1">💧</span>
             <span className="text-xs">My LPs</span>
@@ -5013,7 +5006,7 @@ Join the $m00n cabal 🌙`;
           <button
             type="button"
             onClick={() => setActiveTab('rewards')}
-            className="py-4 rounded-xl bg-[#ffd700]/10 border border-[#ffd700]/30 text-center"
+            className="py-5 rounded-xl bg-[#ffd700]/10 border border-[#ffd700]/30 text-center"
           >
             <span className="text-2xl block mb-1">🏆</span>
             <span className="text-xs">Rewards</span>
@@ -5021,7 +5014,7 @@ Join the $m00n cabal 🌙`;
           <button
             type="button"
             onClick={handleOpenAdvancedLp}
-            className="py-4 rounded-xl bg-white/5 border border-white/20 text-center"
+            className="py-5 rounded-xl bg-white/5 border border-white/20 text-center"
           >
             <span className="text-2xl block mb-1">🫡</span>
             <span className="text-xs">Deploy LP</span>
@@ -5029,20 +5022,20 @@ Join the $m00n cabal 🌙`;
           <button
             type="button"
             onClick={handleOpenMoonLander}
-            className="py-4 rounded-xl bg-white/5 border border-white/20 text-center"
+            className="py-5 rounded-xl bg-white/5 border border-white/20 text-center"
           >
             <span className="text-2xl block mb-1">🚀</span>
             <span className="text-xs">Game</span>
           </button>
         </div>
 
-        {/* Buy Tokens */}
-        <div className="grid grid-cols-2 gap-2">
+        {/* Buy Tokens - more padding */}
+        <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
             onClick={() => handleSwapMonToToken('moon')}
             disabled={swapInFlight === 'moon'}
-            className="px-3 py-2 bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 rounded-xl text-sm font-semibold text-[var(--moss-green)] disabled:opacity-50"
+            className="px-3 py-3 bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 rounded-xl text-sm font-semibold text-[var(--moss-green)] disabled:opacity-50"
           >
             {swapInFlight === 'moon' ? '...' : '🌙 Buy m00n'}
           </button>
@@ -5050,7 +5043,7 @@ Join the $m00n cabal 🌙`;
             type="button"
             onClick={() => handleSwapMonToToken('wmon')}
             disabled={swapInFlight === 'wmon'}
-            className="px-3 py-2 bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 rounded-xl text-sm font-semibold text-[var(--monad-purple)] disabled:opacity-50"
+            className="px-3 py-3 bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 rounded-xl text-sm font-semibold text-[var(--monad-purple)] disabled:opacity-50"
           >
             {swapInFlight === 'wmon' ? '...' : '💎 Buy WMON'}
           </button>
@@ -5177,13 +5170,20 @@ Join the $m00n cabal 🌙`;
                       {pos.rangeStatus ?? 'unknown'}
                     </span>
                   </div>
-                  {/* Row 4: Unclaimed fees */}
-                  <div className="flex justify-between text-white/70">
-                    <span>Unclaimed</span>
-                    <span>
-                      {fees?.token0Formatted ?? '0'} m00n / {fees?.token1Formatted ?? '0'} WMON
-                    </span>
-                  </div>
+                  {/* Row 4: Unclaimed fees - only show if loaded */}
+                  {pos.feesStatus === 'loaded' && fees ? (
+                    <div className="flex justify-between text-white/70">
+                      <span>Unclaimed</span>
+                      <span>
+                        {fees.token0Formatted} m00n / {fees.token1Formatted} WMON
+                      </span>
+                    </div>
+                  ) : pos.feesStatus === 'loading' ? (
+                    <div className="flex justify-between text-white/50">
+                      <span>Unclaimed</span>
+                      <span className="animate-pulse">Loading...</span>
+                    </div>
+                  ) : null}
                   {/* Buttons row */}
                   <div className="flex items-center gap-2 pt-1">
                     <button
