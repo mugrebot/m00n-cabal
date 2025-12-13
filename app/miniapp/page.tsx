@@ -153,19 +153,6 @@ const formatUsd = (value?: number | null) => {
   return formatter.format(value ?? 0);
 };
 
-const formatStreakDuration = (seconds: number): string => {
-  if (seconds < 60) return `${Math.floor(seconds)}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86400) {
-    const hours = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-  }
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
-};
-
 const LP_PRESET_CONTENT: Record<
   LpClaimPreset,
   {
@@ -754,7 +741,11 @@ function MiniAppPageInner() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  // Fetch leaderboard - only when on rewards tab (lazy load to save API calls)
   useEffect(() => {
+    if (activeTab !== 'rewards') return;
+    if (leaderboardStatus === 'loaded' && leaderboardRefreshNonce === 0) return; // Already loaded
+
     let cancelled = false;
     const loadLeaderboard = async () => {
       setLeaderboardStatus('loading');
@@ -779,10 +770,13 @@ function MiniAppPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [leaderboardRefreshNonce]);
+  }, [leaderboardRefreshNonce, activeTab]);
 
-  // Fetch streak leaderboard
+  // Fetch streak leaderboard - only when on rewards tab
   useEffect(() => {
+    if (activeTab !== 'rewards') return;
+    if (streakLeaderboardStatus === 'loaded' && streakLeaderboardRefreshNonce === 0) return;
+
     let cancelled = false;
     const loadStreakLeaderboard = async () => {
       setStreakLeaderboardStatus('loading');
@@ -807,12 +801,14 @@ function MiniAppPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [streakLeaderboardRefreshNonce]);
+  }, [streakLeaderboardRefreshNonce, activeTab]);
 
-  // Fetch tokenomics data when we have a wallet address
+  // Fetch tokenomics data - only when on rewards tab or home tab
   useEffect(() => {
     const walletAddress = lpGateState.walletAddress;
     if (!walletAddress) return;
+    if (activeTab !== 'rewards' && activeTab !== 'home') return;
+    if (tokenomicsStatus === 'loaded') return; // Already loaded
 
     let cancelled = false;
     const loadTokenomics = async () => {
@@ -838,32 +834,24 @@ function MiniAppPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [lpGateState.walletAddress, streakLeaderboardRefreshNonce]);
+  }, [lpGateState.walletAddress, activeTab]);
 
-  // Fetch yap multiplier when we have user FID
+  // Fetch yap multiplier - only when on rewards tab to save API calls
   useEffect(() => {
     const fid = userData?.fid;
     if (!fid) {
       setYapMultiplier(null);
       return;
     }
+    // Only fetch when on rewards tab
+    if (activeTab !== 'rewards') return;
+    // Skip if already loaded
+    if (yapMultiplier !== null) return;
 
     let cancelled = false;
     const loadYapMultiplier = async () => {
       try {
-        // First update stats (check for new casts)
-        await fetch('/api/yap-multiplier', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'update_stats',
-            fid,
-            username: userData.username ?? `fid:${fid}`,
-            address: miniWalletAddress ?? primaryAddress
-          })
-        });
-
-        // Then get the stats
+        // Just get the stats (skip update to save API calls)
         const response = await fetch(`/api/yap-multiplier?fid=${fid}`);
         if (!response.ok) return;
         const data = await response.json();
@@ -882,7 +870,7 @@ function MiniAppPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [userData?.fid, userData?.username, miniWalletAddress, primaryAddress]);
+  }, [userData?.fid, activeTab]);
 
   useEffect(() => {
     let cancelled = false;
@@ -915,22 +903,14 @@ function MiniAppPageInner() {
       }
     };
 
-    void loadSolarSystem();
-    const intervalId =
-      typeof window !== 'undefined'
-        ? window.setInterval(
-            () => {
-              void loadSolarSystem();
-            },
-            1000 * 60 * 5
-          )
-        : null;
+    // Only load solar system on explicit refresh, not automatically
+    // This saves API calls - users can refresh manually if needed
+    if (solarSystemRefreshNonce > 0) {
+      void loadSolarSystem();
+    }
 
     return () => {
       cancelled = true;
-      if (intervalId) {
-        window.clearInterval(intervalId);
-      }
     };
   }, [solarSystemRefreshNonce]);
 
@@ -1366,10 +1346,14 @@ function MiniAppPageInner() {
     };
   }, [miniWalletAddress, lpRefreshNonce]);
 
-  // Fetch fees for LP positions after they're loaded
+  // Fetch fees for LP positions - only when on LP tab to save API calls
   useEffect(() => {
     const positions = lpGateState.lpPositions ?? [];
-    if (positions.length === 0 || !miniWalletAddress) return;
+    // Only fetch fees when user is on LP tab and has positions
+    if (positions.length === 0 || !miniWalletAddress || activeTab !== 'lp') return;
+    // Skip if fees already loaded
+    const alreadyLoaded = positions.some((p) => p.feesStatus === 'loaded');
+    if (alreadyLoaded) return;
 
     let cancelled = false;
 
@@ -1419,7 +1403,7 @@ function MiniAppPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [lpGateState.lpPositions?.length, miniWalletAddress]);
+  }, [lpGateState.lpPositions?.length, miniWalletAddress, activeTab]);
 
   useEffect(() => {
     const tick = () => {
@@ -1666,6 +1650,15 @@ function MiniAppPageInner() {
       setIsLoading(false);
     }
   }, [addresses, viewerContext]);
+
+  // Auto-sign in when we have viewerContext from SDK but no userData yet
+  // This prevents having to click "SCAN FID" when navigating back from other pages
+  useEffect(() => {
+    if (viewerContext && !userData && isSdkReady && scanPhase === 'idle') {
+      // Auto-trigger sign in since we already have context from SDK
+      handleSignIn();
+    }
+  }, [viewerContext, userData, isSdkReady, scanPhase, handleSignIn]);
 
   const handleCopyContract = async () => {
     try {
@@ -3766,15 +3759,7 @@ Join the $m00n cabal 🌙`;
       return null; // Don't show if no data
     }
 
-    const {
-      userAllocation,
-      currentSeason,
-      formattedAllocations,
-      totalSystemPoints,
-      topEarners,
-      seasons,
-      pointsWeights
-    } = tokenomicsData;
+    const { userAllocation, currentSeason } = tokenomicsData;
 
     if (!currentSeason) return null;
 
@@ -3809,14 +3794,17 @@ Join the $m00n cabal 🌙`;
             </div>
           </div>
         ) : (
-          <div className="bg-black/40 rounded-xl p-3 border border-white/10 text-center">
-            <p className="text-xs opacity-70 mb-2">No qualifying positions yet</p>
+          <div className="bg-black/40 rounded-xl p-3 border border-white/10 text-center space-y-2">
+            <p className="text-xs opacity-70">No qualifying LP positions</p>
+            <p className="text-[10px] opacity-50">
+              Deploy an LP with &gt;$5 value to start earning
+            </p>
             <button
               type="button"
-              onClick={() => setActiveTab('advanced')}
+              onClick={handleOpenAdvancedLp}
               className="text-xs px-4 py-1.5 bg-[var(--monad-purple)] text-white rounded-lg"
             >
-              Deploy LP
+              🫡 Deploy LP
             </button>
           </div>
         )}
@@ -4947,28 +4935,35 @@ Join the $m00n cabal 🌙`;
   const renderHomeTab = () => {
     // Use best available balance source (LP funding API has priority, then balance probe)
     const bestBalanceWei = moonBalanceWei ?? primaryAddressMoonBalanceWei;
-    const moonBalance = bestBalanceWei ? formatUnits(bestBalanceWei, 18) : '0';
-    const formattedBalance = Number(moonBalance).toLocaleString(undefined, {
-      maximumFractionDigits: 0
-    });
+    const moonBalance = bestBalanceWei ? Number(formatUnits(bestBalanceWei, 18)) : 0;
+    // Abbreviate: 5.12B, 123.4M, 45.6K
+    const formatAbbreviated = (n: number): string => {
+      if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`;
+      if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+      if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+      return n.toFixed(2);
+    };
+    const formattedBalance = formatAbbreviated(moonBalance);
     const positionCount = lpGateState.lpPositions?.length ?? 0;
-    const wmonPrice = lpGateState.poolWmonUsdPrice ?? 0;
+    // Show WMON balance instead of price
+    const wmonBalance = wmonBalanceWei ? Number(formatUnits(wmonBalanceWei, 18)) : 0;
+    const formattedWmon = formatAbbreviated(wmonBalance);
 
     return (
       <div className="space-y-5 pt-8">
         {/* Balance + Stats Row */}
         <div className={`${PANEL_CLASS} p-4`}>
-          <div className="grid grid-cols-3 gap-3 text-center">
+          <div className="grid grid-cols-3 gap-4 text-center">
             <div>
-              <p className="text-lg font-bold text-[var(--moss-green)]">{formattedBalance}</p>
+              <p className="text-base font-bold text-[var(--moss-green)]">{formattedBalance}</p>
               <p className="text-[10px] opacity-50">$m00n</p>
             </div>
             <div>
-              <p className="text-lg font-bold text-[var(--monad-purple)]">{positionCount}</p>
-              <p className="text-[10px] opacity-50">Positions</p>
+              <p className="text-base font-bold text-[var(--monad-purple)]">{positionCount}</p>
+              <p className="text-[10px] opacity-50">LPs</p>
             </div>
             <div>
-              <p className="text-lg font-bold">${wmonPrice.toFixed(2)}</p>
+              <p className="text-base font-bold">{formattedWmon}</p>
               <p className="text-[10px] opacity-50">WMON</p>
             </div>
           </div>
@@ -5026,6 +5021,21 @@ Join the $m00n cabal 🌙`;
           >
             <span className="text-2xl block mb-1">🚀</span>
             <span className="text-xs">Game</span>
+          </button>
+        </div>
+
+        {/* Deck + extra actions */}
+        <div className="grid grid-cols-1 gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setSolarSystemRefreshNonce((n) => n + 1);
+              setIsObservationDeckOpen(true);
+            }}
+            className="py-4 rounded-xl bg-[#1a1a2e] border border-[var(--monad-purple)]/30 text-center"
+          >
+            <span className="text-xl inline-block mr-2">🔭</span>
+            <span className="text-xs">Observation Deck</span>
           </button>
         </div>
 
@@ -5149,34 +5159,44 @@ Join the $m00n cabal 🌙`;
                   key={pos.tokenId}
                   className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-white space-y-1"
                 >
-                  {/* Row 1: Token ID + Band Type */}
-                  <div className="flex justify-between">
+                  {/* Header: Token ID + Band Type */}
+                  <div className="flex justify-between items-center">
                     <span className="font-mono text-white/90">#{pos.tokenId}</span>
                     <span className="uppercase tracking-[0.15em] text-[10px] text-[var(--moss-green)]">
                       {getBandLabel(pos.bandType)}
                     </span>
                   </div>
-                  {/* Row 2: Range (ticks) */}
+                  {/* Range */}
                   <div className="flex justify-between text-white/70">
                     <span>Range</span>
                     <span>
                       {pos.tickLower ?? '?'} → {pos.tickUpper ?? '?'}
                     </span>
                   </div>
-                  {/* Row 3: Status */}
+                  {/* Status */}
                   <div className="flex justify-between text-white/70">
                     <span>Status</span>
                     <span className={isInRange ? 'text-[var(--moss-green)]' : 'text-red-400'}>
                       {pos.rangeStatus ?? 'unknown'}
                     </span>
                   </div>
-                  {/* Row 4: Unclaimed fees - only show if loaded */}
+                  {/* Unclaimed fees */}
                   {pos.feesStatus === 'loaded' && fees ? (
-                    <div className="flex justify-between text-white/70">
-                      <span>Unclaimed</span>
-                      <span>
-                        {fees.token0Formatted} m00n / {fees.token1Formatted} WMON
-                      </span>
+                    <div className="space-y-1 text-white/70">
+                      <div className="flex justify-between">
+                        <span>Unclaimed</span>
+                        <span className="text-right text-[10px]">
+                          {fees.token0Formatted} m00n / {fees.token1Formatted} WMON
+                        </span>
+                      </div>
+                      {fees.unclaimedUsd !== null && fees.unclaimedUsd !== undefined && (
+                        <div className="flex justify-between">
+                          <span>Unclaimed (USD)</span>
+                          <span className="text-[var(--moss-green)]">
+                            ~${fees.unclaimedUsd.toFixed(6)}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   ) : pos.feesStatus === 'loading' ? (
                     <div className="flex justify-between text-white/50">
@@ -5268,9 +5288,8 @@ Join the $m00n cabal 🌙`;
 
   // Yap Multiplier Card
   const renderYapMultiplierCard = () => {
-    if (!yapMultiplier) return null;
-
-    const isActive = yapMultiplier.multiplier > 1;
+    const positionCount = lpGateState.lpPositions?.length ?? 0;
+    const isActive = yapMultiplier && yapMultiplier.multiplier > 1;
 
     return (
       <div className={`${PANEL_CLASS} p-3 bg-black/60`}>
@@ -5282,29 +5301,29 @@ Join the $m00n cabal 🌙`;
               <p className="text-[10px] opacity-50">
                 {isActive
                   ? `${yapMultiplier.castCount} casts • ${yapMultiplier.tier}`
-                  : 'Yap about $m00n to boost!'}
+                  : 'Include $m00n in your casts!'}
               </p>
             </div>
           </div>
           <div
             className={`text-lg font-bold ${
-              yapMultiplier.multiplier >= 3
+              yapMultiplier && yapMultiplier.multiplier >= 3
                 ? 'text-[#ffd700]'
-                : yapMultiplier.multiplier >= 2
+                : yapMultiplier && yapMultiplier.multiplier >= 2
                   ? 'text-[var(--monad-purple)]'
-                  : yapMultiplier.multiplier > 1
+                  : isActive
                     ? 'text-[var(--moss-green)]'
                     : 'opacity-50'
             }`}
           >
-            {yapMultiplier.multiplier}x
+            {yapMultiplier?.multiplier ?? 1}x
           </div>
         </div>
-        {!isActive && (
-          <p className="text-[9px] opacity-40 mt-2 text-center">
-            Mention $m00n in casts to boost points up to 5x!
-          </p>
-        )}
+        <p className="text-[9px] opacity-50 mt-2 text-center">
+          {positionCount === 0
+            ? '⚠️ Must have a qualifying LP to earn boost'
+            : 'Cast about $m00n to boost your points up to 5x!'}
+        </p>
       </div>
     );
   };
@@ -5364,6 +5383,11 @@ Join the $m00n cabal 🌙`;
 
   // Main tabbed content router
   const renderTabContent = () => {
+    // Show observation deck if open
+    if (isObservationDeckOpen) {
+      return renderObservationDeckContent();
+    }
+
     switch (activeTab) {
       case 'home':
         return renderHomeTab();
@@ -5376,6 +5400,87 @@ Join the $m00n cabal 🌙`;
       default:
         return renderHomeTab();
     }
+  };
+
+  // Observation Deck content (simplified for modal display)
+  const renderObservationDeckContent = () => {
+    const updatedStamp =
+      solarSystemStatus === 'loaded' && solarSystemData?.updatedAt
+        ? new Date(solarSystemData.updatedAt).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        : null;
+
+    return (
+      <div className="space-y-4">
+        {/* Header with close button */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="pixel-font text-xl">🔭 Observation Deck</h2>
+            <p className="text-xs opacity-60">LP Solar System telemetry</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsObservationDeckOpen(false)}
+            className="px-3 py-1 border border-white/20 rounded-full text-xs hover:bg-white/10"
+          >
+            ✕ Close
+          </button>
+        </div>
+
+        {/* Status */}
+        {updatedStamp && (
+          <p className="text-xs text-center opacity-50">Last updated: {updatedStamp}</p>
+        )}
+
+        {/* Solar System Visualization */}
+        <div className="flex justify-center">
+          {solarSystemStatus === 'loaded' && activeSolarPositions.length > 0 ? (
+            <M00nSolarSystem
+              positions={activeSolarPositions}
+              width={solarCanvasSize}
+              height={solarCanvasSize}
+            />
+          ) : solarSystemStatus === 'loading' ? (
+            <div className={`${PANEL_CLASS} text-center py-8`}>
+              <p className="text-sm opacity-70 animate-pulse">Loading telemetry...</p>
+            </div>
+          ) : solarSystemStatus === 'empty' ? (
+            <div className={`${PANEL_CLASS} text-center py-8`}>
+              <p className="text-sm opacity-70">No positions found. Deploy an LP to appear here!</p>
+            </div>
+          ) : solarSystemStatus === 'error' ? (
+            <div className={`${PANEL_CLASS} text-center py-8`}>
+              <p className="text-sm text-red-300">Failed to load telemetry</p>
+            </div>
+          ) : (
+            <div className={`${PANEL_CLASS} text-center py-8`}>
+              <p className="text-sm opacity-70">Calibrating orbital tracks...</p>
+            </div>
+          )}
+        </div>
+
+        {/* Refresh button */}
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => setSolarSystemRefreshNonce((n) => n + 1)}
+            disabled={solarSystemStatus === 'loading'}
+            className="px-4 py-2 border border-[var(--monad-purple)] text-[var(--monad-purple)] rounded-full text-xs hover:bg-[var(--monad-purple)] hover:text-white transition disabled:opacity-50"
+          >
+            {solarSystemStatus === 'loading' ? 'Loading...' : '↻ Refresh Telemetry'}
+          </button>
+        </div>
+
+        {/* Position count */}
+        {activeSolarPositions.length > 0 && (
+          <p className="text-center text-xs opacity-60">
+            {activeSolarPositions.length} positions orbiting
+          </p>
+        )}
+      </div>
+    );
   };
 
   const renderContractCard = (options?: { showClaimButton?: boolean }) => {

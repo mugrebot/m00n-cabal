@@ -1653,7 +1653,7 @@ function AdvancedLpContent({
             href="/miniapp"
             className="px-3 py-1 rounded-full border border-white/15 hover:bg-white/10 transition"
           >
-            Back to cabal check
+            ← Back to Home
           </Link>
         </div>
       </header>
