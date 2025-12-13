@@ -6,7 +6,7 @@ import { readSolarSystemSnapshot, writeSolarSystemSnapshot } from '@/app/lib/lpT
 const FALLBACK_REBUILD_ENABLED = process.env.LP_SOLAR_SYSTEM_ON_DEMAND === '1';
 const SOLAR_DEFAULT_LIMIT = Number(process.env.M00N_SOLAR_POSITION_LIMIT ?? 16);
 const SOLAR_MAX_LIMIT = Number(process.env.M00N_SOLAR_POSITION_MAX ?? 24);
-const ADMIN_SECRET = process.env.ADMIN_SECRET ?? '';
+const ADMIN_SECRET = process.env.LP_TELEMETRY_SECRET ?? process.env.ADMIN_SECRET ?? '';
 
 const withLabels = (payload: SolarSystemPayload): SolarSystemPayload => ({
   ...payload,
