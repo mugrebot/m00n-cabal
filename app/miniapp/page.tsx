@@ -4850,7 +4850,10 @@ Join the $m00n cabal 🌙`;
 
   // Tab navigation component
   const renderTabNavigation = () => (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-lg border-t border-white/10 safe-area-pb">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-[100] bg-black/95 backdrop-blur-lg border-t border-white/10 safe-area-pb"
+      style={{ touchAction: 'manipulation' }}
+    >
       <div className="max-w-lg mx-auto flex justify-around items-center h-16">
         <button
           type="button"
@@ -4900,7 +4903,7 @@ Join the $m00n cabal 🌙`;
       <BackgroundOrbs />
       <StickerRain />
       {/* Safe area padding for iPhone notch + status bar */}
-      <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pt-12 pb-24 flex-1 safe-area-pt safe-area-pb">
+      <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pt-12 pb-28 flex-1 safe-area-pt">
         <div className="space-y-6">{content}</div>
       </main>
       {showTabs && renderTabNavigation()}
@@ -5415,7 +5418,7 @@ Join the $m00n cabal 🌙`;
         : null;
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 overflow-y-auto max-h-[calc(100dvh-200px)]">
         {/* Header with close button */}
         <div className="flex items-center justify-between">
           <div>
