@@ -275,6 +275,7 @@ interface LpPosition {
     token0Formatted: string;
     token1Formatted: string;
     unclaimedUsd?: number | null;
+    lifetimeUsd?: number | null;
   };
   feesStatus?: 'idle' | 'loading' | 'loaded' | 'error';
   feesError?: string | null;
@@ -1365,11 +1366,18 @@ function MiniAppPageInner() {
         const data = (await resp.json()) as {
           positions?: Array<{
             tokenId: string;
-            unclaimed0: string;
-            unclaimed1: string;
-            token0Symbol: string;
-            token1Symbol: string;
-            unclaimedUsd: number | null;
+            token0?: { symbol: string; amount: string };
+            token1?: { symbol: string; amount: string };
+            unclaimed?: {
+              token0: string;
+              token1: string;
+              usd: number | null;
+            };
+            lifetime?: {
+              token0: string;
+              token1: string;
+              usd: number | null;
+            };
           }>;
         };
         if (cancelled || !data.positions) return;
@@ -1386,9 +1394,10 @@ function MiniAppPageInner() {
               fees: {
                 token0Wei: '0',
                 token1Wei: '0',
-                token0Formatted: feeInfo.unclaimed0,
-                token1Formatted: feeInfo.unclaimed1,
-                unclaimedUsd: feeInfo.unclaimedUsd
+                token0Formatted: feeInfo.unclaimed?.token0 ?? '0',
+                token1Formatted: feeInfo.unclaimed?.token1 ?? '0',
+                unclaimedUsd: feeInfo.unclaimed?.usd ?? null,
+                lifetimeUsd: feeInfo.lifetime?.usd ?? null
               },
               feesStatus: 'loaded' as const
             };
@@ -5162,14 +5171,15 @@ Join the $m00n cabal 🌙`;
             {positions.map((pos) => {
               const isInRange = pos.rangeStatus === 'in-range';
               const fees = pos.fees;
+              const positionValue = getPositionValueUsd(pos);
               return (
                 <div
                   key={pos.tokenId}
-                  className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-white space-y-1"
+                  className="rounded-xl border border-white/10 bg-black/40 px-3 py-3 text-xs text-white space-y-2"
                 >
                   {/* Header: Token ID + Band Type */}
                   <div className="flex justify-between items-center">
-                    <span className="font-mono text-white/90">#{pos.tokenId}</span>
+                    <span className="font-mono text-white/90 font-bold">#{pos.tokenId}</span>
                     <span className="uppercase tracking-[0.15em] text-[10px] text-[var(--moss-green)]">
                       {getBandLabel(pos.bandType)}
                     </span>
@@ -5188,9 +5198,16 @@ Join the $m00n cabal 🌙`;
                       {pos.rangeStatus ?? 'unknown'}
                     </span>
                   </div>
+                  {/* Position Value */}
+                  <div className="flex justify-between text-white/70">
+                    <span>Position Value</span>
+                    <span className="text-[var(--monad-purple)] font-semibold">
+                      ${positionValue > 0.01 ? positionValue.toFixed(2) : positionValue.toFixed(6)}
+                    </span>
+                  </div>
                   {/* Unclaimed fees */}
                   {pos.feesStatus === 'loaded' && fees ? (
-                    <div className="space-y-1 text-white/70">
+                    <div className="space-y-1 text-white/70 pt-1 border-t border-white/10">
                       <div className="flex justify-between">
                         <span>Unclaimed</span>
                         <span className="text-right text-[10px]">
@@ -5205,13 +5222,26 @@ Join the $m00n cabal 🌙`;
                           </span>
                         </div>
                       )}
+                      {fees.lifetimeUsd !== null && fees.lifetimeUsd !== undefined && (
+                        <div className="flex justify-between">
+                          <span>Lifetime fees (USD)</span>
+                          <span className="text-[var(--moss-green)]">
+                            ${fees.lifetimeUsd.toFixed(6)}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   ) : pos.feesStatus === 'loading' ? (
-                    <div className="flex justify-between text-white/50">
-                      <span>Unclaimed</span>
+                    <div className="flex justify-between text-white/50 pt-1 border-t border-white/10">
+                      <span>Fees</span>
                       <span className="animate-pulse">Loading...</span>
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="flex justify-between text-white/50 pt-1 border-t border-white/10">
+                      <span>Unclaimed</span>
+                      <span>m00n / WMON</span>
+                    </div>
+                  )}
                   {/* Buttons row */}
                   <div className="flex items-center gap-2 pt-1">
                     <button
