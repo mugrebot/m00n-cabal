@@ -2095,40 +2095,96 @@ function AdvancedLpContent({
               {/* Main Verdict */}
               {riskMetrics ? (
                 <div className="space-y-3">
-                  {/* Verdict Box */}
+                  {/* Verdict Box - Context-aware for single-sided vs double-sided */}
                   {riskMetrics.probStay !== null ? (
-                    <div
-                      className={`p-3 rounded-lg text-center ${
-                        riskMetrics.probStay > 0.5
-                          ? 'bg-emerald-500/20 border border-emerald-500/40'
-                          : riskMetrics.probStay > 0.2
-                            ? 'bg-amber-500/20 border border-amber-500/40'
-                            : 'bg-red-500/20 border border-red-500/40'
-                      }`}
-                    >
-                      <p
-                        className={`text-lg font-bold ${
-                          riskMetrics.probStay > 0.5
-                            ? 'text-emerald-400'
-                            : riskMetrics.probStay > 0.2
-                              ? 'text-amber-400'
-                              : 'text-red-400'
-                        }`}
-                      >
-                        {riskMetrics.probStay > 0.5
-                          ? '✓ Good Range'
-                          : riskMetrics.probStay > 0.2
-                            ? '⚠ Risky Range'
-                            : '✗ Too Narrow'}
-                      </p>
-                      <p className="text-xs text-white/70 mt-1">
-                        {riskMetrics.probStay > 0.5
-                          ? `${(riskMetrics.probStay * 100).toFixed(0)}% chance to stay in range over ${riskMetrics.days}d`
-                          : riskMetrics.probStay > 0.2
-                            ? `Only ${(riskMetrics.probStay * 100).toFixed(0)}% chance to stay in range`
-                            : `< ${Math.max(1, riskMetrics.probStay * 100).toFixed(0)}% chance — price will likely exit quickly`}
-                      </p>
-                    </div>
+                    (() => {
+                      // For single-sided positions, "exiting fast" is actually good!
+                      const isSingleSided = bandSide === 'single';
+                      const isSkyBand = isSingleSided && depositAsset === 'moon';
+                      const isCrashBand = isSingleSided && depositAsset === 'wmon';
+
+                      // Single-sided verdict logic
+                      if (isSingleSided) {
+                        const isNarrow = riskMetrics.probStay < 0.5;
+                        return (
+                          <div
+                            className={`p-3 rounded-lg text-center ${
+                              isNarrow
+                                ? isSkyBand
+                                  ? 'bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/40'
+                                  : 'bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/40'
+                                : 'bg-emerald-500/20 border border-emerald-500/40'
+                            }`}
+                          >
+                            <p
+                              className={`text-lg font-bold ${
+                                isNarrow
+                                  ? isSkyBand
+                                    ? 'text-[var(--monad-purple)]'
+                                    : 'text-[var(--moss-green)]'
+                                  : 'text-emerald-400'
+                              }`}
+                            >
+                              {isNarrow
+                                ? isSkyBand
+                                  ? '🚀 Quick Profit Zone'
+                                  : '📉 Quick Accumulation'
+                                : '✓ Good Range'}
+                            </p>
+                            <p className="text-xs text-white/70 mt-1">
+                              {isNarrow
+                                ? isSkyBand
+                                  ? 'Price may exit quickly = fast profit taking!'
+                                  : 'Price may exit quickly = fast m00n accumulation!'
+                                : `${(riskMetrics.probStay * 100).toFixed(0)}% stay chance over ${riskMetrics.days}d`}
+                            </p>
+                            {isNarrow && (
+                              <p className="text-[10px] text-white/50 mt-1">
+                                {isSkyBand
+                                  ? 'If price moons past your range, you take 100% profit'
+                                  : 'If price crashes past your range, you accumulate 100% m00n'}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      // Double-sided verdict logic (original)
+                      return (
+                        <div
+                          className={`p-3 rounded-lg text-center ${
+                            riskMetrics.probStay > 0.5
+                              ? 'bg-emerald-500/20 border border-emerald-500/40'
+                              : riskMetrics.probStay > 0.2
+                                ? 'bg-amber-500/20 border border-amber-500/40'
+                                : 'bg-red-500/20 border border-red-500/40'
+                          }`}
+                        >
+                          <p
+                            className={`text-lg font-bold ${
+                              riskMetrics.probStay > 0.5
+                                ? 'text-emerald-400'
+                                : riskMetrics.probStay > 0.2
+                                  ? 'text-amber-400'
+                                  : 'text-red-400'
+                            }`}
+                          >
+                            {riskMetrics.probStay > 0.5
+                              ? '✓ Good Range'
+                              : riskMetrics.probStay > 0.2
+                                ? '⚠ Risky Range'
+                                : '✗ Too Narrow'}
+                          </p>
+                          <p className="text-xs text-white/70 mt-1">
+                            {riskMetrics.probStay > 0.5
+                              ? `${(riskMetrics.probStay * 100).toFixed(0)}% chance to stay in range over ${riskMetrics.days}d`
+                              : riskMetrics.probStay > 0.2
+                                ? `Only ${(riskMetrics.probStay * 100).toFixed(0)}% chance to stay in range`
+                                : 'Price will likely exit fast'}
+                          </p>
+                        </div>
+                      );
+                    })()
                   ) : (
                     <div className="p-3 rounded-lg text-center bg-white/5 border border-white/10">
                       <p className="text-white/60 text-sm">Set volatility to see range analysis</p>
@@ -2155,8 +2211,9 @@ function AdvancedLpContent({
                     </div>
                   </div>
 
-                  {/* Suggestion */}
-                  {riskMetrics.probStay !== null &&
+                  {/* Suggestion - Only show for double-sided positions */}
+                  {bandSide === 'double' &&
+                    riskMetrics.probStay !== null &&
                     riskMetrics.probStay < 0.5 &&
                     riskMetrics.suggestedRange && (
                       <div className="text-[11px] text-white/60 bg-black/20 p-2 rounded">
