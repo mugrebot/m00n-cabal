@@ -39,6 +39,7 @@ interface LpPositionApi {
   token1: TokenBreakdown;
   priceLowerInToken1: string;
   priceUpperInToken1: string;
+  createdAtTimestamp?: number;
   fees?: {
     token0Wei: string;
     token1Wei: string;
@@ -153,7 +154,8 @@ const serializePosition = (position: PositionWithAmounts): LpPositionApi => {
     token0,
     token1,
     priceLowerInToken1: priceLower.toString(),
-    priceUpperInToken1: priceUpper.toString()
+    priceUpperInToken1: priceUpper.toString(),
+    createdAtTimestamp: position.createdAtTimestamp
   };
 };
 

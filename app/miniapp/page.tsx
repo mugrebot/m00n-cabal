@@ -5197,81 +5197,113 @@ Join the $m00n cabal 🌙`;
           </button>
         </div>
 
-        {/* Position Cards - matches desktop layout */}
+        {/* Position Cards - High Contrast Dark Theme */}
         {hasPositions ? (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {positions.map((pos) => {
               const isInRange = pos.rangeStatus === 'in-range';
               const fees = pos.fees;
               const positionValue = getPositionValueUsd(pos);
+
+              // Abbreviate token amounts for readability
+              const formatTokenAmount = (val: string | number): string => {
+                const n = typeof val === 'string' ? parseFloat(val) : val;
+                if (isNaN(n)) return '0';
+                if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`;
+                if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+                if (n >= 1_000) return `${(n / 1_000).toFixed(2)}K`;
+                if (n >= 1) return n.toFixed(2);
+                if (n >= 0.0001) return n.toFixed(4);
+                return n.toFixed(6);
+              };
+
               return (
                 <div
                   key={pos.tokenId}
-                  className="rounded-xl border border-white/10 bg-black/40 px-3 py-3 text-xs text-white space-y-2"
+                  className="rounded-xl border-2 border-white/20 bg-black/80 overflow-hidden"
                 >
-                  {/* Header: Token ID + Band Type */}
-                  <div className="flex justify-between items-center">
-                    <span className="font-mono text-white/90 font-bold">#{pos.tokenId}</span>
-                    <span className="uppercase tracking-[0.15em] text-[10px] text-[var(--moss-green)]">
+                  {/* Header: Token ID + Band Type - High contrast bar */}
+                  <div className="flex justify-between items-center px-4 py-2 bg-[var(--monad-purple)]/30 border-b border-white/20">
+                    <span className="font-mono text-white font-bold text-sm">#{pos.tokenId}</span>
+                    <span className="uppercase tracking-[0.2em] text-[10px] font-bold text-[var(--moss-green)] bg-black/40 px-2 py-0.5 rounded">
                       {getBandLabel(pos.bandType)}
                     </span>
                   </div>
-                  {/* Range */}
-                  <div className="flex justify-between text-white/70">
-                    <span>Range</span>
-                    <span>
-                      {pos.tickLower ?? '?'} → {pos.tickUpper ?? '?'}
-                    </span>
+
+                  {/* Main info section */}
+                  <div className="px-4 py-3 space-y-2">
+                    {/* Range + Status Row */}
+                    <div className="flex justify-between items-center">
+                      <div className="text-white/60 text-xs">
+                        <span className="text-white/40">Range:</span> {pos.tickLower ?? '?'} →{' '}
+                        {pos.tickUpper ?? '?'}
+                      </div>
+                      <span
+                        className={`text-xs font-bold px-2 py-0.5 rounded ${
+                          isInRange
+                            ? 'bg-[var(--moss-green)]/20 text-[var(--moss-green)]'
+                            : 'bg-red-500/20 text-red-400'
+                        }`}
+                      >
+                        {isInRange ? '✓ IN RANGE' : '✗ OUT'}
+                      </span>
+                    </div>
+
+                    {/* Position Value - Prominent */}
+                    <div className="flex justify-between items-center py-2 px-3 bg-white/5 rounded-lg">
+                      <span className="text-white/80 text-xs font-medium">Position Value</span>
+                      <span className="text-[var(--monad-purple)] font-bold text-base">
+                        ${positionValue > 1 ? positionValue.toFixed(2) : positionValue.toFixed(4)}
+                      </span>
+                    </div>
                   </div>
-                  {/* Status */}
-                  <div className="flex justify-between text-white/70">
-                    <span>Status</span>
-                    <span className={isInRange ? 'text-[var(--moss-green)]' : 'text-red-400'}>
-                      {pos.rangeStatus ?? 'unknown'}
-                    </span>
-                  </div>
-                  {/* Position Value */}
-                  <div className="flex justify-between text-white/70">
-                    <span>Position Value</span>
-                    <span className="text-[var(--monad-purple)] font-semibold">
-                      ${positionValue > 0.01 ? positionValue.toFixed(2) : positionValue.toFixed(6)}
-                    </span>
-                  </div>
-                  {/* Unclaimed fees */}
+
+                  {/* Fees Section - Distinct background */}
                   {pos.feesStatus === 'loaded' && fees ? (
-                    <div className="space-y-1 text-white/70 pt-1 border-t border-white/10">
-                      <div className="flex justify-between">
-                        <span>Unclaimed</span>
-                        <span className="text-right text-[10px]">
-                          {fees.token0Formatted} m00n / {fees.token1Formatted} WMON
+                    <div className="px-4 py-3 bg-[var(--moss-green)]/5 border-t border-white/10 space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-white/60">Unclaimed</span>
+                        <span className="text-white font-mono">
+                          {formatTokenAmount(fees.token0Formatted)} m00n /{' '}
+                          {formatTokenAmount(fees.token1Formatted)} WMON
                         </span>
                       </div>
                       {fees.unclaimedUsd !== null && fees.unclaimedUsd !== undefined && (
-                        <div className="flex justify-between">
-                          <span>Unclaimed (USD)</span>
-                          <span className="text-[var(--moss-green)]">
-                            ~${fees.unclaimedUsd.toFixed(6)}
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-white/60">Unclaimed (USD)</span>
+                          <span className="text-[var(--moss-green)] font-semibold">
+                            ~$
+                            {fees.unclaimedUsd > 0.01
+                              ? fees.unclaimedUsd.toFixed(4)
+                              : fees.unclaimedUsd.toFixed(6)}
                           </span>
                         </div>
                       )}
                       {fees.lifetimeUsd !== null && fees.lifetimeUsd !== undefined && (
-                        <div className="flex justify-between">
-                          <span>Lifetime fees (USD)</span>
-                          <span className="text-[var(--moss-green)]">
-                            ${fees.lifetimeUsd.toFixed(6)}
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-white/60">Lifetime fees</span>
+                          <span className="text-[var(--moss-green)] font-semibold">
+                            $
+                            {fees.lifetimeUsd > 0.01
+                              ? fees.lifetimeUsd.toFixed(4)
+                              : fees.lifetimeUsd.toFixed(6)}
                           </span>
                         </div>
                       )}
                     </div>
                   ) : pos.feesStatus === 'loading' ? (
-                    <div className="flex justify-between text-white/50 pt-1 border-t border-white/10">
-                      <span>Fees</span>
-                      <span className="animate-pulse">Loading...</span>
+                    <div className="px-4 py-3 bg-white/5 border-t border-white/10">
+                      <div className="flex justify-between items-center text-xs text-white/50">
+                        <span>Fees</span>
+                        <span className="animate-pulse">Loading...</span>
+                      </div>
                     </div>
                   ) : (
-                    <div className="flex justify-between text-white/50 pt-1 border-t border-white/10">
-                      <span>Unclaimed</span>
-                      <span>m00n / WMON</span>
+                    <div className="px-4 py-3 bg-white/5 border-t border-white/10">
+                      <div className="flex justify-between items-center text-xs text-white/40">
+                        <span>Unclaimed</span>
+                        <span>—</span>
+                      </div>
                     </div>
                   )}
 
@@ -5310,78 +5342,97 @@ Join the $m00n cabal 🌙`;
                       formatAnalyticsForDisplay(analytics);
 
                     return (
-                      <div className="space-y-1 text-white/70 pt-1 border-t border-white/10">
-                        {/* APR */}
-                        <div className="flex justify-between">
-                          <span>APR (est.)</span>
-                          <span
-                            className={
-                              analytics.feesApr.percentage > 0 ? 'text-[var(--moss-green)]' : ''
-                            }
-                          >
-                            {aprText}
-                          </span>
-                        </div>
-                        {/* IL */}
-                        <div className="flex justify-between">
-                          <span>IL</span>
-                          <span
-                            className={
-                              analytics.impermanentLoss.percentage < -1
-                                ? 'text-red-400'
-                                : 'text-[var(--moss-green)]'
-                            }
-                          >
-                            {ilText}
-                          </span>
-                        </div>
-                        {/* vs HODL */}
-                        <div className="flex justify-between">
-                          <span>vs HODL</span>
-                          <span
-                            className={
-                              analytics.vsHodl.winner === 'LP'
-                                ? 'text-[var(--moss-green)]'
-                                : analytics.vsHodl.winner === 'HODL'
+                      <div className="px-4 py-3 bg-[var(--monad-purple)]/10 border-t border-white/10">
+                        {/* Analytics Grid - 3 columns for contrast */}
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                          {/* APR */}
+                          <div className="bg-black/40 rounded-lg py-2 px-1">
+                            <p className="text-[9px] text-white/50 uppercase tracking-wider mb-0.5">
+                              APR
+                            </p>
+                            <p
+                              className={`text-xs font-bold ${
+                                analytics.feesApr.percentage > 0
+                                  ? 'text-[var(--moss-green)]'
+                                  : 'text-white/60'
+                              }`}
+                            >
+                              {analytics.feesApr.percentage > 0
+                                ? `${analytics.feesApr.percentage.toFixed(1)}%`
+                                : '—'}
+                            </p>
+                          </div>
+                          {/* IL */}
+                          <div className="bg-black/40 rounded-lg py-2 px-1">
+                            <p className="text-[9px] text-white/50 uppercase tracking-wider mb-0.5">
+                              IL
+                            </p>
+                            <p
+                              className={`text-xs font-bold ${
+                                analytics.impermanentLoss.percentage < -1
                                   ? 'text-red-400'
-                                  : ''
-                            }
-                          >
-                            {vsHodlText}
-                          </span>
+                                  : 'text-[var(--moss-green)]'
+                              }`}
+                            >
+                              {analytics.impermanentLoss.percentage < 0
+                                ? `${Math.abs(analytics.impermanentLoss.percentage).toFixed(1)}%`
+                                : '0%'}
+                            </p>
+                          </div>
+                          {/* vs HODL */}
+                          <div className="bg-black/40 rounded-lg py-2 px-1">
+                            <p className="text-[9px] text-white/50 uppercase tracking-wider mb-0.5">
+                              vs HODL
+                            </p>
+                            <p
+                              className={`text-xs font-bold ${
+                                analytics.vsHodl.winner === 'LP'
+                                  ? 'text-[var(--moss-green)]'
+                                  : analytics.vsHodl.winner === 'HODL'
+                                    ? 'text-red-400'
+                                    : 'text-white/60'
+                              }`}
+                            >
+                              {analytics.vsHodl.winner === 'LP'
+                                ? `+$${analytics.vsHodl.differenceUsd.toFixed(2)}`
+                                : analytics.vsHodl.winner === 'HODL'
+                                  ? `-$${Math.abs(analytics.vsHodl.differenceUsd).toFixed(2)}`
+                                  : 'Even'}
+                            </p>
+                          </div>
                         </div>
-                        {/* Rebalance Suggestion */}
+                        {/* Rebalance Suggestion - Full width alert */}
                         {rebalanceText && (
-                          <div className="mt-2 p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-[10px]">
-                            {rebalanceText}
+                          <div className="mt-3 p-2 rounded-lg bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 text-[10px] font-medium">
+                            ⚠️ {rebalanceText.replace('⚠️ ', '')}
                           </div>
                         )}
                       </div>
                     );
                   })()}
 
-                  {/* Buttons row */}
-                  <div className="flex items-center gap-2 pt-1">
+                  {/* Buttons row - High contrast footer */}
+                  <div className="flex items-center gap-2 px-4 py-3 bg-black/60 border-t border-white/10">
                     <button
                       type="button"
                       onClick={() => handleCollectLpFees(pos.tokenId)}
                       disabled={pos.collectStatus === 'loading'}
-                      className="px-3 py-1 rounded-full border border-[var(--moss-green)] text-[var(--moss-green)] hover:bg-[var(--moss-green)] hover:text-black transition disabled:opacity-50"
+                      className="px-4 py-1.5 rounded-lg bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 text-[var(--moss-green)] font-semibold text-xs hover:bg-[var(--moss-green)] hover:text-black transition disabled:opacity-50"
                     >
-                      {pos.collectStatus === 'loading' ? 'Collecting…' : 'Collect'}
+                      {pos.collectStatus === 'loading' ? '...' : 'Collect'}
                     </button>
                     <button
                       type="button"
                       onClick={() => handleRemoveLiquidity(pos.tokenId)}
                       disabled={pos.removeStatus === 'loading'}
-                      className="px-3 py-1 rounded-full border border-red-400 text-red-400 hover:bg-red-400 hover:text-black transition disabled:opacity-50"
+                      className="px-4 py-1.5 rounded-lg bg-red-500/20 border border-red-500/50 text-red-400 font-semibold text-xs hover:bg-red-500 hover:text-white transition disabled:opacity-50"
                     >
-                      {pos.removeStatus === 'loading' ? 'Removing…' : 'Remove'}
+                      {pos.removeStatus === 'loading' ? '...' : 'Remove'}
                     </button>
                     <button
                       type="button"
                       onClick={() => handleSharePosition(pos)}
-                      className="ml-auto px-3 py-1 rounded-full border border-[var(--monad-purple)] text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-white transition"
+                      className="ml-auto px-4 py-1.5 rounded-lg bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 text-[var(--monad-purple)] font-semibold text-xs hover:bg-[var(--monad-purple)] hover:text-white transition"
                     >
                       Share
                     </button>

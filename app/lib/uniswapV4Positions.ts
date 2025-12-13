@@ -124,6 +124,7 @@ export interface PositionDetails {
   tickLower: number;
   tickUpper: number;
   liquidity: bigint;
+  createdAtTimestamp?: number; // Unix timestamp when position was created
   poolKey: {
     currency0: Address;
     currency1: Address;
@@ -160,6 +161,7 @@ interface SubgraphPosition {
   tokenId: string;
   id: string;
   owner: string;
+  createdAtTimestamp?: string;
 }
 
 // -----------------------------
@@ -206,6 +208,7 @@ const GET_POSITIONS_QUERY = gql`
       tokenId
       id
       owner
+      createdAtTimestamp
     }
   }
 `;
@@ -216,7 +219,17 @@ const GET_POSITIONS_QUERY = gql`
  *
  * This completely replaces any Unichain/Neynar indexer usage.
  */
+export interface PositionIdWithTimestamp {
+  tokenId: bigint;
+  createdAtTimestamp?: number;
+}
+
 export async function getPositionIds(owner: Address): Promise<bigint[]> {
+  const positions = await getPositionIdsWithTimestamps(owner);
+  return positions.map(p => p.tokenId);
+}
+
+export async function getPositionIdsWithTimestamps(owner: Address): Promise<PositionIdWithTimestamp[]> {
   const ownerLower = owner.toLowerCase();
 
   try {
@@ -225,18 +238,21 @@ export async function getPositionIds(owner: Address): Promise<bigint[]> {
     });
 
     const positions = data.positions ?? [];
-    const ids: bigint[] = [];
+    const result: PositionIdWithTimestamp[] = [];
 
     for (const p of positions) {
       try {
         if (!p.tokenId) continue;
-        ids.push(BigInt(p.tokenId));
+        result.push({
+          tokenId: BigInt(p.tokenId),
+          createdAtTimestamp: p.createdAtTimestamp ? Number(p.createdAtTimestamp) : undefined
+        });
       } catch {
         // Skip malformed tokenIds
       }
     }
 
-    return ids;
+    return result;
   } catch (error) {
     console.error('Failed to fetch positions from Monad Uniswap v4 subgraph', error);
     return [];
@@ -372,13 +388,20 @@ export async function getUserPositionsSummary(owner: Address): Promise<UserPosit
   })) as bigint;
   const hasLpFromOnchain = balance > BigInt(0);
 
-  // 2) Subgraph: position tokenIds for this owner on Monad
-  const tokenIds = await getPositionIds(owner);
+  // 2) Subgraph: position tokenIds for this owner on Monad (with timestamps)
+  const positionsWithTs = await getPositionIdsWithTimestamps(owner);
+  const tokenIds = positionsWithTs.map(p => p.tokenId);
+  const timestampMap = new Map(positionsWithTs.map(p => [p.tokenId.toString(), p.createdAtTimestamp]));
   const indexerPositionCount = tokenIds.length;
   const hasLpFromSubgraph = indexerPositionCount > 0;
 
   // 3) Decode full on-chain details for the discovered tokenIds
   const lpPositions = await getManyPositionDetails(tokenIds);
+
+  // Attach createdAtTimestamp to each position
+  for (const pos of lpPositions) {
+    pos.createdAtTimestamp = timestampMap.get(pos.tokenId.toString());
+  }
 
   // 4) Aggregate diagnostics
   return {
