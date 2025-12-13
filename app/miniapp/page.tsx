@@ -5206,15 +5206,32 @@ Join the $m00n cabal 🌙`;
               const positionValue = getPositionValueUsd(pos);
 
               // Abbreviate token amounts for readability
-              const formatTokenAmount = (val: string | number): string => {
+              const formatTokenAmt = (val: string | number): string => {
                 const n = typeof val === 'string' ? parseFloat(val) : val;
-                if (isNaN(n)) return '0';
+                if (isNaN(n) || n === 0) return '0';
+                // Large numbers: abbreviate
                 if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`;
                 if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
-                if (n >= 1_000) return `${(n / 1_000).toFixed(2)}K`;
+                if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
                 if (n >= 1) return n.toFixed(2);
+                if (n >= 0.01) return n.toFixed(3);
                 if (n >= 0.0001) return n.toFixed(4);
-                return n.toFixed(6);
+                // Very tiny: use scientific notation or "<0.0001"
+                if (n < 0.0001 && n > 0) return n.toExponential(1);
+                return n.toFixed(4);
+              };
+
+              // Format USD amounts smartly
+              const formatUsdAmt = (val: number | null | undefined): string => {
+                if (val === null || val === undefined || isNaN(val)) return '—';
+                if (val === 0) return '$0';
+                if (val >= 1000) return `$${(val / 1000).toFixed(1)}K`;
+                if (val >= 1) return `$${val.toFixed(2)}`;
+                if (val >= 0.01) return `$${val.toFixed(4)}`;
+                if (val >= 0.0001) return `$${val.toFixed(6)}`;
+                // Super tiny: scientific notation
+                if (val < 0.0001 && val > 0) return `$${val.toExponential(2)}`;
+                return `$${val.toFixed(4)}`;
               };
 
               return (
@@ -5253,7 +5270,7 @@ Join the $m00n cabal 🌙`;
                     <div className="flex justify-between items-center py-2 px-3 bg-white/5 rounded-lg">
                       <span className="text-white/80 text-xs font-medium">Position Value</span>
                       <span className="text-[var(--monad-purple)] font-bold text-base">
-                        ${positionValue > 1 ? positionValue.toFixed(2) : positionValue.toFixed(4)}
+                        {formatUsdAmt(positionValue)}
                       </span>
                     </div>
                   </div>
@@ -5263,19 +5280,16 @@ Join the $m00n cabal 🌙`;
                     <div className="px-4 py-3 bg-[var(--moss-green)]/5 border-t border-white/10 space-y-2">
                       <div className="flex justify-between items-center text-xs">
                         <span className="text-white/60">Unclaimed</span>
-                        <span className="text-white font-mono">
-                          {formatTokenAmount(fees.token0Formatted)} m00n /{' '}
-                          {formatTokenAmount(fees.token1Formatted)} WMON
+                        <span className="text-white font-mono text-[10px]">
+                          {formatTokenAmt(fees.token0Formatted)} m00n /{' '}
+                          {formatTokenAmt(fees.token1Formatted)} WMON
                         </span>
                       </div>
                       {fees.unclaimedUsd !== null && fees.unclaimedUsd !== undefined && (
                         <div className="flex justify-between items-center text-xs">
                           <span className="text-white/60">Unclaimed (USD)</span>
                           <span className="text-[var(--moss-green)] font-semibold">
-                            ~$
-                            {fees.unclaimedUsd > 0.01
-                              ? fees.unclaimedUsd.toFixed(4)
-                              : fees.unclaimedUsd.toFixed(6)}
+                            ~{formatUsdAmt(fees.unclaimedUsd)}
                           </span>
                         </div>
                       )}
@@ -5283,10 +5297,7 @@ Join the $m00n cabal 🌙`;
                         <div className="flex justify-between items-center text-xs">
                           <span className="text-white/60">Lifetime fees</span>
                           <span className="text-[var(--moss-green)] font-semibold">
-                            $
-                            {fees.lifetimeUsd > 0.01
-                              ? fees.lifetimeUsd.toFixed(4)
-                              : fees.lifetimeUsd.toFixed(6)}
+                            {formatUsdAmt(fees.lifetimeUsd)}
                           </span>
                         </div>
                       )}
