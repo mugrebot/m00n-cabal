@@ -319,6 +319,7 @@ interface StreakLeaderboardResponse {
   updatedAt: string;
   lastCheckAt: string;
   totalPositionsTracked: number;
+  entries: StreakLeaderboardEntry[]; // All entries
   topStreaks: StreakLeaderboardEntry[];
   topAllTime: StreakLeaderboardEntry[];
   topPoints: StreakLeaderboardEntry[];
@@ -3620,12 +3621,13 @@ Join the $m00n cabal 🌙`;
       );
     }
 
-    const { topStreaks, topAllTime, totalPositionsTracked, lastCheckAt } = streakLeaderboardData;
+    const { entries, totalPositionsTracked, lastCheckAt } = streakLeaderboardData;
 
     // Find max streak for sizing
+    const allEntries = entries ?? [];
     const maxStreak = Math.max(
-      ...topStreaks.map((e) => e.currentStreakDuration),
-      ...topAllTime.map((e) => e.longestStreakDuration),
+      ...allEntries.map((e) => e.currentStreakDuration ?? 0),
+      ...allEntries.map((e) => e.longestStreakDuration ?? 0),
       1
     );
 
@@ -3698,8 +3700,7 @@ Join the $m00n cabal 🌙`;
     };
 
     // Sort all entries by points for unified leaderboard
-    const allEntriesByPoints = [...topStreaks, ...topAllTime]
-      .filter((entry, index, arr) => arr.findIndex((e) => e.tokenId === entry.tokenId) === index)
+    const allEntriesByPoints = [...(entries ?? [])]
       .sort((a, b) => (b.points ?? 0) - (a.points ?? 0))
       .slice(0, 10);
 
@@ -4894,12 +4895,13 @@ Join the $m00n cabal 🌙`;
   );
 
   const renderShell = (content: ReactNode, showTabs = false) => (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-[100dvh] flex flex-col">
       {renderAdminPanel()}
       <BackgroundOrbs />
       <StickerRain />
-      <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pb-24 pt-6 sm:px-6 lg:px-8">
-        <div className="space-y-6">{content}</div>
+      {/* Safe area padding for iPhone notch + status bar */}
+      <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pt-4 pb-20 flex-1 safe-area-pt safe-area-pb">
+        <div className="space-y-4">{content}</div>
       </main>
       {showTabs && renderTabNavigation()}
       {toast && (
