@@ -4898,13 +4898,16 @@ Join the $m00n cabal 🌙`;
   );
 
   const renderShell = (content: ReactNode, showTabs = false) => (
-    <div className="relative min-h-[100dvh] flex flex-col">
+    <div className="relative min-h-screen flex flex-col">
       {renderAdminPanel()}
       <BackgroundOrbs />
       <StickerRain />
-      {/* Safe area padding for iPhone notch + status bar */}
-      <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pt-12 pb-28 flex-1 safe-area-pt">
-        <div className="space-y-6">{content}</div>
+      {/* Safe area padding for iPhone - explicit padding values */}
+      <main
+        className="relative z-10 mx-auto w-full max-w-5xl px-4 flex-1"
+        style={{ paddingTop: '60px', paddingBottom: '100px' }}
+      >
+        <div className="space-y-8">{content}</div>
       </main>
       {showTabs && renderTabNavigation()}
       {toast && (
@@ -4955,7 +4958,7 @@ Join the $m00n cabal 🌙`;
     const formattedWmon = formatAbbreviated(wmonBalance);
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         {/* Balance + Stats Row */}
         <div className={`${PANEL_CLASS} p-4`}>
           <div className="grid grid-cols-3 gap-4 text-center">
@@ -5359,7 +5362,7 @@ Join the $m00n cabal 🌙`;
 
   // Rewards Tab - Leaderboards & Season info
   const renderRewardsTab = () => (
-    <div className="space-y-4">
+    <div className="space-y-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
       {/* Header - Compact */}
       <div className="text-center">
         <h2 className="pixel-font text-lg text-[#ffd700]">🏆 Rewards</h2>
@@ -5418,7 +5421,7 @@ Join the $m00n cabal 🌙`;
         : null;
 
     return (
-      <div className="space-y-4 overflow-y-auto max-h-[calc(100dvh-200px)]">
+      <div className="space-y-6" style={{ paddingTop: '20px' }}>
         {/* Header with close button */}
         <div className="flex items-center justify-between">
           <div>
