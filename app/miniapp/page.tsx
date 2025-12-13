@@ -4900,8 +4900,8 @@ Join the $m00n cabal 🌙`;
       <BackgroundOrbs />
       <StickerRain />
       {/* Safe area padding for iPhone notch + status bar */}
-      <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pt-4 pb-20 flex-1 safe-area-pt safe-area-pb">
-        <div className="space-y-4">{content}</div>
+      <main className="relative z-10 mx-auto w-full max-w-5xl px-4 pt-12 pb-24 flex-1 safe-area-pt safe-area-pb">
+        <div className="space-y-6">{content}</div>
       </main>
       {showTabs && renderTabNavigation()}
       {toast && (
@@ -4952,7 +4952,7 @@ Join the $m00n cabal 🌙`;
     const formattedWmon = formatAbbreviated(wmonBalance);
 
     return (
-      <div className="space-y-5 pt-8">
+      <div className="space-y-4">
         {/* Balance + Stats Row */}
         <div className={`${PANEL_CLASS} p-4`}>
           <div className="grid grid-cols-3 gap-4 text-center">
