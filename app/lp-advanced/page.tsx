@@ -1921,41 +1921,65 @@ function AdvancedLpContent({
                         loss.
                       </p>
                     </div>
-                    {/* Suggested Range */}
-                    {moonMarketCapUsd !== null && moonMarketCapUsd > 0 && (
-                      <div className="bg-[var(--moss-green)]/10 p-3 rounded-lg border border-[var(--moss-green)]/30">
-                        <p className="text-[10px] text-[var(--moss-green)] uppercase tracking-wider mb-2">
-                          💡 Suggested Range:
-                        </p>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-white/70">Buy zone:</span>
-                          <span className="text-[var(--moss-green)] font-mono font-bold">
-                            $
-                            {(moonMarketCapUsd * 0.5).toLocaleString(undefined, {
-                              maximumFractionDigits: 0
-                            })}{' '}
-                            - $
-                            {(moonMarketCapUsd * 0.8).toLocaleString(undefined, {
-                              maximumFractionDigits: 0
-                            })}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-white/50 mt-1">
-                          Sets limit buy at 20-50% below current price
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRangeLowerUsd(String(Math.round(moonMarketCapUsd * 0.5)));
-                            setRangeUpperUsd(String(Math.round(moonMarketCapUsd * 0.8)));
-                            setRangeTouched(true);
-                          }}
-                          className="mt-2 w-full py-1.5 text-xs font-bold bg-[var(--moss-green)] text-black rounded hover:bg-[var(--moss-green)]/80 transition"
-                        >
-                          Apply Suggested Range
-                        </button>
-                      </div>
-                    )}
+                    {/* Suggested Range - Uses volatility when available */}
+                    {moonMarketCapUsd !== null &&
+                      moonMarketCapUsd > 0 &&
+                      (() => {
+                        // Use volatility data if available, otherwise use defaults
+                        const expMove = riskMetrics?.expMovePct ?? 50; // Default 50% if no vol data
+                        const hasVolData =
+                          riskMetrics?.expMovePct !== null && riskMetrics?.expMovePct !== undefined;
+
+                        // For crash band: buy zone is BELOW current price
+                        // Use expected move to set intelligent range
+                        const lowerPct = Math.min(0.3, expMove / 100); // At least 30% drop
+                        const upperPct = Math.min(0.1, expMove / 200); // Closer to current price
+
+                        const suggestedLower = moonMarketCapUsd * (1 - lowerPct - 0.2); // Extra buffer
+                        const suggestedUpper = moonMarketCapUsd * (1 - upperPct);
+
+                        return (
+                          <div className="bg-[var(--moss-green)]/10 p-3 rounded-lg border border-[var(--moss-green)]/30">
+                            <p className="text-[10px] text-[var(--moss-green)] uppercase tracking-wider mb-2">
+                              💡 Suggested Range {hasVolData ? '(Vol-based)' : '(Default)'}:
+                            </p>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-white/70">Buy zone:</span>
+                              <span className="text-[var(--moss-green)] font-mono font-bold">
+                                $
+                                {suggestedLower.toLocaleString(undefined, {
+                                  maximumFractionDigits: 0
+                                })}{' '}
+                                - $
+                                {suggestedUpper.toLocaleString(undefined, {
+                                  maximumFractionDigits: 0
+                                })}
+                              </span>
+                            </div>
+                            {hasVolData && (
+                              <p className="text-[10px] text-white/50 mt-1">
+                                Based on ±{expMove.toFixed(0)}% expected swing
+                              </p>
+                            )}
+                            <p className="text-[10px] text-white/50 mt-1">
+                              Accumulate m00n if price drops{' '}
+                              {((1 - suggestedUpper / moonMarketCapUsd) * 100).toFixed(0)}%-
+                              {((1 - suggestedLower / moonMarketCapUsd) * 100).toFixed(0)}%
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRangeLowerUsd(String(Math.round(suggestedLower)));
+                                setRangeUpperUsd(String(Math.round(suggestedUpper)));
+                                setRangeTouched(true);
+                              }}
+                              className="mt-2 w-full py-1.5 text-xs font-bold bg-[var(--moss-green)] text-black rounded hover:bg-[var(--moss-green)]/80 transition"
+                            >
+                              Apply Suggested Range
+                            </button>
+                          </div>
+                        );
+                      })()}
                   </div>
                 ) : (
                   // Sky Band Strategy
@@ -1988,41 +2012,64 @@ function AdvancedLpContent({
                         early).
                       </p>
                     </div>
-                    {/* Suggested Range */}
-                    {moonMarketCapUsd !== null && moonMarketCapUsd > 0 && (
-                      <div className="bg-[var(--monad-purple)]/10 p-3 rounded-lg border border-[var(--monad-purple)]/30">
-                        <p className="text-[10px] text-[var(--monad-purple)] uppercase tracking-wider mb-2">
-                          💡 Suggested Range:
-                        </p>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-white/70">Sell zone:</span>
-                          <span className="text-[var(--monad-purple)] font-mono font-bold">
-                            $
-                            {(moonMarketCapUsd * 1.5).toLocaleString(undefined, {
-                              maximumFractionDigits: 0
-                            })}{' '}
-                            - $
-                            {(moonMarketCapUsd * 3).toLocaleString(undefined, {
-                              maximumFractionDigits: 0
-                            })}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-white/50 mt-1">
-                          Sets limit sell at 50-200% above current price
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRangeLowerUsd(String(Math.round(moonMarketCapUsd * 1.5)));
-                            setRangeUpperUsd(String(Math.round(moonMarketCapUsd * 3)));
-                            setRangeTouched(true);
-                          }}
-                          className="mt-2 w-full py-1.5 text-xs font-bold bg-[var(--monad-purple)] text-white rounded hover:bg-[var(--monad-purple)]/80 transition"
-                        >
-                          Apply Suggested Range
-                        </button>
-                      </div>
-                    )}
+                    {/* Suggested Range - Uses volatility when available */}
+                    {moonMarketCapUsd !== null &&
+                      moonMarketCapUsd > 0 &&
+                      (() => {
+                        // Use volatility data if available, otherwise use defaults
+                        const expMove = riskMetrics?.expMovePct ?? 100; // Default 100% if no vol data
+                        const hasVolData =
+                          riskMetrics?.expMovePct !== null && riskMetrics?.expMovePct !== undefined;
+
+                        // For sky band: sell zone is ABOVE current price
+                        // Use expected move to set intelligent range
+                        const lowerMultiplier = 1 + Math.max(0.2, expMove / 200); // At least 20% above
+                        const upperMultiplier = 1 + Math.max(0.5, expMove / 50); // Wider for high vol
+
+                        const suggestedLower = moonMarketCapUsd * lowerMultiplier;
+                        const suggestedUpper = moonMarketCapUsd * upperMultiplier;
+
+                        return (
+                          <div className="bg-[var(--monad-purple)]/10 p-3 rounded-lg border border-[var(--monad-purple)]/30">
+                            <p className="text-[10px] text-[var(--monad-purple)] uppercase tracking-wider mb-2">
+                              💡 Suggested Range {hasVolData ? '(Vol-based)' : '(Default)'}:
+                            </p>
+                            <div className="flex justify-between text-xs">
+                              <span className="text-white/70">Sell zone:</span>
+                              <span className="text-[var(--monad-purple)] font-mono font-bold">
+                                $
+                                {suggestedLower.toLocaleString(undefined, {
+                                  maximumFractionDigits: 0
+                                })}{' '}
+                                - $
+                                {suggestedUpper.toLocaleString(undefined, {
+                                  maximumFractionDigits: 0
+                                })}
+                              </span>
+                            </div>
+                            {hasVolData && (
+                              <p className="text-[10px] text-white/50 mt-1">
+                                Based on ±{expMove.toFixed(0)}% expected swing
+                              </p>
+                            )}
+                            <p className="text-[10px] text-white/50 mt-1">
+                              Take profits at +{((lowerMultiplier - 1) * 100).toFixed(0)}% to +
+                              {((upperMultiplier - 1) * 100).toFixed(0)}% gain
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRangeLowerUsd(String(Math.round(suggestedLower)));
+                                setRangeUpperUsd(String(Math.round(suggestedUpper)));
+                                setRangeTouched(true);
+                              }}
+                              className="mt-2 w-full py-1.5 text-xs font-bold bg-[var(--monad-purple)] text-white rounded hover:bg-[var(--monad-purple)]/80 transition"
+                            >
+                              Apply Suggested Range
+                            </button>
+                          </div>
+                        );
+                      })()}
                   </div>
                 )}
               </div>
