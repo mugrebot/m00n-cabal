@@ -1860,28 +1860,173 @@ function AdvancedLpContent({
           </div>
 
           {bandSide === 'single' && (
-            <div className="flex gap-2 justify-center text-xs mt-4">
-              <button
-                className={`px-3 py-1 border ${
-                  depositAsset === 'moon'
-                    ? 'border-[var(--moss-green)] text-[var(--moss-green)]'
-                    : 'border-white/20 text-white/40'
-                }`}
-                onClick={() => setDepositAsset('moon')}
-              >
-                Input m00n
-              </button>
-              <button
-                className={`px-3 py-1 border ${
-                  depositAsset === 'wmon'
-                    ? 'border-[var(--moss-green)] text-[var(--moss-green)]'
-                    : 'border-white/20 text-white/40'
-                }`}
-                onClick={() => setDepositAsset('wmon')}
-              >
-                Input WMON
-              </button>
-            </div>
+            <>
+              <div className="flex gap-2 justify-center text-xs mt-4">
+                <button
+                  className={`px-3 py-1 border ${
+                    depositAsset === 'moon'
+                      ? 'border-[var(--moss-green)] text-[var(--moss-green)]'
+                      : 'border-white/20 text-white/40'
+                  }`}
+                  onClick={() => setDepositAsset('moon')}
+                >
+                  Input m00n
+                </button>
+                <button
+                  className={`px-3 py-1 border ${
+                    depositAsset === 'wmon'
+                      ? 'border-[var(--moss-green)] text-[var(--moss-green)]'
+                      : 'border-white/20 text-white/40'
+                  }`}
+                  onClick={() => setDepositAsset('wmon')}
+                >
+                  Input WMON
+                </button>
+              </div>
+
+              {/* Strategy Suggestion Panel */}
+              <div className="mt-4 p-4 border border-[var(--monad-purple)]/40 bg-[var(--monad-purple)]/10 rounded-xl space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--monad-purple)] text-center">
+                  📊 Strategy Guide
+                </h3>
+
+                {depositAsset === 'wmon' ? (
+                  // Crash Band Strategy
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">📉</span>
+                      <span className="font-bold text-white">Crash Band (Buy the Dip)</span>
+                    </div>
+                    <p className="text-xs text-white/70">
+                      You&apos;re placing a{' '}
+                      <span className="text-[var(--moss-green)]">limit buy order</span> for m00n. If
+                      price drops into your range, your WMON converts to m00n.
+                    </p>
+                    <div className="bg-black/30 p-3 rounded-lg space-y-2">
+                      <p className="text-[10px] text-white/50 uppercase tracking-wider">
+                        When Profitable:
+                      </p>
+                      <ul className="text-xs text-white/70 space-y-1 list-disc pl-4">
+                        <li>Price dips into range, you accumulate m00n at discount</li>
+                        <li>Price bounces back up = profit on m00n holdings</li>
+                        <li>You earn swap fees while price is in your range</li>
+                      </ul>
+                    </div>
+                    <div className="bg-red-500/10 p-3 rounded-lg border border-red-500/20">
+                      <p className="text-[10px] text-red-300 uppercase tracking-wider mb-1">
+                        ⚠️ Risk:
+                      </p>
+                      <p className="text-xs text-red-200/80">
+                        If price keeps falling past your range, you&apos;re left holding m00n at a
+                        loss.
+                      </p>
+                    </div>
+                    {/* Suggested Range */}
+                    {moonMarketCapUsd !== null && moonMarketCapUsd > 0 && (
+                      <div className="bg-[var(--moss-green)]/10 p-3 rounded-lg border border-[var(--moss-green)]/30">
+                        <p className="text-[10px] text-[var(--moss-green)] uppercase tracking-wider mb-2">
+                          💡 Suggested Range:
+                        </p>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-white/70">Buy zone:</span>
+                          <span className="text-[var(--moss-green)] font-mono font-bold">
+                            $
+                            {(moonMarketCapUsd * 0.5).toLocaleString(undefined, {
+                              maximumFractionDigits: 0
+                            })}{' '}
+                            - $
+                            {(moonMarketCapUsd * 0.8).toLocaleString(undefined, {
+                              maximumFractionDigits: 0
+                            })}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-white/50 mt-1">
+                          Sets limit buy at 20-50% below current price
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRangeLowerUsd(String(Math.round(moonMarketCapUsd * 0.5)));
+                            setRangeUpperUsd(String(Math.round(moonMarketCapUsd * 0.8)));
+                            setRangeTouched(true);
+                          }}
+                          className="mt-2 w-full py-1.5 text-xs font-bold bg-[var(--moss-green)] text-black rounded hover:bg-[var(--moss-green)]/80 transition"
+                        >
+                          Apply Suggested Range
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  // Sky Band Strategy
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🚀</span>
+                      <span className="font-bold text-white">Sky Band (Take Profits)</span>
+                    </div>
+                    <p className="text-xs text-white/70">
+                      You&apos;re placing a{' '}
+                      <span className="text-[var(--monad-purple)]">limit sell order</span> for m00n.
+                      If price rises into your range, your m00n converts to WMON.
+                    </p>
+                    <div className="bg-black/30 p-3 rounded-lg space-y-2">
+                      <p className="text-[10px] text-white/50 uppercase tracking-wider">
+                        When Profitable:
+                      </p>
+                      <ul className="text-xs text-white/70 space-y-1 list-disc pl-4">
+                        <li>Price pumps into range, you take profits in WMON</li>
+                        <li>Price dumps back down = you kept profits</li>
+                        <li>You earn swap fees while price is in your range</li>
+                      </ul>
+                    </div>
+                    <div className="bg-red-500/10 p-3 rounded-lg border border-red-500/20">
+                      <p className="text-[10px] text-red-300 uppercase tracking-wider mb-1">
+                        ⚠️ Risk:
+                      </p>
+                      <p className="text-xs text-red-200/80">
+                        If price keeps mooning past your range, you miss the upside (sold too
+                        early).
+                      </p>
+                    </div>
+                    {/* Suggested Range */}
+                    {moonMarketCapUsd !== null && moonMarketCapUsd > 0 && (
+                      <div className="bg-[var(--monad-purple)]/10 p-3 rounded-lg border border-[var(--monad-purple)]/30">
+                        <p className="text-[10px] text-[var(--monad-purple)] uppercase tracking-wider mb-2">
+                          💡 Suggested Range:
+                        </p>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-white/70">Sell zone:</span>
+                          <span className="text-[var(--monad-purple)] font-mono font-bold">
+                            $
+                            {(moonMarketCapUsd * 1.5).toLocaleString(undefined, {
+                              maximumFractionDigits: 0
+                            })}{' '}
+                            - $
+                            {(moonMarketCapUsd * 3).toLocaleString(undefined, {
+                              maximumFractionDigits: 0
+                            })}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-white/50 mt-1">
+                          Sets limit sell at 50-200% above current price
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRangeLowerUsd(String(Math.round(moonMarketCapUsd * 1.5)));
+                            setRangeUpperUsd(String(Math.round(moonMarketCapUsd * 3)));
+                            setRangeTouched(true);
+                          }}
+                          className="mt-2 w-full py-1.5 text-xs font-bold bg-[var(--monad-purple)] text-white rounded hover:bg-[var(--monad-purple)]/80 transition"
+                        >
+                          Apply Suggested Range
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
           )}
 
           <div className="space-y-2">
