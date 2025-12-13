@@ -56,8 +56,8 @@ const sections = [
       'Rewards distributed every full moon 🌕',
       'Must hold 1M+ m00n tokens',
       'Position must be 7+ days old',
-      'Must have 7+ day streak (consecutive days in range)',
-      'Must be in range at snapshot time'
+      'Position value must be > $5',
+      'In-range positions earn a 20% bonus'
     ]
   }
 ];

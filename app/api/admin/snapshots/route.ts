@@ -141,13 +141,11 @@ export async function GET(request: NextRequest) {
         disqualificationReasons.push(
           `Position must be ${QUALIFICATION_REQUIREMENTS.minPositionAgeDays}+ days old`
         );
-      if (!hasMinStreak)
-        disqualificationReasons.push(
-          `Need ${QUALIFICATION_REQUIREMENTS.minStreakDays}+ day streak`
-        );
-      if (!isInRange) disqualificationReasons.push('Must be in range at snapshot');
 
-      const qualified = hasMinMoonHolding && hasMinPositionAge && hasMinStreak && isInRange;
+      // In-range is a bonus, not a requirement
+      const inRangeBonus = isInRange ? (QUALIFICATION_REQUIREMENTS.inRangeBonus ?? 1.2) : 1.0;
+
+      const qualified = hasMinMoonHolding && hasMinPositionAge;
 
       return NextResponse.json({
         qualified,

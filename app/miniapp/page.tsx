@@ -648,6 +648,15 @@ function MiniAppPageInner() {
   const [isAdminPanelCollapsed, setIsAdminPanelCollapsed] = useState(false);
   const [isSigilManagerVisible, setIsSigilManagerVisible] = useState(false);
   const [preferredBand, setPreferredBand] = useState<'crash_band' | 'upside_band' | null>(null);
+
+  // Position alerts state - track state changes since last visit
+  interface PositionAlert {
+    tokenId: string;
+    type: 'went_out_of_range' | 'back_in_range' | 'sky_band_complete' | 'crash_band_complete';
+    message: string;
+  }
+  const [positionAlerts, setPositionAlerts] = useState<PositionAlert[]>([]);
+  const [alertsDismissed, setAlertsDismissed] = useState(false);
   const [solarSystemRefreshNonce, setSolarSystemRefreshNonce] = useState(0);
   const [expandedLeaderboards, setExpandedLeaderboards] = useState<Record<string, boolean>>({});
   const viewerAddressLabels = useMemo(() => {
@@ -1420,6 +1429,73 @@ function MiniAppPageInner() {
       cancelled = true;
     };
   }, [lpGateState.lpPositions?.length, miniWalletAddress, activeTab]);
+
+  // Position Alerts - detect state changes since last visit
+  useEffect(() => {
+    const positions = lpGateState.lpPositions ?? [];
+    if (positions.length === 0 || alertsDismissed) return;
+
+    const alerts: PositionAlert[] = [];
+    const STORAGE_PREFIX = 'm00n_pos_state_';
+
+    positions.forEach((pos) => {
+      const storageKey = `${STORAGE_PREFIX}${pos.tokenId}`;
+      const isInRange = pos.rangeStatus === 'in-range';
+      const bandType = pos.bandType;
+
+      try {
+        const savedState = localStorage.getItem(storageKey);
+        const wasInRange = savedState ? JSON.parse(savedState).inRange : null;
+        const savedBandType = savedState ? JSON.parse(savedState).bandType : null;
+
+        // First visit - just save state, no alert
+        if (wasInRange === null) {
+          localStorage.setItem(storageKey, JSON.stringify({ inRange: isInRange, bandType }));
+          return;
+        }
+
+        // Detect state changes
+        if (wasInRange && !isInRange) {
+          // Was in range, now out
+          if (bandType === 'upside_band') {
+            alerts.push({
+              tokenId: pos.tokenId,
+              type: 'sky_band_complete',
+              message: `🚀 #${pos.tokenId}: Profit taken! Price exited above your range.`
+            });
+          } else if (bandType === 'crash_band') {
+            alerts.push({
+              tokenId: pos.tokenId,
+              type: 'crash_band_complete',
+              message: `📉 #${pos.tokenId}: Accumulation complete! Price exited below your range.`
+            });
+          } else {
+            alerts.push({
+              tokenId: pos.tokenId,
+              type: 'went_out_of_range',
+              message: `⚠️ #${pos.tokenId}: Position went out of range.`
+            });
+          }
+        } else if (!wasInRange && isInRange) {
+          // Was out of range, now back in
+          alerts.push({
+            tokenId: pos.tokenId,
+            type: 'back_in_range',
+            message: `✅ #${pos.tokenId}: Back in range! Earning fees again.`
+          });
+        }
+
+        // Update saved state
+        localStorage.setItem(storageKey, JSON.stringify({ inRange: isInRange, bandType }));
+      } catch {
+        // localStorage not available
+      }
+    });
+
+    if (alerts.length > 0) {
+      setPositionAlerts(alerts);
+    }
+  }, [lpGateState.lpPositions, alertsDismissed]);
 
   useEffect(() => {
     const tick = () => {
@@ -5180,6 +5256,183 @@ Join the $m00n cabal 🌙`;
 
     return (
       <div className="space-y-6">
+        {/* Position Alerts Banner - Actionable */}
+        {positionAlerts.length > 0 && !alertsDismissed && (
+          <div className="space-y-3">
+            {positionAlerts.slice(0, 3).map((alert) => {
+              // Determine alert styling and action based on type
+              const isSkyComplete = alert.type === 'sky_band_complete';
+              const isCrashComplete = alert.type === 'crash_band_complete';
+              const isBackInRange = alert.type === 'back_in_range';
+
+              const bgClass = isSkyComplete
+                ? 'border-[var(--monad-purple)]/50 bg-[var(--monad-purple)]/10'
+                : isCrashComplete
+                  ? 'border-[var(--moss-green)]/50 bg-[var(--moss-green)]/10'
+                  : isBackInRange
+                    ? 'border-emerald-500/50 bg-emerald-500/10'
+                    : 'border-amber-500/50 bg-amber-500/10';
+
+              const titleColor = isSkyComplete
+                ? 'text-[var(--monad-purple)]'
+                : isCrashComplete
+                  ? 'text-[var(--moss-green)]'
+                  : isBackInRange
+                    ? 'text-emerald-400'
+                    : 'text-amber-400';
+
+              return (
+                <div key={alert.tokenId} className={`rounded-xl border-2 ${bgClass} p-4 space-y-3`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <p className={`text-sm font-bold ${titleColor}`}>{alert.message}</p>
+
+                      {/* Strategy-specific guidance - LP positions, not limit orders! */}
+                      {isSkyComplete && (
+                        <div className="mt-2 space-y-2">
+                          <p className="text-xs text-white/70">
+                            Your position now holds{' '}
+                            <span className="text-[var(--monad-purple)] font-semibold">
+                              100% WMON
+                            </span>
+                            .
+                          </p>
+                          <div className="bg-black/30 p-2 rounded-lg">
+                            <p className="text-[10px] text-white/80 font-semibold mb-1">
+                              ⚡ Decision Time:
+                            </p>
+                            <ul className="text-[10px] text-white/60 space-y-1 list-disc pl-3">
+                              <li>
+                                <span className="text-[var(--moss-green)]">Remove now</span> → Lock
+                                in profits as WMON
+                              </li>
+                              <li>
+                                <span className="text-amber-400">Leave open</span> → If price
+                                returns, you&apos;ll accumulate m00n again (could be good or bad)
+                              </li>
+                            </ul>
+                          </div>
+                        </div>
+                      )}
+
+                      {isCrashComplete && (
+                        <div className="mt-2 space-y-2">
+                          <p className="text-xs text-white/70">
+                            Your position now holds{' '}
+                            <span className="text-[var(--moss-green)] font-semibold">
+                              100% m00n
+                            </span>
+                            .
+                          </p>
+                          <div className="bg-black/30 p-2 rounded-lg">
+                            <p className="text-[10px] text-white/80 font-semibold mb-1">
+                              ⚡ Decision Time:
+                            </p>
+                            <ul className="text-[10px] text-white/60 space-y-1 list-disc pl-3">
+                              <li>
+                                <span className="text-[var(--moss-green)]">Remove now</span> → Keep
+                                your m00n, hold for recovery
+                              </li>
+                              <li>
+                                <span className="text-amber-400">Leave open</span> → If price
+                                recovers, you&apos;ll sell m00n back (could miss upside)
+                              </li>
+                            </ul>
+                          </div>
+                        </div>
+                      )}
+
+                      {isBackInRange && (
+                        <div className="mt-2">
+                          <p className="text-xs text-white/70">
+                            You&apos;re earning swap fees again! 💰
+                          </p>
+                          <p className="text-[10px] text-white/50 mt-1">
+                            Price is chopping in your range — this is ideal for fee accumulation.
+                          </p>
+                        </div>
+                      )}
+
+                      {alert.type === 'went_out_of_range' && (
+                        <div className="mt-2 space-y-1">
+                          <p className="text-xs text-white/70">
+                            No longer earning fees. Position is idle.
+                          </p>
+                          <p className="text-[10px] text-white/50">
+                            💡 Remove and redeploy at current price, or wait for price to return.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPositionAlerts((prev) =>
+                          prev.filter((a) => a.tokenId !== alert.tokenId)
+                        );
+                      }}
+                      className="text-xs text-white/30 hover:text-white"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {/* Action buttons for completed bands */}
+                  {(isSkyComplete || isCrashComplete || alert.type === 'went_out_of_range') && (
+                    <div className="flex gap-2">
+                      {/* Primary action: Remove liquidity to realize gains */}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveLiquidity(alert.tokenId)}
+                        className={`flex-1 py-2 text-xs font-semibold rounded-lg transition ${
+                          isSkyComplete
+                            ? 'bg-[var(--monad-purple)] text-white hover:bg-[var(--monad-purple)]/80'
+                            : isCrashComplete
+                              ? 'bg-[var(--moss-green)] text-black hover:bg-[var(--moss-green)]/80'
+                              : 'bg-red-500/80 text-white hover:bg-red-500'
+                        }`}
+                      >
+                        {isSkyComplete
+                          ? '💰 Remove & Lock Profits'
+                          : isCrashComplete
+                            ? '💎 Remove & Keep m00n'
+                            : '🔄 Remove Liquidity'}
+                      </button>
+                      {/* Secondary: View position details */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // Scroll to the position card
+                          const el = document.getElementById(`position-${alert.tokenId}`);
+                          el?.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                        className="px-3 py-2 text-xs text-white/70 border border-white/20 rounded-lg hover:bg-white/10 transition"
+                      >
+                        View
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {positionAlerts.length > 3 && (
+              <p className="text-xs text-white/50 text-center">
+                +{positionAlerts.length - 3} more position updates
+              </p>
+            )}
+
+            {/* Dismiss all button */}
+            <button
+              type="button"
+              onClick={() => setAlertsDismissed(true)}
+              className="w-full py-2 text-xs text-white/50 hover:text-white border border-white/10 rounded-lg"
+            >
+              Dismiss All
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -5237,6 +5490,7 @@ Join the $m00n cabal 🌙`;
               return (
                 <div
                   key={pos.tokenId}
+                  id={`position-${pos.tokenId}`}
                   className="rounded-xl border-2 border-white/20 bg-black/80 overflow-hidden"
                 >
                   {/* Header: Token ID + Band Type - High contrast bar */}

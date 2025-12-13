@@ -33,8 +33,10 @@ export const ALLOCATED_SUPPLY = TOTAL_HOLDINGS - RESERVED_SUPPLY; // ~23.6B
 export const QUALIFICATION_REQUIREMENTS = {
   minMoonHolding: 1_000_000, // 1M m00n minimum
   minPositionAgeDays: 7, // Position must be 7+ days old
-  minStreakDays: 7, // Must have 7+ day streak
-  mustBeInRange: true // Must be in range at snapshot
+  minPositionValueUsd: 5, // Position must be worth > $5
+  minStreakDays: 0, // No minimum streak required (removed requirement)
+  mustBeInRange: false, // In-range gets bonus, but not required
+  inRangeBonus: 1.2 // 20% bonus for in-range positions
 } as const;
 
 // Allocation breakdown (% of ALLOCATED_SUPPLY after reserve)
