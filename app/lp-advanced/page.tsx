@@ -2352,89 +2352,110 @@ function AdvancedLpContent({
             </div>
           )}
 
-          {/* Compact Range Check for Mini-App */}
-          {miniAppState !== 'desktop' && riskMetrics && riskMetrics.probStay !== null && (
-            <div
-              className={`p-3 rounded-lg ${
-                riskMetrics.probStay > 0.5
-                  ? 'bg-emerald-500/20 border border-emerald-500/40'
-                  : riskMetrics.probStay > 0.2
-                    ? 'bg-amber-500/20 border border-amber-500/40'
-                    : 'bg-red-500/20 border border-red-500/40'
-              }`}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <p
-                  className={`text-sm font-bold ${
-                    riskMetrics.probStay > 0.5
-                      ? 'text-emerald-400'
-                      : riskMetrics.probStay > 0.2
-                        ? 'text-amber-400'
-                        : 'text-red-400'
-                  }`}
-                >
-                  {riskMetrics.probStay > 0.5
-                    ? '✓ Good Range'
-                    : riskMetrics.probStay > 0.2
-                      ? '⚠ Risky'
-                      : '✗ Too Narrow'}
-                </p>
-                <button
-                  type="button"
-                  onClick={handleFetchVolatility}
-                  disabled={volFetchStatus === 'loading' || volFetchCooldown > 0}
-                  className="text-[9px] px-2 py-0.5 border border-white/30 text-white/70 rounded disabled:opacity-50"
-                >
-                  {volFetchStatus === 'loading'
-                    ? '...'
-                    : volFetchCooldown > 0
-                      ? `${volFetchCooldown}s`
-                      : '↻ Vol'}
-                </button>
-              </div>
-              <p className="text-[10px] text-white/60 text-center">
-                {riskMetrics.probStay > 0.5
-                  ? `${(riskMetrics.probStay * 100).toFixed(0)}% stay chance`
-                  : riskMetrics.probStay > 0.2
-                    ? `${(riskMetrics.probStay * 100).toFixed(0)}% stay — consider wider`
-                    : 'Price will likely exit fast'}
-              </p>
-              <p className="text-[9px] text-white/40 text-center mt-0.5">
-                {volFetchStatus === 'success'
-                  ? `Using ${Number(sigmaStay).toFixed(0)}% chain vol`
-                  : `Default ${Number(sigmaStay).toFixed(0)}% vol — tap ↻`}
-              </p>
-              {/* Apply Suggested Range for mini-app */}
-              {riskMetrics.probStay < 0.5 && riskMetrics.suggestedRange && (
-                <div className="flex items-center justify-center gap-2 mt-2 pt-2 border-t border-white/10">
-                  <span className="text-[10px] text-white/60">
-                    💡 Try{' '}
-                    <span className="font-mono text-white">
-                      {riskMetrics.suggestedRange.lower.toFixed(0)}% to +
-                      {riskMetrics.suggestedRange.upper.toFixed(0)}%
-                    </span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (riskMetrics.suggestedRange && riskMetrics.spotMcap) {
-                        const newLower =
-                          riskMetrics.spotMcap * (1 + riskMetrics.suggestedRange.lower / 100);
-                        const newUpper =
-                          riskMetrics.spotMcap * (1 + riskMetrics.suggestedRange.upper / 100);
-                        setRangeLowerUsd(Math.max(100, newLower).toFixed(0));
-                        setRangeUpperUsd(newUpper.toFixed(0));
-                        setRangeTouched(true);
-                      }
-                    }}
-                    className="px-2 py-0.5 bg-amber-500/30 hover:bg-amber-500/50 text-amber-300 text-[10px] rounded transition"
-                  >
-                    Apply
-                  </button>
+          {/* Compact Range Check for Mini-App - Context-aware for single-sided */}
+          {miniAppState !== 'desktop' &&
+            riskMetrics &&
+            riskMetrics.probStay !== null &&
+            (() => {
+              const probStay = riskMetrics.probStay; // Already checked not null
+              const isSingleSided = bandSide === 'single';
+              const isSkyBand = isSingleSided && depositAsset === 'moon';
+              const isNarrow = probStay < 0.5;
+
+              // For single-sided, "narrow" is actually good!
+              const getVerdictStyle = () => {
+                if (isSingleSided && isNarrow) {
+                  return isSkyBand
+                    ? 'bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/40'
+                    : 'bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/40';
+                }
+                if (probStay > 0.5) return 'bg-emerald-500/20 border border-emerald-500/40';
+                if (probStay > 0.2) return 'bg-amber-500/20 border border-amber-500/40';
+                return 'bg-red-500/20 border border-red-500/40';
+              };
+
+              const getVerdictColor = () => {
+                if (isSingleSided && isNarrow) {
+                  return isSkyBand ? 'text-[var(--monad-purple)]' : 'text-[var(--moss-green)]';
+                }
+                if (probStay > 0.5) return 'text-emerald-400';
+                if (probStay > 0.2) return 'text-amber-400';
+                return 'text-red-400';
+              };
+
+              const getVerdictText = () => {
+                if (isSingleSided && isNarrow) {
+                  return isSkyBand ? '🚀 Quick Profit' : '📉 Quick Buy';
+                }
+                if (probStay > 0.5) return '✓ Good Range';
+                if (probStay > 0.2) return '⚠ Risky';
+                return '✗ Too Narrow';
+              };
+
+              const getSubtitle = () => {
+                if (isSingleSided && isNarrow) {
+                  return isSkyBand ? 'Fast profit taking zone' : 'Fast accumulation zone';
+                }
+                if (probStay > 0.5) return `${(probStay * 100).toFixed(0)}% stay chance`;
+                if (probStay > 0.2) return `${(probStay * 100).toFixed(0)}% stay — consider wider`;
+                return 'Price will likely exit fast';
+              };
+
+              return (
+                <div className={`p-3 rounded-lg ${getVerdictStyle()}`}>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className={`text-sm font-bold ${getVerdictColor()}`}>{getVerdictText()}</p>
+                    <button
+                      type="button"
+                      onClick={handleFetchVolatility}
+                      disabled={volFetchStatus === 'loading' || volFetchCooldown > 0}
+                      className="text-[9px] px-2 py-0.5 border border-white/30 text-white/70 rounded disabled:opacity-50"
+                    >
+                      {volFetchStatus === 'loading'
+                        ? '...'
+                        : volFetchCooldown > 0
+                          ? `${volFetchCooldown}s`
+                          : '↻ Vol'}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-white/60 text-center">{getSubtitle()}</p>
+                  <p className="text-[9px] text-white/40 text-center mt-0.5">
+                    {volFetchStatus === 'success'
+                      ? `Using ${Number(sigmaStay).toFixed(0)}% chain vol`
+                      : `Default ${Number(sigmaStay).toFixed(0)}% vol — tap ↻`}
+                  </p>
+                  {/* Apply Suggested Range for mini-app - Only for double-sided positions */}
+                  {!isSingleSided && probStay < 0.5 && riskMetrics.suggestedRange && (
+                    <div className="flex items-center justify-center gap-2 mt-2 pt-2 border-t border-white/10">
+                      <span className="text-[10px] text-white/60">
+                        💡 Try{' '}
+                        <span className="font-mono text-white">
+                          {riskMetrics.suggestedRange.lower.toFixed(0)}% to +
+                          {riskMetrics.suggestedRange.upper.toFixed(0)}%
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (riskMetrics.suggestedRange && riskMetrics.spotMcap) {
+                            const newLower =
+                              riskMetrics.spotMcap * (1 + riskMetrics.suggestedRange.lower / 100);
+                            const newUpper =
+                              riskMetrics.spotMcap * (1 + riskMetrics.suggestedRange.upper / 100);
+                            setRangeLowerUsd(Math.max(100, newLower).toFixed(0));
+                            setRangeUpperUsd(newUpper.toFixed(0));
+                            setRangeTouched(true);
+                          }
+                        }}
+                        className="px-2 py-0.5 bg-amber-500/30 hover:bg-amber-500/50 text-amber-300 text-[10px] rounded transition"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          )}
+              );
+            })()}
 
           <div className="space-y-2">
             <label className="lunar-heading text-white/80 text-center block">amount</label>
