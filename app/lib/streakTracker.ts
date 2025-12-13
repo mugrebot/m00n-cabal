@@ -35,6 +35,8 @@ export interface PositionStreak {
   // Stats
   totalInRangeTime: number; // cumulative seconds in-range
   totalOutOfRangeTime: number; // cumulative seconds out-of-range
+  totalPositionAge?: number; // total age since creation (regardless of range)
+  createdAtTimestamp?: number; // when position was created
   checkCount: number; // number of times we've checked this position
   lastCheckedAt: number; // last update timestamp
 
@@ -216,21 +218,27 @@ export async function updateStreaks(): Promise<{
       // New position - initialize tracking
       newPositions++;
 
-      // If position is in-range and we know when it was created,
-      // give credit for the full time since creation
-      let initialDuration = 0;
-      let initialTotalInRange = 0;
-      if (isInRange && position.createdAtTimestamp) {
-        initialDuration = now - position.createdAtTimestamp;
-        initialTotalInRange = initialDuration;
+      // Calculate total position age from creation timestamp
+      // All positions get credit for their age, regardless of range status
+      let totalPositionAge = 0;
+      if (position.createdAtTimestamp) {
+        totalPositionAge = now - position.createdAtTimestamp;
         // Sanity check - don't exceed 1 year
-        if (initialDuration > 365 * 24 * 3600) {
-          initialDuration = 365 * 24 * 3600;
-          initialTotalInRange = initialDuration;
+        if (totalPositionAge > 365 * 24 * 3600) {
+          totalPositionAge = 365 * 24 * 3600;
         }
       }
 
-      const streakDays = Math.floor(initialDuration / 86400);
+      // In-range streak is separate from total age
+      let initialStreakDuration = 0;
+      let initialTotalInRange = 0;
+      if (isInRange && position.createdAtTimestamp) {
+        // Assume in-range since creation for simplicity
+        initialStreakDuration = totalPositionAge;
+        initialTotalInRange = totalPositionAge;
+      }
+
+      const streakDays = Math.floor(totalPositionAge / 86400);
       const tier = getStreakTier(streakDays);
 
       const streak: PositionStreak = {
@@ -238,11 +246,13 @@ export async function updateStreaks(): Promise<{
         owner: position.owner,
         label: position.label ?? getAddressLabel(position.owner),
         currentStreakStartedAt: isInRange ? (position.createdAtTimestamp ?? now) : null,
-        currentStreakDuration: initialDuration,
-        longestStreakDuration: initialDuration,
+        currentStreakDuration: initialStreakDuration,
+        longestStreakDuration: initialStreakDuration,
         longestStreakEndedAt: null,
         totalInRangeTime: initialTotalInRange,
-        totalOutOfRangeTime: 0,
+        totalOutOfRangeTime: isInRange ? 0 : totalPositionAge,
+        totalPositionAge, // Track total age regardless of range
+        createdAtTimestamp: position.createdAtTimestamp ?? now,
         checkCount: 1,
         lastCheckedAt: now,
         isCurrentlyInRange: isInRange,
@@ -255,6 +265,18 @@ export async function updateStreaks(): Promise<{
         tier,
         seasonId
       };
+
+      // Calculate initial points based on position age
+      const initialPointsResult = calculateWeightedPoints({
+        notionalUsd: streak.valueUsd ?? 0,
+        streakDurationSeconds: totalPositionAge, // Use total age
+        totalInRangeSeconds: initialTotalInRange,
+        isCurrentlyInRange: isInRange
+      });
+
+      streak.points = initialPointsResult.total;
+      streak.pointsBreakdown = initialPointsResult.breakdown;
+      totalPoints += streak.points;
 
       if (isInRange) {
         streaksStarted++;
@@ -309,13 +331,21 @@ export async function updateStreaks(): Promise<{
       existing.tickUpper = position.tickUpper;
       existing.seasonId = seasonId;
 
-      // Calculate weighted points
-      const streakDays = existing.currentStreakDuration / 86400;
-      existing.tier = getStreakTier(streakDays);
+      // Update total position age from creation timestamp
+      if (existing.createdAtTimestamp) {
+        existing.totalPositionAge = Math.min(now - existing.createdAtTimestamp, 365 * 24 * 3600);
+      } else if (position.createdAtTimestamp) {
+        existing.createdAtTimestamp = position.createdAtTimestamp;
+        existing.totalPositionAge = Math.min(now - position.createdAtTimestamp, 365 * 24 * 3600);
+      }
+
+      // Calculate weighted points using total position age (not just in-range time)
+      const positionAgeDays = (existing.totalPositionAge ?? 0) / 86400;
+      existing.tier = getStreakTier(positionAgeDays);
 
       const pointsResult = calculateWeightedPoints({
         notionalUsd: existing.valueUsd ?? 0,
-        streakDurationSeconds: existing.currentStreakDuration,
+        streakDurationSeconds: existing.totalPositionAge ?? 0, // Use total age, not just streak
         totalInRangeSeconds: existing.totalInRangeTime,
         isCurrentlyInRange: existing.isCurrentlyInRange
       });

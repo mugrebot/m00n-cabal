@@ -229,8 +229,8 @@ export function calculateWeightedPoints(params: {
     streakMultiplier = 1.5; // 1.5x for 7+ day streaks
   }
 
-  // In-range bonus: 1.5x if currently in range, 1x otherwise
-  const inRangeMultiplier = params.isCurrentlyInRange ? 1.5 : 1;
+  // In-range bonus: 1.2x if currently in range, 1x otherwise (small boost, not primary factor)
+  const inRangeMultiplier = params.isCurrentlyInRange ? 1.2 : 1;
 
   const baseTotal = notionalPoints + streakPoints + timePoints;
   const total = Math.floor(baseTotal * streakMultiplier * inRangeMultiplier);
