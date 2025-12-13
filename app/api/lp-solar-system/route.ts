@@ -6,6 +6,7 @@ import { readSolarSystemSnapshot, writeSolarSystemSnapshot } from '@/app/lib/lpT
 const FALLBACK_REBUILD_ENABLED = process.env.LP_SOLAR_SYSTEM_ON_DEMAND === '1';
 const SOLAR_DEFAULT_LIMIT = Number(process.env.M00N_SOLAR_POSITION_LIMIT ?? 16);
 const SOLAR_MAX_LIMIT = Number(process.env.M00N_SOLAR_POSITION_MAX ?? 24);
+const ADMIN_SECRET = process.env.ADMIN_SECRET ?? '';
 
 const withLabels = (payload: SolarSystemPayload): SolarSystemPayload => ({
   ...payload,
@@ -58,5 +59,29 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[lp-solar-system] failed to serve snapshot', error);
     return NextResponse.json({ error: 'lp_solar_system_failed' }, { status: 500 });
+  }
+}
+
+// POST: Force rebuild the solar system snapshot
+export async function POST(request: NextRequest) {
+  const adminSecret = request.headers.get('x-admin-secret');
+  if (!ADMIN_SECRET || adminSecret !== ADMIN_SECRET) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
+
+  try {
+    console.log('[lp-solar-system] Force rebuilding snapshot...');
+    const payload = await buildSolarSystemPayload(SOLAR_MAX_LIMIT);
+    const enrichedPayload = withLabels(payload);
+    await writeSolarSystemSnapshot(enrichedPayload);
+
+    return NextResponse.json({
+      success: true,
+      positionsCount: enrichedPayload.positions.length,
+      updatedAt: enrichedPayload.updatedAt
+    });
+  } catch (error) {
+    console.error('[lp-solar-system] Force rebuild failed', error);
+    return NextResponse.json({ error: 'rebuild_failed' }, { status: 500 });
   }
 }
