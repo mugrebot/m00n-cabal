@@ -20,6 +20,11 @@ import { getTierByReplyCount } from '@/app/lib/tiers';
 import { getPersonaCopy, type PersonaActionId, type LpStatus } from '@/app/copy/persona';
 import M00nSolarSystem from '@/app/components/M00nSolarSystem';
 import type { LpPosition as LeaderboardLpPosition } from '@/app/lib/m00nSolarSystem.types';
+import {
+  analyzePosition,
+  formatAnalyticsForDisplay,
+  type PositionInput
+} from '@/app/lib/lpAnalytics';
 
 interface UserData {
   fid: number;
@@ -269,6 +274,7 @@ interface LpPosition {
   token1?: TokenBreakdown;
   priceLowerInToken1?: string;
   priceUpperInToken1?: string;
+  createdAtTimestamp?: number; // Unix timestamp when position was created
   fees?: {
     token0Wei: string;
     token1Wei: string;
@@ -4966,8 +4972,34 @@ Join the $m00n cabal 🌙`;
     const wmonBalance = wmonBalanceWei ? Number(formatUnits(wmonBalanceWei, 18)) : 0;
     const formattedWmon = formatAbbreviated(wmonBalance);
 
+    // Calculate live m00n price
+    const wmonPriceUsd = lpGateState.poolWmonUsdPrice ?? 0;
+    const currentTick = lpGateState.poolCurrentTick ?? 0;
+    const moonPriceInWmon = currentTick ? Math.pow(1.0001, currentTick) : 0;
+    const liveMoonPriceUsd = moonPriceInWmon * wmonPriceUsd;
+    // Calculate market cap (100B total supply)
+    const marketCapUsd = liveMoonPriceUsd * 100_000_000_000;
+    const formatMarketCap = (mc: number): string => {
+      if (mc >= 1_000_000) return `$${(mc / 1_000_000).toFixed(2)}M`;
+      if (mc >= 1_000) return `$${(mc / 1_000).toFixed(1)}K`;
+      return `$${mc.toFixed(0)}`;
+    };
+
     return (
       <div className="space-y-6">
+        {/* Live Price Header */}
+        <div
+          className={`${PANEL_CLASS} p-4 text-center bg-gradient-to-r from-[var(--monad-purple)]/20 to-[var(--moss-green)]/20`}
+        >
+          <p className="text-[10px] uppercase tracking-[0.3em] opacity-60 mb-1">$m00n Price</p>
+          <p className="text-2xl font-bold text-[var(--moss-green)]">
+            {liveMoonPriceUsd > 0 ? `$${liveMoonPriceUsd.toExponential(2)}` : '—'}
+          </p>
+          <p className="text-xs opacity-50 mt-1">
+            Market Cap: {marketCapUsd > 0 ? formatMarketCap(marketCapUsd) : '—'}
+          </p>
+        </div>
+
         {/* Balance + Stats Row */}
         <div className={`${PANEL_CLASS} p-4`}>
           <div className="grid grid-cols-3 gap-4 text-center">
@@ -5242,6 +5274,92 @@ Join the $m00n cabal 🌙`;
                       <span>m00n / WMON</span>
                     </div>
                   )}
+
+                  {/* Analytics & Rebalance Suggestion */}
+                  {(() => {
+                    const lifetimeFees = fees?.lifetimeUsd ?? 0;
+                    const posAgeSeconds = pos.createdAtTimestamp
+                      ? Math.floor(Date.now() / 1000) - pos.createdAtTimestamp
+                      : 86400 * 7; // Default 7 days if unknown
+
+                    const analyticsInput: PositionInput = {
+                      currentTick,
+                      tickLower: pos.tickLower ?? 0,
+                      tickUpper: pos.tickUpper ?? 0,
+                      rangeStatus:
+                        (pos.rangeStatus as 'below-range' | 'in-range' | 'above-range') ??
+                        'in-range',
+                      token0Amount: pos.token0?.amountWei
+                        ? Number(
+                            formatUnits(BigInt(pos.token0.amountWei), pos.token0.decimals ?? 18)
+                          )
+                        : 0,
+                      token1Amount: pos.token1?.amountWei
+                        ? Number(
+                            formatUnits(BigInt(pos.token1.amountWei), pos.token1.decimals ?? 18)
+                          )
+                        : 0,
+                      moonPriceUsd,
+                      wmonPriceUsd: wmonPrice,
+                      lifetimeFeesUsd: lifetimeFees,
+                      positionAgeSeconds: posAgeSeconds
+                    };
+
+                    const analytics = analyzePosition(analyticsInput);
+                    const { ilText, aprText, vsHodlText, rebalanceText } =
+                      formatAnalyticsForDisplay(analytics);
+
+                    return (
+                      <div className="space-y-1 text-white/70 pt-1 border-t border-white/10">
+                        {/* APR */}
+                        <div className="flex justify-between">
+                          <span>APR (est.)</span>
+                          <span
+                            className={
+                              analytics.feesApr.percentage > 0 ? 'text-[var(--moss-green)]' : ''
+                            }
+                          >
+                            {aprText}
+                          </span>
+                        </div>
+                        {/* IL */}
+                        <div className="flex justify-between">
+                          <span>IL</span>
+                          <span
+                            className={
+                              analytics.impermanentLoss.percentage < -1
+                                ? 'text-red-400'
+                                : 'text-[var(--moss-green)]'
+                            }
+                          >
+                            {ilText}
+                          </span>
+                        </div>
+                        {/* vs HODL */}
+                        <div className="flex justify-between">
+                          <span>vs HODL</span>
+                          <span
+                            className={
+                              analytics.vsHodl.winner === 'LP'
+                                ? 'text-[var(--moss-green)]'
+                                : analytics.vsHodl.winner === 'HODL'
+                                  ? 'text-red-400'
+                                  : ''
+                            }
+                          >
+                            {vsHodlText}
+                          </span>
+                        </div>
+                        {/* Rebalance Suggestion */}
+                        {rebalanceText && (
+                          <div className="mt-2 p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-[10px]">
+                            {rebalanceText}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {/* Buttons row */}
                   <div className="flex items-center gap-2 pt-1">
                     <button
