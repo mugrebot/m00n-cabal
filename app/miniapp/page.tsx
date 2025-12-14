@@ -632,6 +632,28 @@ function MiniAppPageInner() {
     tier: string;
     castCount: number;
   } | null>(null);
+
+  // Daily Check-In bonus state
+  const [checkInData, setCheckInData] = useState<{
+    currentStreak: number;
+    totalCheckIns: number;
+    multiplier: number;
+    multiplierTier: string;
+    canCheckIn: boolean;
+    nextAvailableAt?: number;
+    hoursUntilAvailable?: number;
+  } | null>(null);
+  const [checkInStatus, setCheckInStatus] = useState<'idle' | 'loading' | 'checking_in'>('idle');
+  const [checkInMessage, setCheckInMessage] = useState<string | null>(null);
+
+  // App Added bonus state
+  const [appAddedData, setAppAddedData] = useState<{
+    added: boolean;
+    addedAt?: number;
+    multiplier: number;
+  } | null>(null);
+  const [appAddedStatus, setAppAddedStatus] = useState<'idle' | 'loading' | 'adding'>('idle');
+
   const [tokenomicsData, setTokenomicsData] = useState<TokenomicsResponse | null>(null);
   const [tokenomicsStatus, setTokenomicsStatus] = useState<'idle' | 'loading' | 'error' | 'loaded'>(
     'idle'
@@ -751,6 +773,129 @@ function MiniAppPageInner() {
     refreshSolarTelemetry();
     refreshLeaderboard();
   }, [refreshLeaderboard, refreshSolarTelemetry]);
+
+  // Handle daily check-in
+  const handleDailyCheckIn = useCallback(async () => {
+    const fid = userData?.fid;
+    const username = viewerContext?.username;
+    if (!fid || !username) return;
+
+    setCheckInStatus('checking_in');
+    setCheckInMessage(null);
+
+    try {
+      const response = await fetch('/api/daily-checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'checkin',
+          fid,
+          username,
+          address: miniWalletAddress ?? undefined
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setCheckInData({
+          currentStreak: data.currentStreak,
+          totalCheckIns: data.totalCheckIns,
+          multiplier: data.multiplier,
+          multiplierTier: data.multiplierTier,
+          canCheckIn: false,
+          nextAvailableAt: data.nextAvailableAt
+        });
+        setCheckInMessage(data.reward?.message ?? data.message);
+        showToast('success', data.message);
+      } else {
+        setCheckInMessage(data.message);
+        showToast('info', data.message);
+      }
+    } catch (err) {
+      console.error('Check-in failed:', err);
+      showToast('error', 'Check-in failed. Try again!');
+    } finally {
+      setCheckInStatus('idle');
+    }
+  }, [userData?.fid, viewerContext?.username, miniWalletAddress, showToast]);
+
+  // Handle add app
+  const handleAddApp = useCallback(async () => {
+    const fid = userData?.fid;
+    const username = viewerContext?.username;
+    if (!fid || !username) return;
+
+    setAppAddedStatus('adding');
+
+    try {
+      // Call the Farcaster SDK to add the mini app
+      await sdk.actions.addMiniApp();
+
+      // Record that user added the app
+      const response = await fetch('/api/app-bonus', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fid,
+          username,
+          address: miniWalletAddress ?? undefined
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setAppAddedData({
+          added: true,
+          addedAt: data.addedAt,
+          multiplier: data.multiplier
+        });
+        showToast('success', '🎉 App added! +10% permanent bonus unlocked.');
+      }
+    } catch (err) {
+      console.warn('Add app failed:', err);
+      // User might have cancelled or already added - check status anyway
+      try {
+        const response = await fetch(`/api/app-bonus?fid=${fid}`);
+        const data = await response.json();
+        if (data.added) {
+          setAppAddedData({
+            added: true,
+            addedAt: data.addedAt,
+            multiplier: data.multiplier
+          });
+        }
+      } catch {
+        // Ignore
+      }
+    } finally {
+      setAppAddedStatus('idle');
+    }
+  }, [userData?.fid, viewerContext?.username, miniWalletAddress, showToast]);
+
+  // Refresh check-in status
+  const refreshCheckInStatus = useCallback(async () => {
+    const fid = userData?.fid;
+    if (!fid) return;
+
+    try {
+      const response = await fetch(`/api/daily-checkin?fid=${fid}`);
+      if (!response.ok) return;
+      const data = await response.json();
+      setCheckInData({
+        currentStreak: data.currentStreak ?? 0,
+        totalCheckIns: data.totalCheckIns ?? 0,
+        multiplier: data.multiplier ?? 1,
+        multiplierTier: data.multiplierTier ?? '—',
+        canCheckIn: data.canCheckIn ?? true,
+        nextAvailableAt: data.nextAvailableAt,
+        hoursUntilAvailable: data.hoursUntilAvailable
+      });
+    } catch (err) {
+      console.warn('Failed to refresh check-in status', err);
+    }
+  }, [userData?.fid]);
 
   useEffect(() => {
     if (!toast) return;
@@ -884,6 +1029,86 @@ function MiniAppPageInner() {
       }
     };
     loadYapMultiplier();
+    return () => {
+      cancelled = true;
+    };
+  }, [userData?.fid, activeTab]);
+
+  // Fetch daily check-in data
+  useEffect(() => {
+    const fid = userData?.fid;
+    if (!fid) {
+      setCheckInData(null);
+      return;
+    }
+    // Fetch when on rewards tab
+    if (activeTab !== 'rewards') return;
+    // Skip if already loaded
+    if (checkInData !== null && checkInStatus !== 'idle') return;
+
+    let cancelled = false;
+    const loadCheckInData = async () => {
+      setCheckInStatus('loading');
+      try {
+        const response = await fetch(`/api/daily-checkin?fid=${fid}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled) {
+          setCheckInData({
+            currentStreak: data.currentStreak ?? 0,
+            totalCheckIns: data.totalCheckIns ?? 0,
+            multiplier: data.multiplier ?? 1,
+            multiplierTier: data.multiplierTier ?? '—',
+            canCheckIn: data.canCheckIn ?? true,
+            nextAvailableAt: data.nextAvailableAt,
+            hoursUntilAvailable: data.hoursUntilAvailable
+          });
+          setCheckInStatus('idle');
+        }
+      } catch (err) {
+        console.warn('Failed to load check-in data', err);
+        setCheckInStatus('idle');
+      }
+    };
+    loadCheckInData();
+    return () => {
+      cancelled = true;
+    };
+  }, [userData?.fid, activeTab]);
+
+  // Fetch app added bonus data
+  useEffect(() => {
+    const fid = userData?.fid;
+    if (!fid) {
+      setAppAddedData(null);
+      return;
+    }
+    // Fetch when on rewards tab
+    if (activeTab !== 'rewards') return;
+    // Skip if already loaded
+    if (appAddedData !== null) return;
+
+    let cancelled = false;
+    const loadAppAddedData = async () => {
+      setAppAddedStatus('loading');
+      try {
+        const response = await fetch(`/api/app-bonus?fid=${fid}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled) {
+          setAppAddedData({
+            added: data.added ?? false,
+            addedAt: data.addedAt,
+            multiplier: data.multiplier ?? 1
+          });
+          setAppAddedStatus('idle');
+        }
+      } catch (err) {
+        console.warn('Failed to load app added data', err);
+        setAppAddedStatus('idle');
+      }
+    };
+    loadAppAddedData();
     return () => {
       cancelled = true;
     };
@@ -5806,29 +6031,500 @@ Join the $m00n cabal 🌙`;
     );
   };
 
-  // Qualification Requirements Card
-  const renderQualificationCard = () => (
-    <div className={`${PANEL_CLASS} p-3 bg-black/60`}>
-      <p className="text-xs font-semibold mb-2">📋 Qualification</p>
-      <div className="grid grid-cols-3 gap-2 text-[10px]">
-        <div className="flex flex-col items-center gap-1 bg-black/40 rounded-lg p-2">
-          <span>💰</span>
-          <span className="opacity-70 text-center">1M+ m00n</span>
+  // Daily Check-In Card
+  const renderCheckInCard = () => {
+    const positionCount = lpGateState.lpPositions?.length ?? 0;
+    const isActive = checkInData && checkInData.currentStreak > 0;
+    const canDo = checkInData?.canCheckIn ?? true;
+
+    // Format time until next check-in
+    const formatTimeUntil = () => {
+      if (!checkInData?.nextAvailableAt) return '';
+      const diff = checkInData.nextAvailableAt - Date.now();
+      if (diff <= 0) return 'Available now!';
+      const hours = Math.floor(diff / (60 * 60 * 1000));
+      const minutes = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
+      return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+    };
+
+    return (
+      <div className={`${PANEL_CLASS} p-3 bg-black/60`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🌙</span>
+            <div>
+              <p className="text-sm font-bold">Daily Rhythm</p>
+              <p className="text-[10px] opacity-50">
+                {isActive
+                  ? `${checkInData.currentStreak} day streak • ${checkInData.multiplierTier}`
+                  : 'Check in daily for bonus!'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div
+              className={`text-lg font-bold ${
+                checkInData && checkInData.multiplier >= 2
+                  ? 'text-[#ffd700]'
+                  : checkInData && checkInData.multiplier >= 1.5
+                    ? 'text-[var(--monad-purple)]'
+                    : isActive
+                      ? 'text-[var(--moss-green)]'
+                      : 'opacity-50'
+              }`}
+            >
+              {checkInData?.multiplier ?? 1}x
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col items-center gap-1 bg-black/40 rounded-lg p-2">
-          <span>💵</span>
-          <span className="opacity-70 text-center">&gt;$5 LP</span>
+
+        {/* Check-in button or status */}
+        <div className="mt-3 flex items-center justify-between gap-2">
+          {canDo ? (
+            <button
+              type="button"
+              onClick={handleDailyCheckIn}
+              disabled={checkInStatus === 'checking_in' || positionCount === 0}
+              className={`flex-1 py-2 px-3 rounded-lg font-semibold text-xs transition ${
+                positionCount === 0
+                  ? 'bg-gray-600/30 text-gray-400 cursor-not-allowed'
+                  : 'bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 text-[var(--moss-green)] hover:bg-[var(--moss-green)] hover:text-black'
+              }`}
+            >
+              {checkInStatus === 'checking_in' ? '...' : '✨ Check In Now'}
+            </button>
+          ) : (
+            <div className="flex-1 text-center">
+              <p className="text-[10px] text-[var(--moss-green)]">✓ Checked in today!</p>
+              <p className="text-[9px] opacity-40">Next: {formatTimeUntil()}</p>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={refreshCheckInStatus}
+            className="p-2 rounded-lg bg-black/40 text-white/50 hover:text-white transition"
+            title="Refresh status"
+          >
+            🔄
+          </button>
         </div>
-        <div className="flex flex-col items-center gap-1 bg-black/40 rounded-lg p-2">
-          <span>⏳</span>
-          <span className="opacity-70 text-center">7d+ old</span>
+
+        {checkInMessage && (
+          <p className="text-[10px] text-center mt-2 text-[var(--moss-green)]">{checkInMessage}</p>
+        )}
+
+        <p className="text-[9px] opacity-50 mt-2 text-center">
+          {positionCount === 0
+            ? '⚠️ Must have a qualifying LP to earn boost'
+            : 'Build your streak for up to 2x bonus! 🔥'}
+        </p>
+      </div>
+    );
+  };
+
+  // App Added Bonus Card
+  const renderAppAddedCard = () => {
+    const positionCount = lpGateState.lpPositions?.length ?? 0;
+    const isAdded = appAddedData?.added ?? false;
+
+    return (
+      <div className={`${PANEL_CLASS} p-3 bg-black/60`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">📲</span>
+            <div>
+              <p className={`text-sm font-bold ${isAdded ? 'line-through opacity-60' : ''}`}>
+                Add App
+              </p>
+              <p className="text-[10px] opacity-50">
+                {isAdded ? '✓ Bonus unlocked!' : 'Permanent +10% bonus'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div
+              className={`text-lg font-bold ${isAdded ? 'text-[var(--moss-green)]' : 'opacity-50'}`}
+            >
+              {isAdded ? '1.1x' : '—'}
+            </div>
+          </div>
+        </div>
+
+        {/* Add app button or status */}
+        <div className="mt-3 flex items-center justify-between gap-2">
+          {isAdded ? (
+            <div className="flex-1 text-center py-2">
+              <p className="text-[10px] text-[var(--moss-green)]">
+                ✓ App added • Permanent 1.1x active
+              </p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleAddApp}
+              disabled={appAddedStatus === 'adding' || positionCount === 0}
+              className={`flex-1 py-2 px-3 rounded-lg font-semibold text-xs transition ${
+                positionCount === 0
+                  ? 'bg-gray-600/30 text-gray-400 cursor-not-allowed'
+                  : 'bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-white'
+              }`}
+            >
+              {appAddedStatus === 'adding' ? '...' : '📲 Add to Warpcast'}
+            </button>
+          )}
+          {!isAdded && (
+            <button
+              type="button"
+              onClick={async () => {
+                // Refresh app added status
+                const fid = userData?.fid;
+                if (!fid) return;
+                try {
+                  const response = await fetch(`/api/app-bonus?fid=${fid}`);
+                  const data = await response.json();
+                  if (data.added) {
+                    setAppAddedData({
+                      added: true,
+                      addedAt: data.addedAt,
+                      multiplier: data.multiplier
+                    });
+                  }
+                } catch {
+                  // Ignore
+                }
+              }}
+              className="p-2 rounded-lg bg-black/40 text-white/50 hover:text-white transition"
+              title="Refresh status"
+            >
+              🔄
+            </button>
+          )}
+        </div>
+
+        <p className="text-[9px] opacity-50 mt-2 text-center">
+          {positionCount === 0
+            ? '⚠️ Must have a qualifying LP to earn boost'
+            : isAdded
+              ? 'Staking your attention on m00n 💜'
+              : 'Add m00n to your Warpcast apps for permanent boost!'}
+        </p>
+      </div>
+    );
+  };
+
+  // Combined Bonus Multipliers Card (shows total)
+  const renderBonusMultipliersCard = () => {
+    const yapMult = yapMultiplier?.multiplier ?? 1;
+    const checkInMult = checkInData?.multiplier ?? 1;
+    const appMult = appAddedData?.added ? (appAddedData.multiplier ?? 1.1) : 1;
+
+    // Calculate combined multiplier
+    const combinedMultiplier = yapMult * checkInMult * appMult;
+    const hasAnyBonus = combinedMultiplier > 1;
+
+    return (
+      <div
+        className={`${PANEL_CLASS} p-3 bg-gradient-to-r from-[var(--monad-purple)]/20 to-[var(--moss-green)]/20 border border-white/10`}
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold">✨ Combined Multiplier</p>
+            <p className="text-[9px] opacity-50">All bonuses stacked</p>
+          </div>
+          <div
+            className={`text-2xl font-bold ${
+              combinedMultiplier >= 5
+                ? 'text-[#ffd700] animate-pulse'
+                : combinedMultiplier >= 2
+                  ? 'text-[var(--monad-purple)]'
+                  : hasAnyBonus
+                    ? 'text-[var(--moss-green)]'
+                    : 'opacity-50'
+            }`}
+          >
+            {combinedMultiplier.toFixed(2)}x
+          </div>
+        </div>
+
+        {/* Breakdown */}
+        <div className="mt-2 flex items-center justify-center gap-3 text-[10px]">
+          <span className={yapMult > 1 ? 'text-[var(--moss-green)]' : 'opacity-40'}>
+            📣 {yapMult}x
+          </span>
+          <span className="opacity-30">×</span>
+          <span className={checkInMult > 1 ? 'text-[var(--moss-green)]' : 'opacity-40'}>
+            🌙 {checkInMult}x
+          </span>
+          <span className="opacity-30">×</span>
+          <span className={appMult > 1 ? 'text-[var(--moss-green)]' : 'opacity-40'}>
+            📲 {appMult}x
+          </span>
         </div>
       </div>
-      <p className="text-[9px] opacity-40 mt-2 text-center">
-        🎯 In-range = bonus • Full moon snapshots 🌕
-      </p>
-    </div>
-  );
+    );
+  };
+
+  // Qualification Requirements Card with Progress
+  const renderQualificationCard = () => {
+    // Get user's current status
+    const positions = lpGateState.lpPositions ?? [];
+    const hasPositions = positions.length > 0;
+
+    // Calculate m00n balance (use mini wallet balance)
+    const moonBalance = moonBalanceWei ? Number(moonBalanceWei / BigInt(10 ** 18)) : 0;
+    const requiredMoonBalance = 1_000_000;
+    const moonProgress = Math.min((moonBalance / requiredMoonBalance) * 100, 100);
+    const hasMoonBalance = moonBalance >= requiredMoonBalance;
+
+    // Calculate LP value
+    const totalLpValueUsd = positions.reduce((sum, pos) => {
+      const token0Value =
+        pos.token0?.amountFormatted && lpGateState.poolWmonUsdPrice
+          ? Number(pos.token0.amountFormatted) *
+            (pos.token0.symbol === 'WMON' ? lpGateState.poolWmonUsdPrice : 0)
+          : 0;
+      const token1Value =
+        pos.token1?.amountFormatted && lpGateState.poolWmonUsdPrice
+          ? Number(pos.token1.amountFormatted) *
+            (pos.token1.symbol === 'WMON' ? lpGateState.poolWmonUsdPrice : 0)
+          : 0;
+      return sum + token0Value + token1Value;
+    }, 0);
+    const requiredLpValue = 5;
+    const lpValueProgress = Math.min((totalLpValueUsd / requiredLpValue) * 100, 100);
+    const hasLpValue = totalLpValueUsd >= requiredLpValue;
+
+    // Calculate oldest position age
+    const now = Date.now();
+    const oldestPositionAgeDays = positions.reduce((oldest, pos) => {
+      if (!pos.createdAtTimestamp) return oldest;
+      const ageDays = (now - pos.createdAtTimestamp * 1000) / (1000 * 60 * 60 * 24);
+      return Math.max(oldest, ageDays);
+    }, 0);
+    const requiredAgeDays = 7;
+    const ageProgress = Math.min((oldestPositionAgeDays / requiredAgeDays) * 100, 100);
+    const hasPositionAge = oldestPositionAgeDays >= requiredAgeDays;
+    const daysUntilQualified = Math.max(0, Math.ceil(requiredAgeDays - oldestPositionAgeDays));
+
+    // Check if any position is in range
+    const inRangeCount = positions.filter((p) => p.rangeStatus === 'in-range').length;
+    const hasInRange = inRangeCount > 0;
+
+    // Overall qualification status
+    const isFullyQualified = hasMoonBalance && hasLpValue && hasPositionAge;
+
+    // Generate actionable tips
+    const getActionableTips = (): {
+      icon: string;
+      text: string;
+      priority: 'high' | 'medium' | 'low';
+    }[] => {
+      const tips: { icon: string; text: string; priority: 'high' | 'medium' | 'low' }[] = [];
+
+      // High priority - blocking issues
+      if (!hasPositions) {
+        tips.push({
+          icon: '🚨',
+          text: 'Deploy an LP position to start earning points!',
+          priority: 'high'
+        });
+      } else if (!hasMoonBalance) {
+        const needed = requiredMoonBalance - moonBalance;
+        tips.push({
+          icon: '💰',
+          text: `Get ${formatCompactNumber(needed)} more m00n to qualify`,
+          priority: 'high'
+        });
+      } else if (!hasLpValue) {
+        tips.push({
+          icon: '💵',
+          text: `Add $${(requiredLpValue - totalLpValueUsd).toFixed(2)} more to your LP`,
+          priority: 'high'
+        });
+      } else if (!hasPositionAge) {
+        tips.push({
+          icon: '⏳',
+          text: `${daysUntilQualified} day${daysUntilQualified !== 1 ? 's' : ''} until your position qualifies`,
+          priority: 'high'
+        });
+      }
+
+      // Medium priority - optimization tips
+      if (hasPositions && !hasInRange) {
+        tips.push({
+          icon: '🎯',
+          text: 'Rebalance to get in-range for +20% bonus!',
+          priority: 'medium'
+        });
+      }
+
+      if (yapMultiplier && yapMultiplier.multiplier < 2) {
+        tips.push({
+          icon: '📣',
+          text: 'Post about $m00n to boost your yap multiplier',
+          priority: 'medium'
+        });
+      }
+
+      if (!appAddedData?.added) {
+        tips.push({
+          icon: '📲',
+          text: 'Add the app for permanent +10% bonus',
+          priority: 'medium'
+        });
+      }
+
+      if (checkInData?.canCheckIn) {
+        tips.push({
+          icon: '🌙',
+          text: 'Check in daily to build your streak bonus!',
+          priority: 'medium'
+        });
+      }
+
+      // Low priority - nice to have
+      if (isFullyQualified && hasInRange) {
+        tips.push({
+          icon: '✨',
+          text: "You're earning points! Keep positions in-range.",
+          priority: 'low'
+        });
+      }
+
+      return tips.slice(0, 3); // Max 3 tips
+    };
+
+    const tips = getActionableTips();
+
+    return (
+      <div className={`${PANEL_CLASS} p-3 bg-black/60`}>
+        {/* Header with status */}
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-semibold">📋 Qualification Status</p>
+          {isFullyQualified ? (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--moss-green)]/20 text-[var(--moss-green)] font-semibold">
+              ✓ Qualified
+            </span>
+          ) : (
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 font-semibold">
+              In Progress
+            </span>
+          )}
+        </div>
+
+        {/* Progress bars */}
+        <div className="space-y-2 mb-3">
+          {/* m00n Balance */}
+          <div>
+            <div className="flex items-center justify-between text-[10px] mb-1">
+              <span className={hasMoonBalance ? 'text-[var(--moss-green)]' : 'opacity-70'}>
+                {hasMoonBalance ? '✓' : '○'} 💰 m00n Balance
+              </span>
+              <span className={hasMoonBalance ? 'text-[var(--moss-green)]' : 'opacity-50'}>
+                {formatCompactNumber(moonBalance)} / 1M
+              </span>
+            </div>
+            <div className="h-1.5 bg-black/40 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all duration-500 ${hasMoonBalance ? 'bg-[var(--moss-green)]' : 'bg-yellow-500'}`}
+                style={{ width: `${moonProgress}%` }}
+              />
+            </div>
+          </div>
+
+          {/* LP Value */}
+          <div>
+            <div className="flex items-center justify-between text-[10px] mb-1">
+              <span className={hasLpValue ? 'text-[var(--moss-green)]' : 'opacity-70'}>
+                {hasLpValue ? '✓' : '○'} 💵 LP Value
+              </span>
+              <span className={hasLpValue ? 'text-[var(--moss-green)]' : 'opacity-50'}>
+                ${totalLpValueUsd.toFixed(2)} / $5
+              </span>
+            </div>
+            <div className="h-1.5 bg-black/40 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all duration-500 ${hasLpValue ? 'bg-[var(--moss-green)]' : 'bg-yellow-500'}`}
+                style={{ width: `${lpValueProgress}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Position Age */}
+          <div>
+            <div className="flex items-center justify-between text-[10px] mb-1">
+              <span className={hasPositionAge ? 'text-[var(--moss-green)]' : 'opacity-70'}>
+                {hasPositionAge ? '✓' : '○'} ⏳ Position Age
+              </span>
+              <span className={hasPositionAge ? 'text-[var(--moss-green)]' : 'opacity-50'}>
+                {oldestPositionAgeDays.toFixed(1)}d / 7d
+              </span>
+            </div>
+            <div className="h-1.5 bg-black/40 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all duration-500 ${hasPositionAge ? 'bg-[var(--moss-green)]' : 'bg-yellow-500'}`}
+                style={{ width: `${ageProgress}%` }}
+              />
+            </div>
+          </div>
+
+          {/* In-Range Bonus (optional) */}
+          <div>
+            <div className="flex items-center justify-between text-[10px] mb-1">
+              <span className={hasInRange ? 'text-[var(--moss-green)]' : 'opacity-70'}>
+                {hasInRange ? '✓' : '○'} 🎯 In-Range Bonus
+              </span>
+              <span className={hasInRange ? 'text-[var(--moss-green)]' : 'opacity-50'}>
+                {hasInRange
+                  ? `${inRangeCount} position${inRangeCount !== 1 ? 's' : ''} (+20%)`
+                  : 'Not active'}
+              </span>
+            </div>
+            <div className="h-1.5 bg-black/40 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all duration-500 ${hasInRange ? 'bg-[var(--moss-green)]' : 'bg-gray-600'}`}
+                style={{ width: hasInRange ? '100%' : '0%' }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Actionable Tips */}
+        {tips.length > 0 && (
+          <div className="border-t border-white/10 pt-2 space-y-1.5">
+            <p className="text-[9px] opacity-50 uppercase tracking-wider">What to do next:</p>
+            {tips.map((tip, idx) => (
+              <div
+                key={idx}
+                className={`flex items-center gap-2 text-[10px] p-1.5 rounded-lg ${
+                  tip.priority === 'high'
+                    ? 'bg-yellow-500/10 border border-yellow-500/30'
+                    : tip.priority === 'medium'
+                      ? 'bg-[var(--monad-purple)]/10 border border-[var(--monad-purple)]/30'
+                      : 'bg-[var(--moss-green)]/10 border border-[var(--moss-green)]/30'
+                }`}
+              >
+                <span>{tip.icon}</span>
+                <span
+                  className={
+                    tip.priority === 'high'
+                      ? 'text-yellow-400'
+                      : tip.priority === 'medium'
+                        ? 'text-[var(--monad-purple)]'
+                        : 'text-[var(--moss-green)]'
+                  }
+                >
+                  {tip.text}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <p className="text-[9px] opacity-40 mt-2 text-center">🌕 Snapshots taken each full moon</p>
+      </div>
+    );
+  };
 
   // Rewards Tab - Leaderboards & Season info
   const renderRewardsTab = () => (
@@ -5841,11 +6537,25 @@ Join the $m00n cabal 🌙`;
       {/* Season Panel */}
       {renderSeason1Panel()}
 
+      {/* Combined Multiplier Overview */}
+      {renderBonusMultipliersCard()}
+
       {/* Qualification Requirements */}
       {renderQualificationCard()}
 
-      {/* Yap Multiplier */}
-      {renderYapMultiplierCard()}
+      {/* Bonus Multipliers Section */}
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-center opacity-70">🎯 Boost Your Points</p>
+
+        {/* App Added Bonus - One-time unlock */}
+        {renderAppAddedCard()}
+
+        {/* Daily Check-In */}
+        {renderCheckInCard()}
+
+        {/* Yap Multiplier */}
+        {renderYapMultiplierCard()}
+      </div>
 
       {/* Streak Leaderboard */}
       {renderStreakLeaderboard()}
