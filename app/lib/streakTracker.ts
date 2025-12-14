@@ -11,7 +11,7 @@
 import { kv } from '@vercel/kv';
 import { getTopM00nLpPositions } from '@/app/lib/m00nSolarSystem.server';
 import type { LpPosition } from '@/app/lib/m00nSolarSystem.types';
-import { getAddressLabel } from '@/app/lib/addressLabels';
+import { getAddressLabel, batchResolveLabels } from '@/app/lib/addressLabels';
 import { calculateWeightedPoints, getStreakTier, getCurrentSeason } from '@/app/lib/tokenomics';
 
 // Clanker pool should never appear in leaderboards
@@ -508,6 +508,35 @@ export async function buildStreakLeaderboard(): Promise<StreakLeaderboard> {
     .sort((a, b) => (b.valueUsd ?? 0) - (a.valueUsd ?? 0))
     .slice(0, 10)
     .map((entry, index) => ({ ...entry, rank: index + 1 }));
+
+  // Batch resolve labels for entries that don't have usernames
+  // This queries Neynar API for addresses not found in CSV
+  const addressesToResolve = allEntries
+    .filter((e) => !e.label || e.label.startsWith('0x'))
+    .map((e) => e.owner);
+
+  if (addressesToResolve.length > 0) {
+    const resolvedLabels = await batchResolveLabels(addressesToResolve);
+    for (const entry of allEntries) {
+      if (!entry.label || entry.label.startsWith('0x')) {
+        const resolved = resolvedLabels.get(entry.owner.toLowerCase());
+        if (resolved) {
+          entry.label = resolved;
+        }
+      }
+    }
+    // Also update the sorted lists
+    for (const list of [topStreaks, topAllTime, topPoints, topNotional]) {
+      for (const entry of list) {
+        if (!entry.label || entry.label.startsWith('0x')) {
+          const resolved = resolvedLabels.get(entry.owner.toLowerCase());
+          if (resolved) {
+            entry.label = resolved;
+          }
+        }
+      }
+    }
+  }
 
   const leaderboard: StreakLeaderboard = {
     updatedAt: new Date().toISOString(),

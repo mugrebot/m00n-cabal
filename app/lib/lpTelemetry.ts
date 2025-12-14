@@ -1,6 +1,6 @@
 import { getTopM00nLpPositions } from '@/app/lib/m00nSolarSystem.server';
 import type { LpPosition } from '@/app/lib/m00nSolarSystem.types';
-import { getAddressLabel } from '@/app/lib/addressLabels';
+import { getAddressLabel, batchResolveLabels } from '@/app/lib/addressLabels';
 import { getWmonUsdPriceFromSubgraph } from '@/app/lib/pricing/monadPrices';
 
 // -----------------------------
@@ -110,20 +110,30 @@ export async function buildLeaderboardSnapshot(): Promise<LeaderboardSnapshot> {
   // Filter out Clanker pool from leaderboard
   const CLANKER_TOKEN_ID = '6914';
 
-  const entries = filtered
-    .filter((position) => position.tokenId !== CLANKER_TOKEN_ID && !position.isClankerPool)
-    .map((position) => {
-      const bandType = classifyBandType(position);
-      const ownerLabel = getAddressLabel(position.owner);
+  const validPositions = filtered.filter(
+    (position) => position.tokenId !== CLANKER_TOKEN_ID && !position.isClankerPool
+  );
 
-      return {
-        tokenId: position.tokenId,
-        owner: position.owner,
-        bandType,
-        valueUsd: position.notionalUsd,
-        label: ownerLabel
-      };
-    });
+  // Batch resolve all labels via Neynar API for addresses not in CSV
+  const uniqueOwners = [...new Set(validPositions.map((p) => p.owner))];
+  const resolvedLabels = await batchResolveLabels(uniqueOwners);
+
+  const entries = validPositions.map((position) => {
+    const bandType = classifyBandType(position);
+    // Use resolved label from Neynar, fallback to CSV, then to abbreviated address
+    const ownerLabel =
+      resolvedLabels.get(position.owner.toLowerCase()) ??
+      getAddressLabel(position.owner) ??
+      position.owner.slice(0, 6) + '...' + position.owner.slice(-4);
+
+    return {
+      tokenId: position.tokenId,
+      owner: position.owner,
+      bandType,
+      valueUsd: position.notionalUsd,
+      label: ownerLabel
+    };
+  });
 
   entries.sort((a, b) => b.valueUsd - a.valueUsd);
 
