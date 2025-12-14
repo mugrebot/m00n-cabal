@@ -7,7 +7,7 @@ import { Pool } from '@uniswap/v4-sdk';
 import { Token } from '@uniswap/sdk-core';
 import { formatUnits, type Address } from 'viem';
 
-import { getAddressLabel, loadAddressLabelMap } from '@/app/lib/addressLabels';
+import { getAddressLabel, loadAddressLabelMap, batchResolveLabels } from '@/app/lib/addressLabels';
 import {
   computePositionValueUsd,
   enrichManyPositionsWithAmounts,
@@ -433,7 +433,14 @@ export async function getTopM00nLpPositions(limit = MAX_SOLAR_POSITIONS): Promis
       ? Math.pow(1.0001, enriched[0].currentTick) * wmonPriceUsd
       : null;
 
-  const resolveOwnerLabel = (owner: string): string | null => getAddressLabel(owner);
+  // Batch resolve labels for all owners via Neynar API
+  const uniqueOwners = [...new Set(Array.from(ownerMap.values()))];
+  const resolvedLabels = await batchResolveLabels(uniqueOwners);
+
+  const resolveOwnerLabel = (owner: string): string | null => {
+    // First try Neynar batch result, then CSV, then null
+    return resolvedLabels.get(owner.toLowerCase()) ?? getAddressLabel(owner);
+  };
 
   const entries: LpPosition[] = enriched
     .map((position) => {
