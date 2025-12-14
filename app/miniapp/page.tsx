@@ -158,6 +158,41 @@ const formatUsd = (value?: number | null) => {
   return formatter.format(value ?? 0);
 };
 
+// Format very small prices (like m00n) without scientific notation
+// e.g. 0.0000000123 -> "0.0₈123" or "$0.00000001"
+const formatSmallPrice = (value?: number | null): string => {
+  if (!Number.isFinite(value ?? NaN) || value === 0) return '$0';
+  const num = value ?? 0;
+
+  // If it's a normal-sized number, use regular formatting
+  if (num >= 0.01) {
+    return `$${num.toFixed(4)}`;
+  }
+
+  // For very small numbers, count leading zeros after decimal
+  const str = num.toFixed(20); // High precision
+  const match = str.match(/^0\.(0*)(\d+)/);
+
+  if (!match) return `$${num.toFixed(8)}`;
+
+  const leadingZeros = match[1].length;
+  const significantDigits = match[2].slice(0, 4); // Keep 4 significant digits
+
+  // Format with subscript notation: $0.0₈123 means 0.00000000123
+  if (leadingZeros >= 4) {
+    // Subscript numbers: ₀₁₂₃₄₅₆₇₈₉
+    const subscripts = ['₀', '₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈', '₉'];
+    const subscriptZeros = String(leadingZeros)
+      .split('')
+      .map((d) => subscripts[parseInt(d)])
+      .join('');
+    return `$0.0${subscriptZeros}${significantDigits}`;
+  }
+
+  // For 1-3 leading zeros, just show them
+  return `$0.${'0'.repeat(leadingZeros)}${significantDigits}`;
+};
+
 const LP_PRESET_CONTENT: Record<
   LpClaimPreset,
   {
@@ -3167,33 +3202,97 @@ Join the $m00n cabal 🌙`;
               className="w-full rounded-xl border border-white/15 bg-black/40 px-4 py-3 font-mono text-sm text-white focus:border-[var(--monad-purple)] focus:outline-none disabled:opacity-40"
               disabled={!walletReady || isSubmittingLpClaim}
             />
+
+            {/* Current balance display with percentage indicator */}
+            {walletReady && inputBalanceWei !== null && inputBalanceWei > BigInt(0) && (
+              <div className="flex items-center justify-between text-[10px] px-1">
+                <span className="text-white/50">
+                  Available:{' '}
+                  {formatTokenAmount(
+                    inputBalanceWei,
+                    inputTokenKey === 'wmon' ? tokenDecimals.wmon : tokenDecimals.moon
+                  )}{' '}
+                  {presetConfig.inputToken}
+                </span>
+                {desiredAmountWei !== null && inputBalanceWei > BigInt(0) && (
+                  <span className="text-[var(--monad-purple)] font-semibold">
+                    {Math.min(
+                      100,
+                      Math.round((Number(desiredAmountWei) / Number(inputBalanceWei)) * 100)
+                    )}
+                    % of balance
+                  </span>
+                )}
+              </div>
+            )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            {presetConfig.quickAmounts.map((choice) => {
-              const isActive = lpClaimAmount.trim() === choice;
-              const formattedChoice = Number(choice).toLocaleString();
-              return (
-                <button
-                  key={`${lpClaimPreset}-quick-${choice}`}
-                  type="button"
-                  onClick={() => setLpClaimAmount(choice)}
-                  className={`pixel-font text-[10px] px-3 py-1 rounded-full border ${
-                    isActive
-                      ? 'border-[var(--monad-purple)] bg-[var(--monad-purple)] text-white'
-                      : 'border-white/20 text-white/80 hover:bg-white/10'
-                  }`}
-                >
-                  {formattedChoice} {presetConfig.inputToken}
-                </button>
-              );
-            })}
-            <button
-              type="button"
-              onClick={() => setLpClaimAmount('')}
-              className="pixel-font text-[10px] px-3 py-1 rounded-full border border-white/20 text-white/80 hover:bg-white/10"
-            >
-              CUSTOM
-            </button>
+
+          {/* Percentage Quick Select */}
+          {walletReady && inputBalanceWei !== null && inputBalanceWei > BigInt(0) && (
+            <div className="space-y-2">
+              <p className="text-[10px] text-white/50 uppercase tracking-wider">% of Balance</p>
+              <div className="flex gap-2">
+                {[25, 50, 75, 100].map((pct) => {
+                  const decimals =
+                    inputTokenKey === 'wmon' ? tokenDecimals.wmon : tokenDecimals.moon;
+                  const pctAmount = (inputBalanceWei * BigInt(pct)) / BigInt(100);
+                  const pctAmountFormatted = formatUnits(pctAmount, decimals);
+                  // Round to reasonable precision
+                  const pctAmountClean =
+                    inputTokenKey === 'wmon'
+                      ? parseFloat(pctAmountFormatted).toFixed(4)
+                      : Math.floor(parseFloat(pctAmountFormatted)).toString();
+                  const isActive = lpClaimAmount.trim() === pctAmountClean;
+
+                  return (
+                    <button
+                      key={`pct-${pct}`}
+                      type="button"
+                      onClick={() => setLpClaimAmount(pctAmountClean)}
+                      className={`flex-1 pixel-font text-xs py-2 rounded-lg border transition-all ${
+                        isActive
+                          ? 'border-[var(--moss-green)] bg-[var(--moss-green)]/20 text-[var(--moss-green)]'
+                          : 'border-white/20 text-white/70 hover:border-[var(--moss-green)]/50 hover:bg-[var(--moss-green)]/10'
+                      }`}
+                    >
+                      {pct}%
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Fixed Amount Presets */}
+          <div className="space-y-2">
+            <p className="text-[10px] text-white/50 uppercase tracking-wider">Quick Amounts</p>
+            <div className="flex flex-wrap gap-2">
+              {presetConfig.quickAmounts.map((choice) => {
+                const isActive = lpClaimAmount.trim() === choice;
+                const formattedChoice = Number(choice).toLocaleString();
+                return (
+                  <button
+                    key={`${lpClaimPreset}-quick-${choice}`}
+                    type="button"
+                    onClick={() => setLpClaimAmount(choice)}
+                    className={`pixel-font text-[10px] px-3 py-1.5 rounded-full border ${
+                      isActive
+                        ? 'border-[var(--monad-purple)] bg-[var(--monad-purple)] text-white'
+                        : 'border-white/20 text-white/80 hover:bg-white/10'
+                    }`}
+                  >
+                    {formattedChoice} {presetConfig.inputToken}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => setLpClaimAmount('')}
+                className="pixel-font text-[10px] px-3 py-1.5 rounded-full border border-white/20 text-white/80 hover:bg-white/10"
+              >
+                CUSTOM
+              </button>
+            </div>
           </div>
           {fundingWarning && (
             <div className="rounded-lg border border-red-400/50 bg-red-500/10 px-3 py-2 text-xs text-red-200">
