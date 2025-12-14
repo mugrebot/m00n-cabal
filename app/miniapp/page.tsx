@@ -6060,14 +6060,42 @@ Join the $m00n cabal 🌙`;
       );
     }
 
+    // If we're in the mini app and have viewerContext, auto-sign-in is in progress
+    // Show a clean loading state instead of the "SCAN FID" screen
+    if (isMiniApp && viewerContext && scanPhase !== 'idle') {
+      return renderShell(
+        <div className="min-h-screen flex items-center justify-center relative z-10">
+          <div className="text-center space-y-4">
+            <div className="pixel-font text-xl glow-purple animate-pulse">
+              {scanPhase === 'authenticating' && '🔐 Authenticating...'}
+              {scanPhase === 'addresses' && '📡 Syncing wallets...'}
+              {scanPhase === 'fetching' && '🌙 Loading...'}
+              {scanPhase === 'error' && '⚠️ Retrying...'}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // If we're in mini app with viewerContext but idle, trigger sign-in immediately
+    // The useEffect will handle this, just show loading briefly
+    if (isMiniApp && viewerContext && scanPhase === 'idle') {
+      return renderShell(
+        <div className="min-h-screen flex items-center justify-center relative z-10">
+          <div className="text-center space-y-4">
+            <div className="pixel-font text-xl glow-purple animate-pulse">🌙 Connecting...</div>
+          </div>
+        </div>
+      );
+    }
+
+    // Only show the full scan screen for non-mini-app or no viewerContext
     return renderShell(
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative z-10">
         <div className="w-full max-w-sm space-y-8 text-center">
           <div className={`${PANEL_CLASS} space-y-4`}>
-            <h1 className="pixel-font text-2xl glow-purple">m00n Cabal Check</h1>
-            <p className="text-sm opacity-80 px-2">
-              Only cabal members with an allocation can enter. Scan inside Warpcast to verify.
-            </p>
+            <h1 className="pixel-font text-2xl glow-purple">$m00n</h1>
+            <p className="text-sm opacity-80 px-2">Open in Warpcast to continue.</p>
           </div>
 
           {!isMiniApp && (
@@ -6079,22 +6107,19 @@ Join the $m00n cabal 🌙`;
             </a>
           )}
 
-          <div className="text-center space-y-3">
-            <button
-              onClick={handleSignIn}
-              className="pixel-font w-full px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all disabled:opacity-40 text-xs tracking-[0.4em]"
-              disabled={!statusState.actionable}
-            >
-              {statusState.label}
-            </button>
-            <p className="text-xs opacity-70 px-2">{statusState.detail}</p>
-            {error && <p className="text-red-400 px-2">{error}</p>}
-          </div>
-          <div className="space-y-1 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-[10px] uppercase tracking-[0.35em] text-white/70 max-h-60 overflow-y-auto">
-            {MANIFESTO_LINES.map((line) => (
-              <p key={`manifesto-${line}`}>{line}</p>
-            ))}
-          </div>
+          {isMiniApp && !viewerContext && (
+            <div className="text-center space-y-3">
+              <button
+                onClick={handleSignIn}
+                className="pixel-font w-full px-6 py-3 bg-[var(--monad-purple)] text-white rounded-lg hover:bg-opacity-90 transition-all disabled:opacity-40 text-xs tracking-[0.4em]"
+                disabled={!statusState.actionable}
+              >
+                {statusState.label}
+              </button>
+              <p className="text-xs opacity-70 px-2">{statusState.detail}</p>
+              {error && <p className="text-red-400 px-2">{error}</p>}
+            </div>
+          )}
         </div>
       </div>
     );
