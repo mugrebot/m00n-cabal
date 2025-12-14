@@ -5397,7 +5397,7 @@ Join the $m00n cabal 🌙`;
         >
           <p className="text-[10px] uppercase tracking-[0.4em] text-white/40 mb-2">$M00N PRICE</p>
           <p className="text-3xl font-bold text-[var(--moss-green)] mb-1">
-            {liveMoonPriceUsd > 0 ? `$${liveMoonPriceUsd.toExponential(2)}` : '—'}
+            {liveMoonPriceUsd > 0 ? formatSmallPrice(liveMoonPriceUsd) : '—'}
           </p>
           <p className="text-sm text-white/50">
             Market Cap: {marketCapUsd > 0 ? formatMarketCap(marketCapUsd) : '—'}
