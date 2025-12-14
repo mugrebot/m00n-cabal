@@ -2460,146 +2460,104 @@ function AdvancedLpContent({
           <div className="space-y-2">
             <label className="lunar-heading text-white/80 text-center block">amount</label>
             <div className="space-y-4">
-              {/* m00n Input */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-end gap-4">
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={
-                      bandSide === 'single'
-                        ? depositAsset === 'moon'
-                          ? singleAmount
-                          : ''
-                        : doubleMoonAmount
-                    }
-                    disabled={bandSide === 'single' && depositAsset !== 'moon'}
-                    onChange={(e) => {
-                      if (bandSide === 'single') setSingleAmount(e.target.value);
-                      else updateDoubleSidedAmounts('moon', e.target.value);
-                    }}
-                    className="w-2/3 bg-white text-black py-2 px-3 text-right font-mono font-bold focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-white/50"
-                    placeholder="0"
-                  />
-                  <span className="text-xs text-white w-12 font-bold">m00n</span>
-                </div>
-                {/* m00n Balance & Percentage Buttons */}
-                {moonBalance.data && moonBalance.data.value > BigInt(0) && (
-                  <div className="flex items-center justify-between gap-2 px-1">
-                    <span className="text-[10px] text-white/50">
-                      Bal:{' '}
-                      {Number(formatUnits(moonBalance.data.value, 18)).toLocaleString(undefined, {
-                        maximumFractionDigits: 0
-                      })}
-                    </span>
-                    <div className="flex gap-1">
-                      {[25, 50, 75, 100].map((pct) => {
+              {/* m00n Input - Compact */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={
+                    bandSide === 'single'
+                      ? depositAsset === 'moon'
+                        ? singleAmount
+                        : ''
+                      : doubleMoonAmount
+                  }
+                  disabled={bandSide === 'single' && depositAsset !== 'moon'}
+                  onChange={(e) => {
+                    if (bandSide === 'single') setSingleAmount(e.target.value);
+                    else updateDoubleSidedAmounts('moon', e.target.value);
+                  }}
+                  className="flex-1 bg-white text-black py-2 px-3 text-right font-mono font-bold focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-white/50"
+                  placeholder="0"
+                />
+                <span className="text-xs text-white w-10 font-bold">m00n</span>
+                {/* Inline % buttons */}
+                {moonBalance.data &&
+                  moonBalance.data.value > BigInt(0) &&
+                  !(bandSide === 'single' && depositAsset !== 'moon') && (
+                    <div className="flex gap-0.5">
+                      {[25, 50, 100].map((pct) => {
                         const pctAmount = (moonBalance.data!.value * BigInt(pct)) / BigInt(100);
                         const pctAmountStr = Math.floor(
                           Number(formatUnits(pctAmount, 18))
                         ).toString();
-                        const currentVal = bandSide === 'single' ? singleAmount : doubleMoonAmount;
-                        const isActive = currentVal === pctAmountStr;
-                        const isDisabled = bandSide === 'single' && depositAsset !== 'moon';
                         return (
                           <button
-                            key={`moon-pct-${pct}`}
+                            key={`moon-${pct}`}
                             type="button"
-                            disabled={isDisabled}
                             onClick={() => {
                               if (bandSide === 'single') setSingleAmount(pctAmountStr);
                               else updateDoubleSidedAmounts('moon', pctAmountStr);
                             }}
-                            className={`px-2 py-0.5 text-[10px] font-bold rounded transition ${
-                              isDisabled
-                                ? 'opacity-30 cursor-not-allowed bg-white/10 text-white/30'
-                                : isActive
-                                  ? 'bg-[var(--moss-green)] text-black'
-                                  : 'bg-white/10 text-white/70 hover:bg-[var(--moss-green)]/30 hover:text-white'
-                            }`}
+                            className="px-1.5 py-1 text-[9px] font-bold bg-white/10 text-white/60 hover:bg-[var(--moss-green)] hover:text-black rounded transition"
                           >
                             {pct}%
                           </button>
                         );
                       })}
                     </div>
-                  </div>
-                )}
+                  )}
               </div>
 
-              {/* WMON Input */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-end gap-4">
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={
-                      bandSide === 'single'
-                        ? depositAsset === 'wmon'
-                          ? singleAmount
-                          : ''
-                        : doubleWmonAmount
-                    }
-                    disabled={bandSide === 'single' && depositAsset !== 'wmon'}
-                    onChange={(e) => {
-                      if (bandSide === 'single') setSingleAmount(e.target.value);
-                      else updateDoubleSidedAmounts('wmon', e.target.value);
-                    }}
-                    className="w-2/3 bg-white text-black py-2 px-3 text-right font-mono font-bold focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-white/50"
-                    placeholder="0"
-                  />
-                  <span className="text-xs text-white w-12 font-bold">wmon</span>
-                </div>
-                {/* WMON Balance & Percentage Buttons */}
-                {wmonBalance.data && wmonBalance.data.value > BigInt(0) && (
-                  <div className="flex items-center justify-between gap-2 px-1">
-                    <span className="text-[10px] text-white/50">
-                      Bal:{' '}
-                      {Number(formatUnits(wmonBalance.data.value, 18)).toLocaleString(undefined, {
-                        maximumFractionDigits: 4
-                      })}
-                    </span>
-                    <div className="flex gap-1">
-                      {[25, 50, 75, 100].map((pct) => {
+              {/* WMON Input - Compact */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={
+                    bandSide === 'single'
+                      ? depositAsset === 'wmon'
+                        ? singleAmount
+                        : ''
+                      : doubleWmonAmount
+                  }
+                  disabled={bandSide === 'single' && depositAsset !== 'wmon'}
+                  onChange={(e) => {
+                    if (bandSide === 'single') setSingleAmount(e.target.value);
+                    else updateDoubleSidedAmounts('wmon', e.target.value);
+                  }}
+                  className="flex-1 bg-white text-black py-2 px-3 text-right font-mono font-bold focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-white/50"
+                  placeholder="0"
+                />
+                <span className="text-xs text-white w-10 font-bold">wmon</span>
+                {/* Inline % buttons */}
+                {wmonBalance.data &&
+                  wmonBalance.data.value > BigInt(0) &&
+                  !(bandSide === 'single' && depositAsset !== 'wmon') && (
+                    <div className="flex gap-0.5">
+                      {[25, 50, 100].map((pct) => {
                         const pctAmount = (wmonBalance.data!.value * BigInt(pct)) / BigInt(100);
                         const pctAmountStr = Number(formatUnits(pctAmount, 18)).toFixed(4);
-                        const currentVal = bandSide === 'single' ? singleAmount : doubleWmonAmount;
-                        const isActive = currentVal === pctAmountStr;
-                        const isDisabled = bandSide === 'single' && depositAsset !== 'wmon';
                         return (
                           <button
-                            key={`wmon-pct-${pct}`}
+                            key={`wmon-${pct}`}
                             type="button"
-                            disabled={isDisabled}
                             onClick={() => {
                               if (bandSide === 'single') setSingleAmount(pctAmountStr);
                               else updateDoubleSidedAmounts('wmon', pctAmountStr);
                             }}
-                            className={`px-2 py-0.5 text-[10px] font-bold rounded transition ${
-                              isDisabled
-                                ? 'opacity-30 cursor-not-allowed bg-white/10 text-white/30'
-                                : isActive
-                                  ? 'bg-[var(--monad-purple)] text-white'
-                                  : 'bg-white/10 text-white/70 hover:bg-[var(--monad-purple)]/30 hover:text-white'
-                            }`}
+                            className="px-1.5 py-1 text-[9px] font-bold bg-white/10 text-white/60 hover:bg-[var(--monad-purple)] hover:text-white rounded transition"
                           >
                             {pct}%
                           </button>
                         );
                       })}
                     </div>
-                  </div>
-                )}
+                  )}
               </div>
             </div>
-
-            <p className="text-[10px] text-white/60 leading-relaxed border border-white/20 p-2 mt-4">
-              the amount will calculate the other side based on the range set; depending on the
-              range we disable one or the other, or allow a user to input one and calculate the
-              other required for a double sided position.
-            </p>
           </div>
 
           <div className="pt-4 space-y-2 sticky bottom-0 bg-black/85 backdrop-blur border-t border-white/10 px-3 pb-4 md:static md:bg-transparent md:border-0 md:px-0 md:pb-0">

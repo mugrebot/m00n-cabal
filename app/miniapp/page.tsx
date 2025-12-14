@@ -3202,97 +3202,65 @@ Join the $m00n cabal 🌙`;
               className="w-full rounded-xl border border-white/15 bg-black/40 px-4 py-3 font-mono text-sm text-white focus:border-[var(--monad-purple)] focus:outline-none disabled:opacity-40"
               disabled={!walletReady || isSubmittingLpClaim}
             />
-
-            {/* Current balance display with percentage indicator */}
-            {walletReady && inputBalanceWei !== null && inputBalanceWei > BigInt(0) && (
-              <div className="flex items-center justify-between text-[10px] px-1">
-                <span className="text-white/50">
-                  Available:{' '}
-                  {formatTokenAmount(
-                    inputBalanceWei,
-                    inputTokenKey === 'wmon' ? tokenDecimals.wmon : tokenDecimals.moon
-                  )}{' '}
-                  {presetConfig.inputToken}
-                </span>
-                {desiredAmountWei !== null && inputBalanceWei > BigInt(0) && (
-                  <span className="text-[var(--monad-purple)] font-semibold">
-                    {Math.min(
-                      100,
-                      Math.round((Number(desiredAmountWei) / Number(inputBalanceWei)) * 100)
-                    )}
-                    % of balance
-                  </span>
-                )}
-              </div>
-            )}
           </div>
 
-          {/* Percentage Quick Select */}
-          {walletReady && inputBalanceWei !== null && inputBalanceWei > BigInt(0) && (
-            <div className="space-y-2">
-              <p className="text-[10px] text-white/50 uppercase tracking-wider">% of Balance</p>
-              <div className="flex gap-2">
-                {[25, 50, 75, 100].map((pct) => {
+          {/* Compact Quick Select - % and amounts in one row */}
+          <div className="flex flex-wrap gap-1.5">
+            {/* % of balance buttons - only show if wallet has balance */}
+            {walletReady && inputBalanceWei !== null && inputBalanceWei > BigInt(0) && (
+              <>
+                {[25, 50, 100].map((pct) => {
                   const decimals =
                     inputTokenKey === 'wmon' ? tokenDecimals.wmon : tokenDecimals.moon;
                   const pctAmount = (inputBalanceWei * BigInt(pct)) / BigInt(100);
                   const pctAmountFormatted = formatUnits(pctAmount, decimals);
-                  // Round to reasonable precision
                   const pctAmountClean =
                     inputTokenKey === 'wmon'
                       ? parseFloat(pctAmountFormatted).toFixed(4)
                       : Math.floor(parseFloat(pctAmountFormatted)).toString();
                   const isActive = lpClaimAmount.trim() === pctAmountClean;
-
                   return (
                     <button
                       key={`pct-${pct}`}
                       type="button"
                       onClick={() => setLpClaimAmount(pctAmountClean)}
-                      className={`flex-1 pixel-font text-xs py-2 rounded-lg border transition-all ${
+                      className={`px-2 py-1 text-[10px] font-bold rounded transition ${
                         isActive
-                          ? 'border-[var(--moss-green)] bg-[var(--moss-green)]/20 text-[var(--moss-green)]'
-                          : 'border-white/20 text-white/70 hover:border-[var(--moss-green)]/50 hover:bg-[var(--moss-green)]/10'
+                          ? 'bg-[var(--moss-green)] text-black'
+                          : 'bg-white/10 text-white/60 hover:bg-[var(--moss-green)]/30'
                       }`}
                     >
                       {pct}%
                     </button>
                   );
                 })}
-              </div>
-            </div>
-          )}
-
-          {/* Fixed Amount Presets */}
-          <div className="space-y-2">
-            <p className="text-[10px] text-white/50 uppercase tracking-wider">Quick Amounts</p>
-            <div className="flex flex-wrap gap-2">
-              {presetConfig.quickAmounts.map((choice) => {
-                const isActive = lpClaimAmount.trim() === choice;
-                const formattedChoice = Number(choice).toLocaleString();
-                return (
-                  <button
-                    key={`${lpClaimPreset}-quick-${choice}`}
-                    type="button"
-                    onClick={() => setLpClaimAmount(choice)}
-                    className={`pixel-font text-[10px] px-3 py-1.5 rounded-full border ${
-                      isActive
-                        ? 'border-[var(--monad-purple)] bg-[var(--monad-purple)] text-white'
-                        : 'border-white/20 text-white/80 hover:bg-white/10'
-                    }`}
-                  >
-                    {formattedChoice} {presetConfig.inputToken}
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                onClick={() => setLpClaimAmount('')}
-                className="pixel-font text-[10px] px-3 py-1.5 rounded-full border border-white/20 text-white/80 hover:bg-white/10"
-              >
-                CUSTOM
-              </button>
-            </div>
+                <span className="text-white/20 self-center">|</span>
+              </>
+            )}
+            {/* Quick amounts */}
+            {presetConfig.quickAmounts.map((choice) => {
+              const isActive = lpClaimAmount.trim() === choice;
+              const abbrev =
+                Number(choice) >= 1000000
+                  ? `${(Number(choice) / 1000000).toFixed(0)}M`
+                  : Number(choice) >= 1000
+                    ? `${(Number(choice) / 1000).toFixed(0)}K`
+                    : choice;
+              return (
+                <button
+                  key={`${lpClaimPreset}-quick-${choice}`}
+                  type="button"
+                  onClick={() => setLpClaimAmount(choice)}
+                  className={`px-2 py-1 text-[10px] font-bold rounded transition ${
+                    isActive
+                      ? 'bg-[var(--monad-purple)] text-white'
+                      : 'bg-white/10 text-white/60 hover:bg-[var(--monad-purple)]/30'
+                  }`}
+                >
+                  {abbrev}
+                </button>
+              );
+            })}
           </div>
           {fundingWarning && (
             <div className="rounded-lg border border-red-400/50 bg-red-500/10 px-3 py-2 text-xs text-red-200">
@@ -6625,41 +6593,132 @@ Join the $m00n cabal 🌙`;
     );
   };
 
-  // Rewards Tab - Leaderboards & Season info
-  const renderRewardsTab = () => (
-    <div className="space-y-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
-      {/* Header - Compact */}
-      <div className="text-center">
-        <h2 className="pixel-font text-lg text-[#ffd700]">🏆 Rewards</h2>
+  // Rewards Tab - Simplified & Consolidated
+  const renderRewardsTab = () => {
+    // Calculate combined multiplier
+    const yapMult = yapMultiplier?.multiplier ?? 1;
+    const checkInMult = checkInData?.multiplier ?? 1;
+    const appMult = appAddedData?.added ? 1.1 : 1;
+    const combinedMult = yapMult * checkInMult * appMult;
+
+    // Qualification checks
+    const positions = lpGateState.lpPositions ?? [];
+    const moonBal = moonBalanceWei ? Number(moonBalanceWei / BigInt(10 ** 18)) : 0;
+    const isQualified = moonBal >= 1_000_000 && positions.length > 0;
+
+    return (
+      <div className="space-y-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+        {/* Compact Header with Combined Multiplier */}
+        <div
+          className={`${PANEL_CLASS} p-4 bg-gradient-to-r from-[var(--monad-purple)]/20 to-[var(--moss-green)]/20`}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs opacity-50">Total Boost</p>
+              <p
+                className={`text-2xl font-bold ${combinedMult >= 2 ? 'text-[#ffd700]' : combinedMult > 1 ? 'text-[var(--moss-green)]' : 'opacity-50'}`}
+              >
+                {combinedMult.toFixed(2)}x
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] opacity-50">Season 1 • Genesis</p>
+              <p
+                className={`text-xs ${isQualified ? 'text-[var(--moss-green)]' : 'text-yellow-400'}`}
+              >
+                {isQualified ? '✓ Qualified' : '⚠ Not qualified'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Compact Boost Actions - All in one row per boost */}
+        <div className={`${PANEL_CLASS} p-3 space-y-2`}>
+          <p className="text-[10px] opacity-50 uppercase tracking-wider mb-2">Boosts</p>
+
+          {/* App Added - Inline */}
+          <div className="flex items-center justify-between py-1.5 border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <span>📲</span>
+              <span className={`text-sm ${appAddedData?.added ? 'line-through opacity-50' : ''}`}>
+                Add App
+              </span>
+            </div>
+            {appAddedData?.added ? (
+              <span className="text-[var(--moss-green)] text-sm font-bold">1.1x ✓</span>
+            ) : (
+              <button
+                onClick={handleAddApp}
+                disabled={appAddedStatus === 'adding'}
+                className="px-3 py-1 text-xs bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 text-[var(--monad-purple)] rounded-lg hover:bg-[var(--monad-purple)] hover:text-white transition"
+              >
+                {appAddedStatus === 'adding' ? '...' : '+10%'}
+              </button>
+            )}
+          </div>
+
+          {/* Check-In - Inline */}
+          <div className="flex items-center justify-between py-1.5 border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <span>🌙</span>
+              <span className="text-sm">Daily</span>
+              {checkInData && checkInData.currentStreak > 0 && (
+                <span className="text-[10px] text-white/50">
+                  {checkInData.currentStreak}d streak
+                </span>
+              )}
+            </div>
+            {checkInData?.canCheckIn ? (
+              <button
+                onClick={handleDailyCheckIn}
+                disabled={checkInStatus === 'checking_in' || positions.length === 0}
+                className="px-3 py-1 text-xs bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 text-[var(--moss-green)] rounded-lg hover:bg-[var(--moss-green)] hover:text-black transition disabled:opacity-40"
+              >
+                {checkInStatus === 'checking_in' ? '...' : 'Check In'}
+              </button>
+            ) : (
+              <span className="text-[var(--moss-green)] text-sm font-bold">{checkInMult}x ✓</span>
+            )}
+          </div>
+
+          {/* Yap - Inline */}
+          <div className="flex items-center justify-between py-1.5">
+            <div className="flex items-center gap-2">
+              <span>📣</span>
+              <span className="text-sm">Yap</span>
+              {yapMultiplier && yapMultiplier.castCount > 0 && (
+                <span className="text-[10px] text-white/50">{yapMultiplier.castCount} casts</span>
+              )}
+            </div>
+            <span
+              className={`text-sm font-bold ${yapMult > 1 ? 'text-[var(--moss-green)]' : 'opacity-50'}`}
+            >
+              {yapMult}x
+            </span>
+          </div>
+        </div>
+
+        {/* Compact Qualification - Only show if not qualified */}
+        {!isQualified && (
+          <div className={`${PANEL_CLASS} p-3 border-l-2 border-yellow-500`}>
+            <p className="text-xs text-yellow-400 mb-1">To qualify:</p>
+            <div className="flex gap-4 text-[10px] text-white/60">
+              <span className={moonBal >= 1_000_000 ? 'text-[var(--moss-green)]' : ''}>
+                {moonBal >= 1_000_000 ? '✓' : '○'} 1M m00n
+              </span>
+              <span className={positions.length > 0 ? 'text-[var(--moss-green)]' : ''}>
+                {positions.length > 0 ? '✓' : '○'} LP position
+              </span>
+              <span>○ 7d age</span>
+            </div>
+          </div>
+        )}
+
+        {/* Streak Leaderboard - Keep but simplified header */}
+        {renderStreakLeaderboard()}
       </div>
-
-      {/* Season Panel */}
-      {renderSeason1Panel()}
-
-      {/* Combined Multiplier Overview */}
-      {renderBonusMultipliersCard()}
-
-      {/* Qualification Requirements */}
-      {renderQualificationCard()}
-
-      {/* Bonus Multipliers Section */}
-      <div className="space-y-3">
-        <p className="text-xs font-semibold text-center opacity-70">🎯 Boost Your Points</p>
-
-        {/* App Added Bonus - One-time unlock */}
-        {renderAppAddedCard()}
-
-        {/* Daily Check-In */}
-        {renderCheckInCard()}
-
-        {/* Yap Multiplier */}
-        {renderYapMultiplierCard()}
-      </div>
-
-      {/* Streak Leaderboard */}
-      {renderStreakLeaderboard()}
-    </div>
-  );
+    );
+  };
 
   // Advanced Tab - Just shows loading while redirect happens
   const renderAdvancedTab = () => (
