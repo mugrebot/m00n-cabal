@@ -5062,38 +5062,42 @@ Join the $m00n cabal 🌙`;
     };
 
     return (
-      <div className="space-y-6">
-        {/* Live Price Header */}
+      <div className="space-y-5 pb-4">
+        {/* Live Price Header - more prominent */}
         <div
-          className={`${PANEL_CLASS} p-4 text-center bg-gradient-to-r from-[var(--monad-purple)]/20 to-[var(--moss-green)]/20`}
+          className="p-5 rounded-2xl text-center border border-[var(--monad-purple)]/30"
+          style={{
+            background:
+              'linear-gradient(135deg, rgba(138,43,226,0.15) 0%, rgba(0,0,0,0.4) 50%, rgba(76,175,80,0.1) 100%)'
+          }}
         >
-          <p className="text-[10px] uppercase tracking-[0.3em] opacity-60 mb-1">$m00n Price</p>
-          <p className="text-2xl font-bold text-[var(--moss-green)]">
+          <p className="text-[10px] uppercase tracking-[0.4em] text-white/40 mb-2">$M00N PRICE</p>
+          <p className="text-3xl font-bold text-[var(--moss-green)] mb-1">
             {liveMoonPriceUsd > 0 ? `$${liveMoonPriceUsd.toExponential(2)}` : '—'}
           </p>
-          <p className="text-xs opacity-50 mt-1">
+          <p className="text-sm text-white/50">
             Market Cap: {marketCapUsd > 0 ? formatMarketCap(marketCapUsd) : '—'}
           </p>
         </div>
 
         {/* Balance + Stats Row */}
-        <div className={`${PANEL_CLASS} p-4`}>
+        <div className="p-5 rounded-2xl border border-white/10 bg-black/40">
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
-              <p className="text-base font-bold text-[var(--moss-green)]">{formattedBalance}</p>
-              <p className="text-[10px] opacity-50">$m00n</p>
+              <p className="text-lg font-bold text-[var(--moss-green)]">{formattedBalance}</p>
+              <p className="text-[10px] text-white/40 mt-1">$m00n</p>
             </div>
             <div>
-              <p className="text-base font-bold text-[var(--monad-purple)]">{positionCount}</p>
-              <p className="text-[10px] opacity-50">LPs</p>
+              <p className="text-lg font-bold text-[var(--monad-purple)]">{positionCount}</p>
+              <p className="text-[10px] text-white/40 mt-1">LPs</p>
             </div>
             <div>
-              <p className="text-base font-bold">{formattedWmon}</p>
-              <p className="text-[10px] opacity-50">WMON</p>
+              <p className="text-lg font-bold text-white/80">{formattedWmon}</p>
+              <p className="text-[10px] text-white/40 mt-1">WMON</p>
             </div>
           </div>
           {(miniWalletAddress || primaryAddress) && (
-            <div className="flex items-center justify-center gap-2 text-[10px] opacity-50 mt-3 pt-3 border-t border-white/10">
+            <div className="flex items-center justify-center gap-2 text-[10px] text-white/40 mt-4 pt-4 border-t border-white/10">
               <span className="font-mono">
                 {truncateAddress(miniWalletAddress ?? primaryAddress ?? '')}
               </span>
@@ -5105,7 +5109,7 @@ Join the $m00n cabal 🌙`;
                   setCopiedWallet(true);
                   setTimeout(() => setCopiedWallet(false), 2000);
                 }}
-                className="text-[var(--monad-purple)]"
+                className="text-[var(--monad-purple)] hover:underline"
               >
                 {copiedWallet ? '✓' : 'Copy'}
               </button>
@@ -5113,64 +5117,66 @@ Join the $m00n cabal 🌙`;
           )}
         </div>
 
-        {/* Quick Actions - 2x2 grid with more spacing */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Quick Actions - 2x2 grid with proper spacing */}
+        <div className="grid grid-cols-2 gap-4">
           <button
             type="button"
             onClick={() => setActiveTab('lp')}
-            className="py-5 rounded-xl bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/40 text-center"
+            className="py-6 rounded-2xl bg-[var(--monad-purple)]/15 border-2 border-[var(--monad-purple)]/40 text-center hover:bg-[var(--monad-purple)]/25 transition"
           >
-            <span className="text-2xl block mb-1">💧</span>
-            <span className="text-xs">My LPs</span>
+            <span className="text-2xl block mb-2">💧</span>
+            <span className="text-sm font-medium">My LPs</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('rewards')}
-            className="py-5 rounded-xl bg-[#ffd700]/10 border border-[#ffd700]/30 text-center"
+            className="py-6 rounded-2xl bg-[#ffd700]/10 border-2 border-[#ffd700]/30 text-center hover:bg-[#ffd700]/20 transition"
           >
-            <span className="text-2xl block mb-1">🏆</span>
-            <span className="text-xs">Rewards</span>
+            <span className="text-2xl block mb-2">🏆</span>
+            <span className="text-sm font-medium">Rewards</span>
           </button>
           <button
             type="button"
             onClick={handleOpenAdvancedLp}
-            className="py-5 rounded-xl bg-white/5 border border-white/20 text-center"
+            className="py-6 rounded-2xl bg-white/5 border-2 border-white/20 text-center hover:bg-white/10 transition"
           >
-            <span className="text-2xl block mb-1">🫡</span>
-            <span className="text-xs">Deploy LP</span>
+            <span className="text-2xl block mb-2">🫡</span>
+            <span className="text-sm font-medium">Deploy LP</span>
           </button>
           <button
             type="button"
             onClick={handleOpenMoonLander}
-            className="py-5 rounded-xl bg-white/5 border border-white/20 text-center"
+            className="py-6 rounded-2xl bg-white/5 border-2 border-white/20 text-center hover:bg-white/10 transition"
           >
-            <span className="text-2xl block mb-1">🚀</span>
-            <span className="text-xs">Game</span>
+            <span className="text-2xl block mb-2">🚀</span>
+            <span className="text-sm font-medium">Game</span>
           </button>
         </div>
 
-        {/* Deck + extra actions */}
-        <div className="grid grid-cols-1 gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              setSolarSystemRefreshNonce((n) => n + 1);
-              setIsObservationDeckOpen(true);
-            }}
-            className="py-4 rounded-xl bg-[#1a1a2e] border border-[var(--monad-purple)]/30 text-center"
-          >
-            <span className="text-xl inline-block mr-2">🔭</span>
-            <span className="text-xs">Observation Deck</span>
-          </button>
-        </div>
+        {/* Observation Deck - standalone with night sky feel */}
+        <button
+          type="button"
+          onClick={() => {
+            setSolarSystemRefreshNonce((n) => n + 1);
+            setIsObservationDeckOpen(true);
+          }}
+          className="w-full py-5 rounded-2xl text-center border-2 border-[var(--monad-purple)]/40 hover:border-[var(--monad-purple)]/60 transition"
+          style={{
+            background: 'linear-gradient(180deg, rgba(13,13,26,0.9) 0%, rgba(0,0,5,0.95) 100%)'
+          }}
+        >
+          <span className="text-xl inline-block mr-2">🔭</span>
+          <span className="text-sm font-medium">Observation Deck</span>
+          <p className="text-[10px] text-white/30 mt-1">View LP Solar System</p>
+        </button>
 
-        {/* Buy Tokens - more padding */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Buy Tokens */}
+        <div className="grid grid-cols-2 gap-4">
           <button
             type="button"
             onClick={() => handleSwapMonToToken('moon')}
             disabled={swapInFlight === 'moon'}
-            className="px-3 py-3 bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 rounded-xl text-sm font-semibold text-[var(--moss-green)] disabled:opacity-50"
+            className="py-4 bg-[var(--moss-green)]/20 border-2 border-[var(--moss-green)]/50 rounded-2xl text-sm font-semibold text-[var(--moss-green)] disabled:opacity-50 hover:bg-[var(--moss-green)]/30 transition"
           >
             {swapInFlight === 'moon' ? '...' : '🌙 Buy m00n'}
           </button>
@@ -5178,23 +5184,23 @@ Join the $m00n cabal 🌙`;
             type="button"
             onClick={() => handleSwapMonToToken('wmon')}
             disabled={swapInFlight === 'wmon'}
-            className="px-3 py-3 bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 rounded-xl text-sm font-semibold text-[var(--monad-purple)] disabled:opacity-50"
+            className="py-4 bg-[var(--monad-purple)]/20 border-2 border-[var(--monad-purple)]/50 rounded-2xl text-sm font-semibold text-[var(--monad-purple)] disabled:opacity-50 hover:bg-[var(--monad-purple)]/30 transition"
           >
             {swapInFlight === 'wmon' ? '...' : '💎 Buy WMON'}
           </button>
         </div>
 
-        {/* Contract Address */}
-        <div className={`${PANEL_CLASS} p-3`}>
+        {/* Contract Address - compact */}
+        <div className="p-4 rounded-2xl border border-white/10 bg-black/30">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[10px] opacity-50 mb-1">m00n Contract</p>
-              <p className="font-mono text-xs opacity-80">{truncateAddress(TOKEN_ADDRESS)}</p>
+              <p className="text-[10px] text-white/40 mb-1">m00n Contract</p>
+              <p className="font-mono text-xs text-white/70">{truncateAddress(TOKEN_ADDRESS)}</p>
             </div>
             <button
               type="button"
               onClick={handleCopyContract}
-              className="text-xs px-3 py-1 rounded-full border border-white/20 hover:bg-white/10"
+              className="text-xs px-4 py-2 rounded-full border border-white/20 text-white/60 hover:bg-white/10 hover:text-white transition"
             >
               {copiedContract ? '✓' : 'Copy'}
             </button>
@@ -5203,18 +5209,18 @@ Join the $m00n cabal 🌙`;
 
         {/* Season Info */}
         {tokenomicsData?.currentSeason && (
-          <div className={`${PANEL_CLASS} p-3`}>
+          <div className="p-4 rounded-2xl border border-white/10 bg-black/30">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span>⛏️</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xl">⛏️</span>
                 <div>
-                  <p className="text-sm font-semibold">
+                  <p className="text-sm font-semibold text-white">
                     Season {tokenomicsData.currentSeason.number}
                   </p>
-                  <p className="text-[10px] opacity-50">{tokenomicsData.currentSeason.name}</p>
+                  <p className="text-[10px] text-white/40">{tokenomicsData.currentSeason.name}</p>
                 </div>
               </div>
-              <span className="text-[10px] px-2 py-1 rounded-full bg-[var(--moss-green)]/20 text-[var(--moss-green)]">
+              <span className="text-[10px] px-3 py-1.5 rounded-full bg-[var(--moss-green)]/20 text-[var(--moss-green)] font-medium">
                 ACTIVE
               </span>
             </div>
@@ -5885,72 +5891,130 @@ Join the $m00n cabal 🌙`;
         : null;
 
     return (
-      <div className="space-y-6" style={{ paddingTop: '20px' }}>
-        {/* Header with close button */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="pixel-font text-xl">🔭 Observation Deck</h2>
-            <p className="text-xs opacity-60">LP Solar System telemetry</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsObservationDeckOpen(false)}
-            className="px-3 py-1 border border-white/20 rounded-full text-xs hover:bg-white/10"
-          >
-            ✕ Close
-          </button>
+      <div
+        className="min-h-[80vh] relative overflow-hidden"
+        style={{
+          background: 'radial-gradient(ellipse at center, #0d0d1a 0%, #000005 50%, #000000 100%)'
+        }}
+      >
+        {/* Starfield effect */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {/* Static stars */}
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `
+              radial-gradient(1px 1px at 20px 30px, white, transparent),
+              radial-gradient(1px 1px at 40px 70px, rgba(255,255,255,0.8), transparent),
+              radial-gradient(1px 1px at 90px 40px, rgba(255,255,255,0.6), transparent),
+              radial-gradient(2px 2px at 160px 120px, rgba(200,180,255,0.9), transparent),
+              radial-gradient(1px 1px at 230px 80px, white, transparent),
+              radial-gradient(1px 1px at 300px 200px, rgba(255,255,255,0.7), transparent),
+              radial-gradient(1.5px 1.5px at 50px 160px, rgba(180,200,255,0.8), transparent),
+              radial-gradient(1px 1px at 180px 220px, white, transparent),
+              radial-gradient(1px 1px at 280px 50px, rgba(255,255,255,0.5), transparent),
+              radial-gradient(2px 2px at 350px 150px, rgba(200,150,255,0.7), transparent)
+            `,
+              backgroundSize: '400px 300px'
+            }}
+          />
+          {/* Nebula glow */}
+          <div
+            className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[600px] h-[400px] rounded-full opacity-20"
+            style={{
+              background:
+                'radial-gradient(ellipse, rgba(138,43,226,0.4) 0%, rgba(75,0,130,0.2) 40%, transparent 70%)',
+              filter: 'blur(60px)'
+            }}
+          />
         </div>
 
-        {/* Status */}
-        {updatedStamp && (
-          <p className="text-xs text-center opacity-50">Last updated: {updatedStamp}</p>
-        )}
+        {/* Content */}
+        <div className="relative z-10 px-4 py-6 space-y-6">
+          {/* Header with close button */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="pixel-font text-2xl text-white drop-shadow-lg">
+                <span className="mr-2">🔭</span>Observation Deck
+              </h2>
+              <p className="text-xs text-white/50 mt-1">LP Solar System • Live Telemetry</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsObservationDeckOpen(false)}
+              className="px-4 py-2 bg-white/5 border border-white/20 rounded-full text-xs text-white/70 hover:bg-white/10 hover:text-white transition backdrop-blur-sm"
+            >
+              ✕ Close
+            </button>
+          </div>
 
-        {/* Solar System Visualization */}
-        <div className="flex justify-center">
-          {solarSystemStatus === 'loaded' && activeSolarPositions.length > 0 ? (
-            <M00nSolarSystem
-              positions={activeSolarPositions}
-              width={solarCanvasSize}
-              height={solarCanvasSize}
-            />
-          ) : solarSystemStatus === 'loading' ? (
-            <div className={`${PANEL_CLASS} text-center py-8`}>
-              <p className="text-sm opacity-70 animate-pulse">Loading telemetry...</p>
+          {/* Status */}
+          {updatedStamp && (
+            <p className="text-xs text-center text-white/40">Last updated: {updatedStamp}</p>
+          )}
+
+          {/* Solar System Visualization - with glow frame */}
+          <div className="flex justify-center">
+            <div
+              className="relative rounded-2xl overflow-hidden"
+              style={{
+                boxShadow: '0 0 60px rgba(138,43,226,0.3), 0 0 120px rgba(138,43,226,0.1)'
+              }}
+            >
+              {/* Inner glow border */}
+              <div
+                className="absolute inset-0 rounded-2xl pointer-events-none"
+                style={{
+                  border: '1px solid rgba(138,43,226,0.3)',
+                  boxShadow: 'inset 0 0 30px rgba(138,43,226,0.2)'
+                }}
+              />
+              {solarSystemStatus === 'loaded' && activeSolarPositions.length > 0 ? (
+                <M00nSolarSystem
+                  positions={activeSolarPositions}
+                  width={solarCanvasSize}
+                  height={solarCanvasSize}
+                />
+              ) : solarSystemStatus === 'loading' ? (
+                <div className="w-[300px] h-[300px] flex items-center justify-center bg-black/50">
+                  <p className="text-sm text-white/70 animate-pulse">Scanning orbital tracks...</p>
+                </div>
+              ) : solarSystemStatus === 'empty' ? (
+                <div className="w-[300px] h-[300px] flex items-center justify-center bg-black/50">
+                  <p className="text-sm text-white/50">No positions detected</p>
+                </div>
+              ) : solarSystemStatus === 'error' ? (
+                <div className="w-[300px] h-[300px] flex items-center justify-center bg-black/50">
+                  <p className="text-sm text-red-300/70">Telemetry offline</p>
+                </div>
+              ) : (
+                <div className="w-[300px] h-[300px] flex items-center justify-center bg-black/50">
+                  <p className="text-sm text-white/50 animate-pulse">Calibrating...</p>
+                </div>
+              )}
             </div>
-          ) : solarSystemStatus === 'empty' ? (
-            <div className={`${PANEL_CLASS} text-center py-8`}>
-              <p className="text-sm opacity-70">No positions found. Deploy an LP to appear here!</p>
-            </div>
-          ) : solarSystemStatus === 'error' ? (
-            <div className={`${PANEL_CLASS} text-center py-8`}>
-              <p className="text-sm text-red-300">Failed to load telemetry</p>
-            </div>
-          ) : (
-            <div className={`${PANEL_CLASS} text-center py-8`}>
-              <p className="text-sm opacity-70">Calibrating orbital tracks...</p>
-            </div>
+          </div>
+
+          {/* Refresh button */}
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={() => setSolarSystemRefreshNonce((n) => n + 1)}
+              disabled={solarSystemStatus === 'loading'}
+              className="px-6 py-3 bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 text-[var(--monad-purple)] rounded-full text-sm font-medium hover:bg-[var(--monad-purple)]/30 transition disabled:opacity-50 backdrop-blur-sm"
+            >
+              {solarSystemStatus === 'loading' ? '⏳ Scanning...' : '↻ Refresh Telemetry'}
+            </button>
+          </div>
+
+          {/* Position count */}
+          {activeSolarPositions.length > 0 && (
+            <p className="text-center text-sm text-white/40">
+              <span className="text-[var(--monad-purple)]">{activeSolarPositions.length}</span>{' '}
+              positions orbiting the m00n
+            </p>
           )}
         </div>
-
-        {/* Refresh button */}
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={() => setSolarSystemRefreshNonce((n) => n + 1)}
-            disabled={solarSystemStatus === 'loading'}
-            className="px-4 py-2 border border-[var(--monad-purple)] text-[var(--monad-purple)] rounded-full text-xs hover:bg-[var(--monad-purple)] hover:text-white transition disabled:opacity-50"
-          >
-            {solarSystemStatus === 'loading' ? 'Loading...' : '↻ Refresh Telemetry'}
-          </button>
-        </div>
-
-        {/* Position count */}
-        {activeSolarPositions.length > 0 && (
-          <p className="text-center text-xs opacity-60">
-            {activeSolarPositions.length} positions orbiting
-          </p>
-        )}
       </div>
     );
   };
