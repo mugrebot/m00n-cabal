@@ -374,23 +374,110 @@ export async function buildStreakLeaderboard(): Promise<StreakLeaderboard> {
   const currentSeason = await getCurrentSeason();
   const seasonId = currentSeason?.id ?? 'season-1';
 
-  const allEntries: StreakLeaderboardEntry[] = Object.values(streakData)
-    .filter(
-      (streak) =>
-        streak.checkCount > 0 && (streak.valueUsd ?? 0) >= 5 && streak.tokenId !== CLANKER_TOKEN_ID
-    )
-    .map((streak) => ({
-      tokenId: streak.tokenId,
-      owner: streak.owner,
-      label: streak.label,
-      currentStreakDuration: streak.currentStreakDuration,
-      longestStreakDuration: streak.longestStreakDuration,
-      isCurrentlyInRange: streak.isCurrentlyInRange,
-      points: streak.points,
-      pointsBreakdown: streak.pointsBreakdown,
-      valueUsd: streak.valueUsd,
-      tier: streak.tier
-    }));
+  // Get all qualifying positions
+  const qualifyingPositions = Object.values(streakData).filter(
+    (streak) =>
+      streak.checkCount > 0 && (streak.valueUsd ?? 0) >= 5 && streak.tokenId !== CLANKER_TOKEN_ID
+  );
+
+  // Aggregate positions by owner address
+  // IMPORTANT: We aggregate raw metrics first, then calculate points ONCE
+  // This prevents gaming by splitting into multiple small positions
+  const ownerAggregates = new Map<
+    string,
+    {
+      owner: string;
+      label: string;
+      positions: string[]; // tokenIds
+      totalValueUsd: number;
+      // For time/streak, we use VALUE-WEIGHTED averages, not just best
+      weightedStreakSeconds: number; // sum of (valueUsd * streakSeconds) for each position
+      weightedTimeSeconds: number; // sum of (valueUsd * ageSeconds) for each position
+      hasAnyInRange: boolean;
+      inRangeValueUsd: number; // total value that is in-range (for bonus calc)
+      bestTier?: { name: string; emoji: string; multiplier: number };
+    }
+  >();
+
+  for (const streak of qualifyingPositions) {
+    const posValue = streak.valueUsd ?? 0;
+    const existing = ownerAggregates.get(streak.owner);
+
+    if (existing) {
+      // Aggregate with existing
+      existing.positions.push(streak.tokenId);
+      existing.totalValueUsd += posValue;
+      // Value-weighted streak and time
+      existing.weightedStreakSeconds += posValue * streak.currentStreakDuration;
+      existing.weightedTimeSeconds +=
+        posValue * (streak.totalPositionAge ?? streak.currentStreakDuration);
+      existing.hasAnyInRange = existing.hasAnyInRange || streak.isCurrentlyInRange;
+      if (streak.isCurrentlyInRange) {
+        existing.inRangeValueUsd += posValue;
+      }
+      // Keep best tier
+      if (
+        streak.tier &&
+        (!existing.bestTier || streak.tier.multiplier > existing.bestTier.multiplier)
+      ) {
+        existing.bestTier = streak.tier;
+      }
+    } else {
+      // Create new entry
+      ownerAggregates.set(streak.owner, {
+        owner: streak.owner,
+        label: streak.label ?? streak.owner.slice(0, 6) + '...' + streak.owner.slice(-4),
+        positions: [streak.tokenId],
+        totalValueUsd: posValue,
+        weightedStreakSeconds: posValue * streak.currentStreakDuration,
+        weightedTimeSeconds: posValue * (streak.totalPositionAge ?? streak.currentStreakDuration),
+        hasAnyInRange: streak.isCurrentlyInRange,
+        inRangeValueUsd: streak.isCurrentlyInRange ? posValue : 0,
+        bestTier: streak.tier
+      });
+    }
+  }
+
+  // Convert aggregates to leaderboard entries (one per owner)
+  // Calculate points from AGGREGATED totals, not sum of individual points
+  const allEntries: StreakLeaderboardEntry[] = Array.from(ownerAggregates.values()).map((agg) => {
+    // Calculate value-weighted averages
+    const avgStreakSeconds =
+      agg.totalValueUsd > 0 ? agg.weightedStreakSeconds / agg.totalValueUsd : 0;
+    const avgTimeSeconds = agg.totalValueUsd > 0 ? agg.weightedTimeSeconds / agg.totalValueUsd : 0;
+
+    // Calculate in-range bonus (proportional to how much value is in-range)
+    const inRangeRatio = agg.totalValueUsd > 0 ? agg.inRangeValueUsd / agg.totalValueUsd : 0;
+    // Bonus ranges from 1.0 (0% in range) to 1.2 (100% in range)
+    const inRangeMultiplier = 1 + 0.2 * inRangeRatio;
+
+    // Points formula: 50% value + 30% streak + 20% time
+    // Applied to TOTALS, not per-position
+    const notionalPoints = Math.floor(agg.totalValueUsd * 100); // $1 = 100 base points
+    const streakPoints = Math.floor(avgStreakSeconds / 3600); // 1 point per hour of avg streak
+    const timePoints = Math.floor(avgTimeSeconds / 3600); // 1 point per hour of avg age
+
+    const rawPoints = Math.floor(notionalPoints * 0.5 + streakPoints * 0.3 + timePoints * 0.2);
+
+    const finalPoints = Math.floor(rawPoints * inRangeMultiplier);
+
+    return {
+      tokenId: agg.positions.length === 1 ? agg.positions[0] : `${agg.positions.length} positions`,
+      owner: agg.owner,
+      label: agg.label,
+      currentStreakDuration: Math.floor(avgStreakSeconds),
+      longestStreakDuration: Math.floor(avgStreakSeconds), // Using avg for consistency
+      isCurrentlyInRange: agg.hasAnyInRange,
+      points: finalPoints,
+      pointsBreakdown: {
+        notionalPoints: Math.floor(notionalPoints * 0.5),
+        streakPoints: Math.floor(streakPoints * 0.3),
+        timePoints: Math.floor(timePoints * 0.2)
+      },
+      valueUsd: agg.totalValueUsd,
+      tier: agg.bestTier
+    };
+  });
 
   const totalSystemPoints = allEntries.reduce((sum, e) => sum + e.points, 0);
 
