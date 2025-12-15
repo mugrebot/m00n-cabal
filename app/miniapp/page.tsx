@@ -2463,13 +2463,18 @@ function MiniAppPageInner() {
                 const tuneData = await tuneResponse.json();
                 setCheckInData({
                   currentStreak: tuneData.currentStreak ?? 0,
+                  longestStreak: tuneData.longestStreak ?? 0,
                   totalCheckIns: tuneData.totalCheckIns ?? 0,
                   multiplier: tuneData.multiplier ?? 1,
                   multiplierTier: tuneData.multiplierTier ?? '—',
                   canCheckIn: false,
                   nextAvailableAt: tuneData.nextAvailableAt,
-                  hoursUntilAvailable: tuneData.hoursUntilAvailable
+                  hoursUntilAvailable: tuneData.hoursUntilAvailable ?? 24
                 });
+                // Show milestone if any
+                if (tuneData.reward?.message) {
+                  showToast('success', tuneData.reward.message);
+                }
               }
             }
 
@@ -2479,6 +2484,13 @@ function MiniAppPageInner() {
             console.warn('Failed to record harvest/tune', e);
           }
         }
+
+        // Clear old fees and mark for refresh (fees were just collected)
+        mutateLpPosition(tokenId, (pos) => ({
+          ...pos,
+          fees: undefined,
+          feesStatus: 'idle' // Will be refetched when user taps "Check Rewards"
+        }));
 
         showToast(
           'success',
