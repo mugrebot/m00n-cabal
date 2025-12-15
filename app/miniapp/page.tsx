@@ -673,6 +673,7 @@ function MiniAppPageInner() {
   // Daily Check-In bonus state
   const [checkInData, setCheckInData] = useState<{
     currentStreak: number;
+    longestStreak?: number;
     totalCheckIns: number;
     multiplier: number;
     multiplierTier: string;
@@ -873,11 +874,13 @@ function MiniAppPageInner() {
       if (data.success) {
         setCheckInData({
           currentStreak: data.currentStreak,
+          longestStreak: data.longestStreak,
           totalCheckIns: data.totalCheckIns,
           multiplier: data.multiplier,
           multiplierTier: data.multiplierTier,
           canCheckIn: false,
-          nextAvailableAt: data.nextAvailableAt
+          nextAvailableAt: data.nextAvailableAt,
+          hoursUntilAvailable: 24
         });
         setCheckInMessage(data.reward?.message ?? data.message);
         showToast('success', data.message);
@@ -958,6 +961,7 @@ function MiniAppPageInner() {
       const data = await response.json();
       setCheckInData({
         currentStreak: data.currentStreak ?? 0,
+        longestStreak: data.longestStreak ?? 0,
         totalCheckIns: data.totalCheckIns ?? 0,
         multiplier: data.multiplier ?? 1,
         multiplierTier: data.multiplierTier ?? '—',
@@ -1129,6 +1133,7 @@ function MiniAppPageInner() {
         if (!cancelled) {
           setCheckInData({
             currentStreak: data.currentStreak ?? 0,
+            longestStreak: data.longestStreak ?? 0,
             totalCheckIns: data.totalCheckIns ?? 0,
             multiplier: data.multiplier ?? 1,
             multiplierTier: data.multiplierTier ?? '—',
@@ -2672,13 +2677,18 @@ function MiniAppPageInner() {
                 const tuneData = await tuneResponse.json();
                 setCheckInData({
                   currentStreak: tuneData.currentStreak ?? 0,
+                  longestStreak: tuneData.longestStreak ?? 0,
                   totalCheckIns: tuneData.totalCheckIns ?? 0,
                   multiplier: tuneData.multiplier ?? 1,
                   multiplierTier: tuneData.multiplierTier ?? '—',
                   canCheckIn: false,
                   nextAvailableAt: tuneData.nextAvailableAt,
-                  hoursUntilAvailable: tuneData.hoursUntilAvailable
+                  hoursUntilAvailable: tuneData.hoursUntilAvailable ?? 24
                 });
+                // Show milestone rewards if any
+                if (tuneData.reward?.message) {
+                  showToast('success', tuneData.reward.message);
+                }
               }
             }
 
@@ -7100,19 +7110,81 @@ Join the $m00n cabal 🌙`;
             )}
           </div>
 
-          {/* Tune (auto via harvest) */}
-          <div className="flex items-center justify-between py-1.5 border-b border-white/10">
-            <div className="flex items-center gap-2">
-              <span>🎵</span>
-              <span className="text-sm">Tune</span>
-              {checkInData && checkInData.currentStreak > 0 && (
-                <span className="text-[10px] text-white/50">{checkInData.currentStreak}d</span>
-              )}
+          {/* Tune (auto via harvest) - Expanded Section */}
+          <div className="py-2 border-b border-white/10">
+            {/* Main row */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span>🎵</span>
+                <span className="text-sm">Tune</span>
+                {checkInData && checkInData.currentStreak > 0 && (
+                  <span className="text-[10px] text-white/50">
+                    {checkInData.currentStreak}d streak
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {checkInData?.canCheckIn ? (
+                  <button
+                    onClick={() => setActiveTab('lp')}
+                    className="text-[10px] text-yellow-400 hover:text-yellow-300 transition animate-pulse"
+                  >
+                    harvest to tune →
+                  </button>
+                ) : (
+                  <>
+                    <span className="text-[var(--moss-green)] text-sm font-bold">
+                      {tuneMult}x ✓
+                    </span>
+                  </>
+                )}
+              </div>
             </div>
-            {checkInData?.canCheckIn ? (
-              <span className="text-[10px] text-yellow-400">harvest to tune →</span>
-            ) : (
-              <span className="text-[var(--moss-green)] text-sm font-bold">{tuneMult}x ✓</span>
+
+            {/* Tier & Stats row */}
+            {checkInData && (
+              <div className="mt-1.5 flex items-center justify-between text-[10px]">
+                {/* Tier name */}
+                <div className="flex items-center gap-2">
+                  {checkInData.multiplierTier && checkInData.multiplierTier !== '—' && (
+                    <span className="text-white/70">{checkInData.multiplierTier}</span>
+                  )}
+                  {checkInData.longestStreak && checkInData.longestStreak > 0 && (
+                    <span className="text-white/40">best: {checkInData.longestStreak}d</span>
+                  )}
+                  {checkInData.totalCheckIns && checkInData.totalCheckIns > 0 && (
+                    <span className="text-white/40">total: {checkInData.totalCheckIns}</span>
+                  )}
+                </div>
+
+                {/* Countdown when already tuned */}
+                {!checkInData.canCheckIn && checkInData.hoursUntilAvailable && (
+                  <span className="text-white/40">next in {checkInData.hoursUntilAvailable}h</span>
+                )}
+              </div>
+            )}
+
+            {/* Streak progress bar */}
+            {checkInData && checkInData.currentStreak > 0 && (
+              <div className="mt-2">
+                <div className="flex items-center gap-1 text-[8px] text-white/40 mb-1">
+                  <span>1d</span>
+                  <div className="flex-1" />
+                  <span>7d</span>
+                  <div className="flex-1" />
+                  <span>14d</span>
+                  <div className="flex-1" />
+                  <span>30d 🌙</span>
+                </div>
+                <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-[var(--monad-purple)] to-[var(--moss-green)] transition-all duration-500"
+                    style={{
+                      width: `${Math.min(100, (checkInData.currentStreak / 30) * 100)}%`
+                    }}
+                  />
+                </div>
+              </div>
             )}
           </div>
 
@@ -7125,11 +7197,27 @@ Join the $m00n cabal 🌙`;
                 <span className="text-[10px] text-white/50">{yapMultiplier.castCount} casts</span>
               )}
             </div>
-            <span
-              className={`text-sm font-bold ${yapMult > 1 ? 'text-[var(--moss-green)]' : 'opacity-50'}`}
-            >
-              {yapMult}x
-            </span>
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-sm font-bold ${yapMult > 1 ? 'text-[var(--moss-green)]' : 'opacity-50'}`}
+              >
+                {yapMult}x
+              </span>
+              {yapMult < 5 && (
+                <button
+                  onClick={() => {
+                    try {
+                      sdk?.actions?.openUrl('https://warpcast.com/~/compose?text=%24m00n%20');
+                    } catch {
+                      window.open('https://warpcast.com', '_blank');
+                    }
+                  }}
+                  className="px-2 py-0.5 text-[10px] bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 text-[var(--monad-purple)] rounded hover:bg-[var(--monad-purple)]/30 transition"
+                >
+                  Cast
+                </button>
+              )}
+            </div>
           </div>
 
           {/* House (Burn Tier) */}
