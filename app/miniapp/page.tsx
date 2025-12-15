@@ -6882,6 +6882,11 @@ Join the $m00n cabal 🌙`;
                   {houseTier?.emoji ?? '◌'}
                 </span>
                 <span className="text-xs opacity-70">{houseTier?.name ?? 'Wanderer'} House</span>
+                {houseTier?.totalBurnedFormatted && houseTier.totalBurnedFormatted !== '0' && (
+                  <span className="text-[10px] text-orange-400">
+                    🔥 {houseTier.totalBurnedFormatted}
+                  </span>
+                )}
               </div>
               <p
                 className={`text-2xl font-bold ${combinedMult >= 2 ? 'text-[#ffd700]' : combinedMult > 1 ? 'text-[var(--moss-green)]' : 'opacity-50'}`}

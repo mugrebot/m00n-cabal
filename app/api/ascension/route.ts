@@ -16,8 +16,23 @@ import {
   setCustomOrbitName,
   TIER_DEFINITIONS,
   getNextTier,
-  formatMoonAmount
+  formatMoonAmount,
+  type TierDefinition
 } from '@/app/lib/ascension';
+
+// Helper to serialize tier (BigInt -> string)
+function serializeTier(tier: TierDefinition) {
+  return {
+    name: tier.name,
+    tier: tier.tier,
+    burnRequired: tier.burnRequired.toString(),
+    burnRequiredFormatted: tier.burnRequiredFormatted,
+    emoji: tier.emoji,
+    glow: tier.glow,
+    harvestMultiplier: tier.harvestMultiplier,
+    perks: tier.perks
+  };
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -54,12 +69,12 @@ export async function GET(request: NextRequest) {
       if (!record) {
         return NextResponse.json({
           fid: Number(fid),
-          tier: TIER_DEFINITIONS.wanderer,
+          tier: serializeTier(TIER_DEFINITIONS.wanderer),
           totalBurnedWei: '0',
           totalBurnedFormatted: '0',
           nextTier: nextTier
             ? {
-                tier: nextTier.tier,
+                tier: serializeTier(nextTier.tier),
                 burnNeeded: nextTier.burnNeeded.toString(),
                 burnNeededFormatted: formatMoonAmount(nextTier.burnNeeded)
               }
@@ -70,11 +85,11 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({
         ...record,
-        tier,
+        tier: serializeTier(tier),
         totalBurnedFormatted: formatMoonAmount(BigInt(record.totalBurnedWei)),
         nextTier: nextTier
           ? {
-              tier: nextTier.tier,
+              tier: serializeTier(nextTier.tier),
               burnNeeded: nextTier.burnNeeded.toString(),
               burnNeededFormatted: formatMoonAmount(nextTier.burnNeeded)
             }
@@ -109,15 +124,15 @@ export async function POST(request: NextRequest) {
       const nextTierInfo = getNextTier(result.record.tier);
 
       return NextResponse.json({
-        ...result,
-        // Always include full tier info
-        currentTier,
+        success: result.success,
+        record: result.record,
+        tierChanged: result.tierChanged,
+        message: result.message,
+        // Always include full tier info (serialized to avoid BigInt issues)
+        currentTier: serializeTier(currentTier),
         nextTier: nextTierInfo
           ? {
-              tier: {
-                name: nextTierInfo.tier.name,
-                burnRequiredFormatted: nextTierInfo.tier.burnRequiredFormatted
-              },
+              tier: serializeTier(nextTierInfo.tier),
               burnNeeded: nextTierInfo.burnNeeded.toString(),
               burnNeededFormatted: formatMoonAmount(nextTierInfo.burnNeeded)
             }
