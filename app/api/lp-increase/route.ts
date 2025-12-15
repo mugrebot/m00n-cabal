@@ -1,18 +1,13 @@
 /**
  * LP Increase Liquidity Route
  *
- * Properly increases liquidity on an EXISTING position using INCREASE_LIQUIDITY action.
- * This is different from minting a new position.
- *
- * Actions:
- * - INCREASE_LIQUIDITY (0x00) - add liquidity to existing position
- * - SETTLE_PAIR (0x0d) - settle both tokens
+ * Properly increases liquidity on an EXISTING position using V4PositionPlanner.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { encodeAbiParameters, parseAbiParameters, encodePacked, isAddress } from 'viem';
+import { encodeAbiParameters, parseAbiParameters } from 'viem';
 import { Percent, Token } from '@uniswap/sdk-core';
-import { Pool, Position } from '@uniswap/v4-sdk';
+import { Pool, Position, V4PositionPlanner } from '@uniswap/v4-sdk';
 
 import {
   getCurrentPoolState,
@@ -29,12 +24,6 @@ const TOKEN_METADATA: Record<string, { symbol: string; decimals: number }> = {
 const MONAD_CHAIN_ID = Number(process.env.MONAD_CHAIN_ID ?? 143);
 const DEADLINE_SECONDS = 10 * 60; // 10 minutes
 const DEFAULT_SLIPPAGE_PERCENT = 5; // 5%
-
-// Action codes from Uniswap V4
-const Actions = {
-  INCREASE_LIQUIDITY: 0x00,
-  SETTLE_PAIR: 0x0d
-} as const;
 
 const describeTokenMeta = (address: string) => {
   const meta = TOKEN_METADATA[address.toLowerCase()];
@@ -60,23 +49,27 @@ const buildPool = async (positionDetails: PositionDetails) => {
     token1Meta.symbol
   );
 
-  return new Pool(
+  return {
+    pool: new Pool(
+      token0,
+      token1,
+      positionDetails.poolKey.fee,
+      positionDetails.poolKey.tickSpacing,
+      positionDetails.poolKey.hooks,
+      poolState.sqrtPriceX96.toString(),
+      poolState.liquidity.toString(),
+      poolState.tick
+    ),
     token0,
-    token1,
-    positionDetails.poolKey.fee,
-    positionDetails.poolKey.tickSpacing,
-    positionDetails.poolKey.hooks,
-    poolState.sqrtPriceX96.toString(),
-    poolState.liquidity.toString(),
-    poolState.tick
-  );
+    token1
+  };
 };
 
 export async function POST(request: NextRequest) {
   let body: {
     tokenId?: string;
-    amount0Wei?: string; // Amount of token0 to add
-    amount1Wei?: string; // Amount of token1 to add
+    amount0Wei?: string;
+    amount1Wei?: string;
     slippagePercent?: number;
   };
 
@@ -104,12 +97,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const positionDetails = await getPositionDetails(tokenId);
-    const pool = await buildPool(positionDetails);
+    const { pool, token0, token1 } = await buildPool(positionDetails);
 
     const amount0 = BigInt(amount0Wei ?? '0');
     const amount1 = BigInt(amount1Wei ?? '0');
 
-    // Check if amounts are too small
     if (amount0 === BigInt(0) && amount1 === BigInt(0)) {
       return NextResponse.json({ error: 'no_amounts_to_add' }, { status: 400 });
     }
@@ -127,30 +119,18 @@ export async function POST(request: NextRequest) {
       });
     } catch (err) {
       console.error('LP_INCREASE_ROUTE:position_build_failed', {
-        tickLower: positionDetails.tickLower,
-        tickUpper: positionDetails.tickUpper,
-        currentTick: pool.tickCurrent,
-        amount0: amount0.toString(),
-        amount1: amount1.toString(),
         error: err instanceof Error ? err.message : String(err)
       });
       return NextResponse.json(
-        {
-          error: 'position_build_failed',
-          detail: 'Amounts too small to calculate liquidity'
-        },
+        { error: 'position_build_failed', detail: 'Amounts too small' },
         { status: 400 }
       );
     }
 
-    // Check if position has valid liquidity
     const liquidityBigInt = BigInt(addPosition.liquidity.toString());
     if (liquidityBigInt === BigInt(0)) {
       return NextResponse.json(
-        {
-          error: 'zero_liquidity',
-          detail: 'Amounts result in zero liquidity'
-        },
+        { error: 'zero_liquidity', detail: 'Amounts result in zero liquidity' },
         { status: 400 }
       );
     }
@@ -165,38 +145,22 @@ export async function POST(request: NextRequest) {
     const nowSeconds = Math.floor(Date.now() / 1000);
     const deadline = BigInt(nowSeconds + DEADLINE_SECONDS);
 
-    // Encode actions: INCREASE_LIQUIDITY + SETTLE_PAIR
-    const actions = encodePacked(
-      ['uint8', 'uint8'],
-      [Actions.INCREASE_LIQUIDITY, Actions.SETTLE_PAIR]
+    // Use V4PositionPlanner for proper encoding
+    const planner = new V4PositionPlanner();
+    planner.addIncrease(
+      tokenId.toString(),
+      liquidityBigInt.toString(),
+      amount0Max.toString(),
+      amount1Max.toString(),
+      '0x'
     );
+    planner.addSettlePair(token0, token1);
 
-    // Encode INCREASE_LIQUIDITY params
-    // params[0] = abi.encode(tokenId, liquidity, amount0Max, amount1Max, hookData)
-    const increaseParams = encodeAbiParameters(
-      parseAbiParameters('uint256, uint256, uint128, uint128, bytes'),
-      [tokenId, liquidityBigInt, amount0Max, amount1Max, '0x' as `0x${string}`]
-    );
+    const unlockData = planner.finalize();
 
-    // Encode SETTLE_PAIR params (currency0, currency1)
-    const currency0 = positionDetails.poolKey.currency0 as `0x${string}`;
-    const currency1 = positionDetails.poolKey.currency1 as `0x${string}`;
-    const settleParams = encodeAbiParameters(parseAbiParameters('address, address'), [
-      currency0,
-      currency1
-    ]);
-
-    // unlockData = abi.encode(actions, params[])
-    // where actions is bytes and params is bytes[]
-    const unlockData = encodeAbiParameters(parseAbiParameters('bytes, bytes[]'), [
-      actions,
-      [increaseParams, settleParams]
-    ]);
-
-    // modifyLiquidities(bytes unlockData, uint256 deadline)
-    // Function selector: 0xdd46508f
+    // Build final calldata: modifyLiquidities(bytes, uint256)
     const funcParams = encodeAbiParameters(parseAbiParameters('bytes, uint256'), [
-      unlockData,
+      unlockData as `0x${string}`,
       deadline
     ]);
     const calldata = `0xdd46508f${funcParams.slice(2)}` as `0x${string}`;
@@ -204,15 +168,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       to: POSITION_MANAGER_ADDRESS,
       data: calldata,
-      value: '0', // No ETH needed for m00n/WMON pair
+      value: '0',
       meta: {
         tokenId: tokenIdParam,
         liquidity: liquidityBigInt.toString(),
         amount0Max: amount0Max.toString(),
-        amount1Max: amount1Max.toString(),
-        currency0,
-        currency1,
-        slippagePercent: slippagePercent ?? DEFAULT_SLIPPAGE_PERCENT
+        amount1Max: amount1Max.toString()
       }
     });
   } catch (error) {
