@@ -6605,7 +6605,35 @@ Join the $m00n cabal 🌙`;
     const positions = lpGateState.lpPositions ?? [];
     const bestBalanceWei = moonBalanceWei ?? primaryAddressMoonBalanceWei;
     const moonBal = bestBalanceWei ? Number(bestBalanceWei / BigInt(10 ** 18)) : 0;
-    const isQualified = moonBal >= 1_000_000 && positions.length > 0;
+
+    // Calculate oldest position age in days
+    const now = Date.now();
+    const oldestAgeDays = positions.reduce((oldest, pos) => {
+      if (!pos.createdAtTimestamp) return oldest;
+      const ageDays = (now - pos.createdAtTimestamp * 1000) / (1000 * 60 * 60 * 24);
+      return Math.max(oldest, ageDays);
+    }, 0);
+
+    // Calculate total LP value from token amounts
+    const wmonPrice = lpGateState.poolWmonUsdPrice ?? 0;
+    const totalLpValue = positions.reduce((sum, pos) => {
+      const t0Val =
+        pos.token0?.amountFormatted && pos.token0.symbol === 'WMON'
+          ? Number(pos.token0.amountFormatted) * wmonPrice
+          : 0;
+      const t1Val =
+        pos.token1?.amountFormatted && pos.token1.symbol === 'WMON'
+          ? Number(pos.token1.amountFormatted) * wmonPrice
+          : 0;
+      return sum + t0Val + t1Val;
+    }, 0);
+
+    // Full qualification: 1M m00n + 7d age + $5 value
+    const hasMoonBal = moonBal >= 1_000_000;
+    const hasPosition = positions.length > 0;
+    const hasAge = oldestAgeDays >= 7;
+    const hasValue = totalLpValue >= 5;
+    const isQualified = hasMoonBal && hasPosition && hasAge && hasValue;
 
     return (
       <div className="space-y-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
@@ -6703,14 +6731,20 @@ Join the $m00n cabal 🌙`;
         {!isQualified && (
           <div className={`${PANEL_CLASS} p-3 border-l-2 border-yellow-500`}>
             <p className="text-xs text-yellow-400 mb-1">To qualify:</p>
-            <div className="flex gap-4 text-[10px] text-white/60">
-              <span className={moonBal >= 1_000_000 ? 'text-[var(--moss-green)]' : ''}>
-                {moonBal >= 1_000_000 ? '✓' : '○'} 1M m00n
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-white/60">
+              <span className={hasMoonBal ? 'text-[var(--moss-green)]' : ''}>
+                {hasMoonBal ? '✓' : '○'} 1M m00n
               </span>
-              <span className={positions.length > 0 ? 'text-[var(--moss-green)]' : ''}>
-                {positions.length > 0 ? '✓' : '○'} LP position
+              <span className={hasPosition ? 'text-[var(--moss-green)]' : ''}>
+                {hasPosition ? '✓' : '○'} LP
               </span>
-              <span>○ 7d age</span>
+              <span className={hasAge ? 'text-[var(--moss-green)]' : ''}>
+                {hasAge ? '✓' : '○'} 7d age{' '}
+                {!hasAge && oldestAgeDays > 0 ? `(${oldestAgeDays.toFixed(1)}d)` : ''}
+              </span>
+              <span className={hasValue ? 'text-[var(--moss-green)]' : ''}>
+                {hasValue ? '✓' : '○'} $5+ value
+              </span>
             </div>
           </div>
         )}
