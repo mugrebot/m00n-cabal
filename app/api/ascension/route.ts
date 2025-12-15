@@ -104,7 +104,25 @@ export async function POST(request: NextRequest) {
 
       const result = await recordBurn(Number(fid), username, address, txHash, BigInt(amountWei));
 
-      return NextResponse.json(result);
+      // Always include the current tier definition (not just when tier changes)
+      const currentTier = TIER_DEFINITIONS[result.record.tier];
+      const nextTierInfo = getNextTier(result.record.tier);
+
+      return NextResponse.json({
+        ...result,
+        // Always include full tier info
+        currentTier,
+        nextTier: nextTierInfo
+          ? {
+              tier: {
+                name: nextTierInfo.tier.name,
+                burnRequiredFormatted: nextTierInfo.tier.burnRequiredFormatted
+              },
+              burnNeeded: nextTierInfo.burnNeeded.toString(),
+              burnNeededFormatted: formatMoonAmount(nextTierInfo.burnNeeded)
+            }
+          : null
+      });
     }
 
     // Set custom orbit name (Guardian+)

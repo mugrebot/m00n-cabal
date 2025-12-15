@@ -2710,18 +2710,21 @@ function MiniAppPageInner() {
 
         if (recordResponse.ok) {
           const result = await recordResponse.json();
-          // Update house tier
+          // Update house tier - use currentTier which is always returned
+          const tier = result.currentTier;
           setHouseTier({
-            tier: result.record?.tier ?? 'wanderer',
-            name: result.newTier?.name ?? result.record?.tier ?? 'Wanderer',
-            emoji: result.newTier?.emoji ?? '◌',
-            harvestMultiplier: result.newTier?.harvestMultiplier ?? 1,
-            totalBurnedFormatted: result.record?.totalBurnedFormatted ?? '0',
+            tier: tier?.tier ?? 'wanderer',
+            name: tier?.name ?? 'Wanderer',
+            emoji: tier?.emoji ?? '◌',
+            harvestMultiplier: tier?.harvestMultiplier ?? 1,
+            totalBurnedFormatted: result.record?.totalBurnedWei
+              ? (Number(BigInt(result.record.totalBurnedWei)) / 10 ** 18).toLocaleString()
+              : '0',
             nextTier: result.nextTier
           });
 
           if (result.tierChanged) {
-            showToast('success', `🔥 Ascended to ${result.newTier?.name}!`);
+            showToast('success', `🔥 Ascended to ${tier?.name}!`);
           } else {
             showToast('success', `🔥 Burned ${amountFormatted} m00n!`);
           }

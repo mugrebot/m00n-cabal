@@ -130,8 +130,18 @@ export async function POST(request: NextRequest) {
 
     // Check if amounts are too small
     if (amount0 === BigInt(0) && amount1 === BigInt(0)) {
+      console.error('LP_COMPOUND_ROUTE:no_fees', { amount0Wei, amount1Wei });
       return NextResponse.json({ error: 'no_fees_to_compound' }, { status: 400 });
     }
+
+    console.log('LP_COMPOUND_ROUTE:building_position', {
+      tokenId: tokenIdParam,
+      amount0: amount0.toString(),
+      amount1: amount1.toString(),
+      tickLower: positionDetails.tickLower,
+      tickUpper: positionDetails.tickUpper,
+      currentTick: pool.tickCurrent
+    });
 
     // Build position from amounts for adding liquidity
     let addPosition: Position;
@@ -148,14 +158,15 @@ export async function POST(request: NextRequest) {
       console.error('LP_COMPOUND_ROUTE:position_build_failed', {
         tickLower: positionDetails.tickLower,
         tickUpper: positionDetails.tickUpper,
+        currentTick: pool.tickCurrent,
         amount0: amount0.toString(),
         amount1: amount1.toString(),
-        err
+        error: err instanceof Error ? err.message : String(err)
       });
       return NextResponse.json(
         {
           error: 'position_build_failed',
-          detail: 'Fee amounts too small to compound into liquidity'
+          detail: `Fee amounts too small to compound. Err: ${err instanceof Error ? err.message : String(err)}`
         },
         { status: 400 }
       );
