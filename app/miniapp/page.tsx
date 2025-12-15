@@ -718,6 +718,13 @@ function MiniAppPageInner() {
     currentWeekPoints: number;
   } | null>(null);
 
+  // Burn state
+  const [burnStatus, setBurnStatus] = useState<'idle' | 'approving' | 'burning' | 'recording'>(
+    'idle'
+  );
+  const [showBurnModal, setShowBurnModal] = useState(false);
+  const [burnAmount, setBurnAmount] = useState<string>('');
+
   const [tokenomicsData, setTokenomicsData] = useState<TokenomicsResponse | null>(null);
   const [tokenomicsStatus, setTokenomicsStatus] = useState<'idle' | 'loading' | 'error' | 'loaded'>(
     'idle'
@@ -2484,6 +2491,241 @@ function MiniAppPageInner() {
     [miniWalletAddress, mutateLpPosition, refreshPersonalSigils, sendCallsViaProvider, showToast]
   );
 
+  // Compound: collect fees + add them back to position
+  const handleCompoundLpFees = useCallback(
+    async (tokenId: string) => {
+      if (!miniWalletAddress) {
+        showToast('error', 'Connect your mini wallet to compound');
+        return;
+      }
+
+      const position = lpGateState.lpPositions?.find((p) => p.tokenId === tokenId);
+      if (!position?.fees) {
+        showToast('error', 'No fees to compound');
+        return;
+      }
+
+      mutateLpPosition(tokenId, (pos) => ({
+        ...pos,
+        collectStatus: 'loading',
+        collectError: null
+      }));
+
+      try {
+        const response = await fetch('/api/lp-compound', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tokenId,
+            recipient: miniWalletAddress,
+            amount0Wei: position.fees.token0Wei ?? '0',
+            amount1Wei: position.fees.token1Wei ?? '0',
+            slippagePercent: 5
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`compound_route_${response.status}`);
+        }
+
+        const payload = await response.json();
+
+        // Execute multicall with both collect + add liquidity
+        const calls = payload.calls.map((call: { data: `0x${string}`; value: string }) => ({
+          to: payload.to as `0x${string}`,
+          data: call.data,
+          value: BigInt(call.value || '0')
+        }));
+
+        await sendCallsViaProvider({ calls });
+
+        mutateLpPosition(tokenId, (pos) => ({
+          ...pos,
+          collectStatus: 'idle',
+          collectError: null
+        }));
+
+        // Record harvest for points + auto-tune
+        if (userData?.fid) {
+          try {
+            const wmonPrice = lpGateState.poolWmonUsdPrice ?? 0;
+            const currentTick = lpGateState.poolCurrentTick ?? 0;
+            const moonPriceInWmon = currentTick ? Math.pow(1.0001, currentTick) : 0;
+            const moonPrice = moonPriceInWmon * wmonPrice;
+
+            await fetch('/api/harvest', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fid: userData.fid,
+                username: userData.username,
+                address: miniWalletAddress,
+                tokenId,
+                wmonAmountWei: position.fees.token1Wei ?? '0',
+                moonAmountWei: position.fees.token0Wei ?? '0',
+                wmonPriceUsd: wmonPrice,
+                moonPriceUsd: moonPrice
+              })
+            });
+
+            if (checkInData?.canCheckIn) {
+              const tuneResponse = await fetch('/api/daily-checkin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fid: userData.fid, action: 'checkin' })
+              });
+              if (tuneResponse.ok) {
+                const tuneData = await tuneResponse.json();
+                setCheckInData({
+                  currentStreak: tuneData.currentStreak ?? 0,
+                  totalCheckIns: tuneData.totalCheckIns ?? 0,
+                  multiplier: tuneData.multiplier ?? 1,
+                  multiplierTier: tuneData.multiplierTier ?? '—',
+                  canCheckIn: false,
+                  nextAvailableAt: tuneData.nextAvailableAt,
+                  hoursUntilAvailable: tuneData.hoursUntilAvailable
+                });
+              }
+            }
+
+            setHarvestStats(null);
+          } catch (e) {
+            console.warn('Failed to record compound harvest', e);
+          }
+        }
+
+        showToast(
+          'success',
+          'Compounded! 🔄 Fees added back to position' +
+            (checkInData?.canCheckIn ? ' +tuned 🎵' : '')
+        );
+        refreshPersonalSigils();
+      } catch (error) {
+        console.error('LP_COMPOUND:failed', { tokenId, error });
+        mutateLpPosition(tokenId, (pos) => ({
+          ...pos,
+          collectStatus: 'error',
+          collectError: error instanceof Error ? error.message : 'Compound failed'
+        }));
+        showToast('error', 'Failed to compound');
+      }
+    },
+    [
+      miniWalletAddress,
+      lpGateState.lpPositions,
+      lpGateState.poolWmonUsdPrice,
+      lpGateState.poolCurrentTick,
+      mutateLpPosition,
+      sendCallsViaProvider,
+      showToast,
+      userData?.fid,
+      userData?.username,
+      checkInData,
+      refreshPersonalSigils
+    ]
+  );
+
+  // Burn m00n to ascend house tier
+  const BURN_ADDRESS = '0x000000000000000000000000000000000000dEaD';
+  const handleBurnMoon = useCallback(
+    async (amountFormatted: string) => {
+      if (!miniWalletAddress) {
+        showToast('error', 'Connect your wallet to burn');
+        return;
+      }
+      if (!userData?.fid) {
+        showToast('error', 'Sign in to burn');
+        return;
+      }
+
+      const amount = parseFloat(amountFormatted.replace(/,/g, ''));
+      if (isNaN(amount) || amount <= 0) {
+        showToast('error', 'Invalid burn amount');
+        return;
+      }
+
+      const amountWei = parseUnits(amount.toString(), 18);
+
+      // Check balance
+      if (moonBalanceWei && amountWei > moonBalanceWei) {
+        showToast('error', 'Insufficient m00n balance');
+        return;
+      }
+
+      setBurnStatus('burning');
+
+      try {
+        // Transfer m00n to burn address
+        const transferData = encodeFunctionData({
+          abi: erc20Abi,
+          functionName: 'transfer',
+          args: [BURN_ADDRESS as `0x${string}`, amountWei]
+        });
+
+        await sendCallsViaProvider({
+          calls: [
+            {
+              to: TOKEN_ADDRESS as `0x${string}`,
+              data: transferData,
+              value: BigInt(0)
+            }
+          ]
+        });
+
+        setBurnStatus('recording');
+
+        // Record the burn (tx hash not available from sendCalls, use timestamp as unique ID)
+        const recordResponse = await fetch('/api/ascension', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'burn',
+            fid: userData.fid,
+            username: userData.username,
+            address: miniWalletAddress,
+            txHash: `burn_${Date.now()}`,
+            amountWei: amountWei.toString()
+          })
+        });
+
+        if (recordResponse.ok) {
+          const result = await recordResponse.json();
+          // Update house tier
+          setHouseTier({
+            tier: result.record?.tier ?? 'wanderer',
+            name: result.newTier?.name ?? result.record?.tier ?? 'Wanderer',
+            emoji: result.newTier?.emoji ?? '◌',
+            harvestMultiplier: result.newTier?.harvestMultiplier ?? 1,
+            totalBurnedFormatted: result.record?.totalBurnedFormatted ?? '0',
+            nextTier: result.nextTier
+          });
+
+          if (result.tierChanged) {
+            showToast('success', `🔥 Ascended to ${result.newTier?.name}!`);
+          } else {
+            showToast('success', `🔥 Burned ${amountFormatted} m00n!`);
+          }
+        }
+
+        setShowBurnModal(false);
+        setBurnAmount('');
+        setBurnStatus('idle');
+      } catch (error) {
+        console.error('BURN:failed', error);
+        showToast('error', 'Burn failed');
+        setBurnStatus('idle');
+      }
+    },
+    [
+      miniWalletAddress,
+      userData?.fid,
+      userData?.username,
+      moonBalanceWei,
+      sendCallsViaProvider,
+      showToast
+    ]
+  );
+
   const handleRemoveLiquidity = useCallback(
     async (tokenId: string) => {
       if (!miniWalletAddress) {
@@ -3798,7 +4040,21 @@ Join the $m00n cabal 🌙`;
                     }
                     className="pixel-font text-[10px] tracking-[0.3em] px-4 py-2 border border-white/20 rounded-full uppercase disabled:opacity-50"
                   >
-                    {position.collectStatus === 'loading' ? 'COLLECTING…' : 'COLLECT REWARDS'}
+                    {position.collectStatus === 'loading' ? 'COLLECTING…' : 'COLLECT'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCompoundLpFees(position.tokenId)}
+                    disabled={
+                      position.collectStatus === 'loading' ||
+                      !position.fees ||
+                      (position.fees &&
+                        BigInt(position.fees.token0Wei || '0') === BigInt(0) &&
+                        BigInt(position.fees.token1Wei || '0') === BigInt(0))
+                    }
+                    className="pixel-font text-[10px] tracking-[0.3em] px-4 py-2 border border-[var(--moss-green)]/50 text-[var(--moss-green)] rounded-full uppercase disabled:opacity-50 hover:bg-[var(--moss-green)]/20"
+                  >
+                    {position.collectStatus === 'loading' ? '...' : 'COMPOUND ↻'}
                   </button>
                   <button
                     type="button"
@@ -6185,9 +6441,17 @@ Join the $m00n cabal 🌙`;
                       type="button"
                       onClick={() => handleCollectLpFees(pos.tokenId)}
                       disabled={pos.collectStatus === 'loading'}
-                      className="px-4 py-1.5 rounded-lg bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 text-[var(--moss-green)] font-semibold text-xs hover:bg-[var(--moss-green)] hover:text-black transition disabled:opacity-50"
+                      className="px-4 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white font-semibold text-xs hover:bg-white/20 transition disabled:opacity-50"
                     >
                       {pos.collectStatus === 'loading' ? '...' : 'Collect'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCompoundLpFees(pos.tokenId)}
+                      disabled={pos.collectStatus === 'loading'}
+                      className="px-4 py-1.5 rounded-lg bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 text-[var(--moss-green)] font-semibold text-xs hover:bg-[var(--moss-green)] hover:text-black transition disabled:opacity-50"
+                    >
+                      {pos.collectStatus === 'loading' ? '...' : 'Compound ↻'}
                     </button>
                     <button
                       type="button"
@@ -6687,13 +6951,123 @@ Join the $m00n cabal 🌙`;
                 </span>
               )}
             </div>
-            <span
-              className={`text-sm font-bold ${houseMult > 1 ? 'text-[var(--moss-green)]' : 'opacity-50'}`}
-            >
-              {houseMult}x
-            </span>
+            <div className="flex items-center gap-2">
+              <span
+                className={`text-sm font-bold ${houseMult > 1 ? 'text-[var(--moss-green)]' : 'opacity-50'}`}
+              >
+                {houseMult}x
+              </span>
+              {houseTier?.nextTier && (
+                <button
+                  onClick={() => setShowBurnModal(true)}
+                  className="px-2 py-0.5 text-[10px] bg-orange-500/20 border border-orange-500/50 text-orange-400 rounded hover:bg-orange-500/30 transition"
+                >
+                  Ascend
+                </button>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Burn Modal */}
+        {showBurnModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+            <div className={`${PANEL_CLASS} p-4 max-w-sm w-full space-y-4`}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold">🔥 Ascend House</h3>
+                <button
+                  onClick={() => setShowBurnModal(false)}
+                  className="text-white/50 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="text-center py-3">
+                <p
+                  className="text-3xl mb-1"
+                  style={{
+                    textShadow:
+                      houseTier?.tier !== 'wanderer'
+                        ? `0 0 12px ${houseTier?.tier === 'celestial' ? '#b9f2ff' : houseTier?.tier === 'luminary' ? '#ffd700' : houseTier?.tier === 'guardian' ? '#c0c0c0' : '#cd7f32'}`
+                        : 'none'
+                  }}
+                >
+                  {houseTier?.emoji ?? '◌'}
+                </p>
+                <p className="font-bold">{houseTier?.name ?? 'Wanderer'} House</p>
+                <p className="text-xs opacity-50">
+                  {houseTier?.totalBurnedFormatted ?? '0'} burned
+                </p>
+              </div>
+
+              {houseTier?.nextTier && (
+                <div className="bg-black/40 rounded-lg p-3 text-center">
+                  <p className="text-xs opacity-50">Next tier</p>
+                  <p className="font-bold text-orange-400">{houseTier.nextTier.tier.name} House</p>
+                  <p className="text-xs">Burn {houseTier.nextTier.burnNeededFormatted} more m00n</p>
+                  <p className="text-[10px] text-[var(--moss-green)]">
+                    Unlock higher harvest bonus!
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs opacity-50 block mb-1">Burn amount</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={burnAmount}
+                    onChange={(e) => setBurnAmount(e.target.value)}
+                    placeholder="100000"
+                    className="flex-1 bg-black/40 border border-white/20 rounded-lg px-3 py-2 text-sm"
+                  />
+                  <span className="text-sm opacity-50 self-center">m00n</span>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => setBurnAmount('100000')}
+                    className="flex-1 text-[10px] py-1 bg-white/10 rounded hover:bg-white/20"
+                  >
+                    100K
+                  </button>
+                  <button
+                    onClick={() => setBurnAmount('500000')}
+                    className="flex-1 text-[10px] py-1 bg-white/10 rounded hover:bg-white/20"
+                  >
+                    500K
+                  </button>
+                  <button
+                    onClick={() => setBurnAmount('1000000')}
+                    className="flex-1 text-[10px] py-1 bg-white/10 rounded hover:bg-white/20"
+                  >
+                    1M
+                  </button>
+                </div>
+                <p className="text-[10px] opacity-40 mt-1">
+                  Balance:{' '}
+                  {moonBalanceWei ? (Number(moonBalanceWei) / 10 ** 18).toLocaleString() : '—'} m00n
+                </p>
+              </div>
+
+              <button
+                onClick={() => handleBurnMoon(burnAmount)}
+                disabled={burnStatus !== 'idle' || !burnAmount}
+                className="w-full py-3 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 font-bold text-white disabled:opacity-50 hover:from-orange-600 hover:to-red-600 transition"
+              >
+                {burnStatus === 'burning'
+                  ? 'Burning...'
+                  : burnStatus === 'recording'
+                    ? 'Recording...'
+                    : `🔥 Burn ${burnAmount || '0'} m00n`}
+              </button>
+
+              <p className="text-[9px] opacity-40 text-center">
+                Burned tokens are sent to 0xdead and cannot be recovered.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Referral Link */}
         <div className={`${PANEL_CLASS} p-3`}>
