@@ -2485,18 +2485,26 @@ function MiniAppPageInner() {
           }
         }
 
-        // Clear old fees and mark for refresh (fees were just collected)
+        // Clear old fees for this position only (fees were just collected)
         mutateLpPosition(tokenId, (pos) => ({
           ...pos,
-          fees: undefined,
-          feesStatus: 'idle' // Will be refetched when user taps "Check Rewards"
+          fees: {
+            token0Wei: '0',
+            token1Wei: '0',
+            token0Formatted: '0',
+            token1Formatted: '0',
+            unclaimedUsd: 0
+          },
+          feesStatus: 'loaded', // Keep as loaded but with zero values
+          collectStatus: 'idle'
         }));
 
-        showToast(
-          'success',
-          'Harvested! 🌾 +points' + (checkInData?.canCheckIn ? ' +tuned 🎵' : '')
-        );
-        refreshPersonalSigils();
+        // Show success with tune status - use a ref-like check for canCheckIn
+        const didTune = checkInData?.canCheckIn === true;
+        showToast('success', 'Harvested! 🌾 +points' + (didTune ? ' +tuned 🎵' : ''));
+
+        // DON'T call refreshPersonalSigils() - it wipes all position data
+        // The position data is still valid, we just collected the fees
       } catch (error) {
         console.error('LP_FEES:collect_failed', { tokenId, error });
         const errorMessage =
@@ -2512,7 +2520,6 @@ function MiniAppPageInner() {
     [
       miniWalletAddress,
       mutateLpPosition,
-      refreshPersonalSigils,
       sendCallsViaProvider,
       showToast,
       userData?.fid,
@@ -2710,12 +2717,15 @@ function MiniAppPageInner() {
           }
         }
 
+        // Show success with tune status
+        const didTune = checkInData?.canCheckIn === true;
         showToast(
           'success',
-          'Compounded! 🔄 Fees added back to position' +
-            (checkInData?.canCheckIn ? ' +tuned 🎵' : '')
+          'Compounded! 🔄 Fees added back to position' + (didTune ? ' +tuned 🎵' : '')
         );
-        refreshPersonalSigils();
+
+        // DON'T call refreshPersonalSigils() - it wipes all position data
+        // Position data is still valid, fees were compounded back into liquidity
       } catch (error) {
         console.error('LP_COMPOUND:failed', { tokenId, error });
         const errorMessage = error instanceof Error ? error.message : 'Compound failed';
@@ -2750,8 +2760,7 @@ function MiniAppPageInner() {
       showToast,
       userData?.fid,
       userData?.username,
-      checkInData,
-      refreshPersonalSigils
+      checkInData
     ]
   );
 
