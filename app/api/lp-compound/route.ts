@@ -131,14 +131,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'no_fees_to_compound' }, { status: 400 });
     }
 
+    const currentTick = pool.tickCurrent;
+    const isInRange =
+      currentTick >= positionDetails.tickLower && currentTick < positionDetails.tickUpper;
+
     console.log('LP_COMPOUND_ROUTE:building_position', {
       tokenId: tokenIdParam,
       amount0: amount0.toString(),
       amount1: amount1.toString(),
       tickLower: positionDetails.tickLower,
       tickUpper: positionDetails.tickUpper,
-      currentTick: pool.tickCurrent
+      currentTick,
+      isInRange
     });
+
+    // Check if we have both tokens when position is in range
+    // In-range positions require both tokens to add liquidity
+    if (isInRange && (amount0 === BigInt(0) || amount1 === BigInt(0))) {
+      const missingToken = amount0 === BigInt(0) ? 'm00n' : 'WMON';
+      console.log('LP_COMPOUND_ROUTE:single_sided_in_range', { missingToken });
+      return NextResponse.json(
+        {
+          error: 'single_sided_in_range',
+          detail: `Position is in-range and requires both tokens. You have 0 ${missingToken} fees. Try collecting instead.`
+        },
+        { status: 400 }
+      );
+    }
 
     // Build position from amounts to calculate liquidity
     let addPosition: Position;
@@ -156,7 +175,10 @@ export async function POST(request: NextRequest) {
         error: err instanceof Error ? err.message : String(err)
       });
       return NextResponse.json(
-        { error: 'position_build_failed', detail: 'Fee amounts too small' },
+        {
+          error: 'position_build_failed',
+          detail: 'Cannot calculate liquidity from fee amounts. Try collecting instead.'
+        },
         { status: 400 }
       );
     }
@@ -164,7 +186,10 @@ export async function POST(request: NextRequest) {
     const liquidityBigInt = BigInt(addPosition.liquidity.toString());
     if (liquidityBigInt === BigInt(0)) {
       return NextResponse.json(
-        { error: 'zero_liquidity', detail: 'Fee amounts result in zero liquidity' },
+        {
+          error: 'zero_liquidity',
+          detail: 'Fee amounts result in zero liquidity. Try collecting instead.'
+        },
         { status: 400 }
       );
     }

@@ -2544,12 +2544,16 @@ function MiniAppPageInner() {
           // Handle specific errors with helpful messages
           if (payload.error === 'no_fees_to_compound') {
             throw new Error('No fees to compound');
+          } else if (payload.error === 'single_sided_in_range') {
+            throw new Error(
+              payload.detail ?? 'In-range positions need both tokens - collect instead'
+            );
           } else if (payload.error === 'zero_liquidity') {
-            throw new Error('Fees too small to add liquidity - try collecting instead');
+            throw new Error(payload.detail ?? 'Fees too small - collect instead');
           } else if (payload.error === 'position_build_failed') {
             throw new Error(payload.detail ?? 'Cannot build position from fees');
           }
-          throw new Error(payload.error ?? `compound_failed_${response.status}`);
+          throw new Error(payload.detail ?? payload.error ?? `compound_failed_${response.status}`);
         }
 
         // Execute multicall with both collect + add liquidity
