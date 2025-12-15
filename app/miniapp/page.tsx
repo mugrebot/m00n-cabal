@@ -7127,16 +7127,17 @@ Join the $m00n cabal 🌙`;
                 {checkInData?.canCheckIn ? (
                   <button
                     onClick={() => setActiveTab('lp')}
-                    className="text-[10px] text-yellow-400 hover:text-yellow-300 transition animate-pulse"
+                    className="px-2 py-0.5 text-[10px] text-yellow-400 hover:text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-full transition animate-pulse"
                   >
-                    harvest to tune →
+                    🎵 harvest to tune →
                   </button>
                 ) : (
-                  <>
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[var(--moss-green)]/10 border border-[var(--moss-green)]/30 rounded-full">
                     <span className="text-[var(--moss-green)] text-sm font-bold">
                       {tuneMult}x ✓
                     </span>
-                  </>
+                    <span className="text-[10px] text-[var(--moss-green)]/70">tuned!</span>
+                  </div>
                 )}
               </div>
             </div>
