@@ -6601,9 +6601,10 @@ Join the $m00n cabal 🌙`;
     const appMult = appAddedData?.added ? 1.1 : 1;
     const combinedMult = yapMult * checkInMult * appMult;
 
-    // Qualification checks
+    // Qualification checks - use best available balance source
     const positions = lpGateState.lpPositions ?? [];
-    const moonBal = moonBalanceWei ? Number(moonBalanceWei / BigInt(10 ** 18)) : 0;
+    const bestBalanceWei = moonBalanceWei ?? primaryAddressMoonBalanceWei;
+    const moonBal = bestBalanceWei ? Number(bestBalanceWei / BigInt(10 ** 18)) : 0;
     const isQualified = moonBal >= 1_000_000 && positions.length > 0;
 
     return (
