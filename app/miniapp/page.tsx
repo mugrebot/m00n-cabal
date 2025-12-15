@@ -4071,20 +4071,30 @@ Join the $m00n cabal 🌙`;
                   >
                     {position.collectStatus === 'loading' ? 'COLLECTING…' : 'COLLECT'}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleCompoundLpFees(position.tokenId)}
-                    disabled={
-                      position.collectStatus === 'loading' ||
-                      !position.fees ||
-                      (position.fees &&
-                        BigInt(position.fees.token0Wei || '0') === BigInt(0) &&
-                        BigInt(position.fees.token1Wei || '0') === BigInt(0))
-                    }
-                    className="pixel-font text-[10px] tracking-[0.3em] px-4 py-2 border border-[var(--moss-green)]/50 text-[var(--moss-green)] rounded-full uppercase disabled:opacity-50 hover:bg-[var(--moss-green)]/20"
-                  >
-                    {position.collectStatus === 'loading' ? '...' : 'COMPOUND ↻'}
-                  </button>
+                  {(() => {
+                    // Compound requires both tokens when in-range
+                    const hasToken0 = BigInt(position.fees?.token0Wei || '0') > BigInt(0);
+                    const hasToken1 = BigInt(position.fees?.token1Wei || '0') > BigInt(0);
+                    const isInRange = position.rangeStatus === 'in-range';
+                    const canCompound = position.fees && ((hasToken0 && hasToken1) || !isInRange);
+                    const noFees = !hasToken0 && !hasToken1;
+
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => handleCompoundLpFees(position.tokenId)}
+                        disabled={position.collectStatus === 'loading' || !canCompound || noFees}
+                        title={
+                          isInRange && !canCompound && !noFees
+                            ? 'In-range positions need both tokens to compound'
+                            : undefined
+                        }
+                        className="pixel-font text-[10px] tracking-[0.3em] px-4 py-2 border border-[var(--moss-green)]/50 text-[var(--moss-green)] rounded-full uppercase disabled:opacity-50 hover:bg-[var(--moss-green)]/20"
+                      >
+                        {position.collectStatus === 'loading' ? '...' : 'COMPOUND ↻'}
+                      </button>
+                    );
+                  })()}
                   <button
                     type="button"
                     onClick={() => handleRemoveLiquidity(position.tokenId)}
@@ -6474,14 +6484,28 @@ Join the $m00n cabal 🌙`;
                     >
                       {pos.collectStatus === 'loading' ? '...' : 'Collect'}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleCompoundLpFees(pos.tokenId)}
-                      disabled={pos.collectStatus === 'loading'}
-                      className="px-4 py-1.5 rounded-lg bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 text-[var(--moss-green)] font-semibold text-xs hover:bg-[var(--moss-green)] hover:text-black transition disabled:opacity-50"
-                    >
-                      {pos.collectStatus === 'loading' ? '...' : 'Compound ↻'}
-                    </button>
+                    {(() => {
+                      const hasToken0 = BigInt(pos.fees?.token0Wei || '0') > BigInt(0);
+                      const hasToken1 = BigInt(pos.fees?.token1Wei || '0') > BigInt(0);
+                      const isInRange = pos.rangeStatus === 'in-range';
+                      const canCompound = pos.fees && ((hasToken0 && hasToken1) || !isInRange);
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => handleCompoundLpFees(pos.tokenId)}
+                          disabled={pos.collectStatus === 'loading' || !canCompound}
+                          title={
+                            isInRange && !canCompound
+                              ? 'In-range positions need both tokens'
+                              : undefined
+                          }
+                          className="px-4 py-1.5 rounded-lg bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 text-[var(--moss-green)] font-semibold text-xs hover:bg-[var(--moss-green)] hover:text-black transition disabled:opacity-50"
+                        >
+                          {pos.collectStatus === 'loading' ? '...' : 'Compound ↻'}
+                        </button>
+                      );
+                    })()}
                     <button
                       type="button"
                       onClick={() => handleRemoveLiquidity(pos.tokenId)}
