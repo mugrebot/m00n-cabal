@@ -208,19 +208,20 @@ export async function POST(request: NextRequest) {
 
     const deadlineBigInt = BigInt(nowSeconds + DEADLINE_SECONDS);
 
-    // Encode INCREASE_LIQUIDITY actions
+    // Encode INCREASE_LIQUIDITY actions (packed bytes)
     const actions = encodePacked(
       ['uint8', 'uint8'],
       [Actions.INCREASE_LIQUIDITY, Actions.SETTLE_PAIR]
     );
 
     // Encode INCREASE_LIQUIDITY params
+    // (tokenId, liquidity, amount0Max, amount1Max, hookData)
     const increaseParams = encodeAbiParameters(
       parseAbiParameters('uint256, uint256, uint128, uint128, bytes'),
       [tokenId, liquidityBigInt, amount0Max, amount1Max, '0x' as `0x${string}`]
     );
 
-    // Encode SETTLE_PAIR params
+    // Encode SETTLE_PAIR params (currency0, currency1)
     const currency0 = positionDetails.poolKey.currency0 as `0x${string}`;
     const currency1 = positionDetails.poolKey.currency1 as `0x${string}`;
     const settleParams = encodeAbiParameters(parseAbiParameters('address, address'), [
@@ -228,22 +229,20 @@ export async function POST(request: NextRequest) {
       currency1
     ]);
 
-    // Combine into params array
-    const paramsEncoded = encodeAbiParameters(parseAbiParameters('bytes[]'), [
+    // unlockData = abi.encode(actions, params[])
+    // where actions is bytes and params is bytes[]
+    const unlockData = encodeAbiParameters(parseAbiParameters('bytes, bytes[]'), [
+      actions,
       [increaseParams, settleParams]
     ]);
 
-    // Final calldata for increase
-    const innerCalldata = encodeAbiParameters(parseAbiParameters('bytes, bytes'), [
-      actions,
-      paramsEncoded
-    ]);
-
     // modifyLiquidities(bytes unlockData, uint256 deadline)
-    const increaseCalldata = `0xdd46508f${encodeAbiParameters(
-      parseAbiParameters('bytes, uint256'),
-      [innerCalldata as `0x${string}`, deadlineBigInt]
-    ).slice(2)}` as `0x${string}`;
+    // Function selector: 0xdd46508f
+    const funcParams = encodeAbiParameters(parseAbiParameters('bytes, uint256'), [
+      unlockData,
+      deadlineBigInt
+    ]);
+    const increaseCalldata = `0xdd46508f${funcParams.slice(2)}` as `0x${string}`;
 
     // Return both calldatas - collect first, then increase
     return NextResponse.json({

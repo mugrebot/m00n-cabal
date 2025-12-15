@@ -178,8 +178,7 @@ export async function POST(request: NextRequest) {
       [tokenId, liquidityBigInt, amount0Max, amount1Max, '0x' as `0x${string}`]
     );
 
-    // Encode SETTLE_PAIR params
-    // params[1] = abi.encode(currency0, currency1)
+    // Encode SETTLE_PAIR params (currency0, currency1)
     const currency0 = positionDetails.poolKey.currency0 as `0x${string}`;
     const currency1 = positionDetails.poolKey.currency1 as `0x${string}`;
     const settleParams = encodeAbiParameters(parseAbiParameters('address, address'), [
@@ -187,22 +186,20 @@ export async function POST(request: NextRequest) {
       currency1
     ]);
 
-    // Combine into params array
-    // The contract expects: abi.encode(actions, params[])
-    // where params is bytes[]
-    const paramsEncoded = encodeAbiParameters(parseAbiParameters('bytes[]'), [
-      [increaseParams, settleParams]
-    ]);
-
-    // Final calldata: abi.encode(actions, params)
-    const innerCalldata = encodeAbiParameters(parseAbiParameters('bytes, bytes'), [
+    // unlockData = abi.encode(actions, params[])
+    // where actions is bytes and params is bytes[]
+    const unlockData = encodeAbiParameters(parseAbiParameters('bytes, bytes[]'), [
       actions,
-      paramsEncoded
+      [increaseParams, settleParams]
     ]);
 
     // modifyLiquidities(bytes unlockData, uint256 deadline)
     // Function selector: 0xdd46508f
-    const calldata = `0xdd46508f${innerCalldata.slice(2)}` as `0x${string}`;
+    const funcParams = encodeAbiParameters(parseAbiParameters('bytes, uint256'), [
+      unlockData,
+      deadline
+    ]);
+    const calldata = `0xdd46508f${funcParams.slice(2)}` as `0x${string}`;
 
     return NextResponse.json({
       to: POSITION_MANAGER_ADDRESS,
