@@ -226,10 +226,12 @@ export interface PositionIdWithTimestamp {
 
 export async function getPositionIds(owner: Address): Promise<bigint[]> {
   const positions = await getPositionIdsWithTimestamps(owner);
-  return positions.map(p => p.tokenId);
+  return positions.map((p) => p.tokenId);
 }
 
-export async function getPositionIdsWithTimestamps(owner: Address): Promise<PositionIdWithTimestamp[]> {
+export async function getPositionIdsWithTimestamps(
+  owner: Address
+): Promise<PositionIdWithTimestamp[]> {
   const ownerLower = owner.toLowerCase();
 
   try {
@@ -390,8 +392,10 @@ export async function getUserPositionsSummary(owner: Address): Promise<UserPosit
 
   // 2) Subgraph: position tokenIds for this owner on Monad (with timestamps)
   const positionsWithTs = await getPositionIdsWithTimestamps(owner);
-  const tokenIds = positionsWithTs.map(p => p.tokenId);
-  const timestampMap = new Map(positionsWithTs.map(p => [p.tokenId.toString(), p.createdAtTimestamp]));
+  const tokenIds = positionsWithTs.map((p) => p.tokenId);
+  const timestampMap = new Map(
+    positionsWithTs.map((p) => [p.tokenId.toString(), p.createdAtTimestamp])
+  );
   const indexerPositionCount = tokenIds.length;
   const hasLpFromSubgraph = indexerPositionCount > 0;
 
@@ -770,14 +774,19 @@ export async function getPositionFeesPreview(
       args: [poolId, details.tickLower, details.tickUpper]
     })) as readonly [bigint, bigint];
 
+    // Calculate delta with proper overflow handling (uint256 can wrap)
+    // In Solidity, subtraction of uint256 with underflow wraps around
+    // We use the same behavior here: delta = current - last (with wrap)
+    const MAX_UINT256 = BigInt(2) ** BigInt(256) - BigInt(1);
+
     const delta0 =
       feeGrowthInside0Current >= feeGrowthInside0LastX128
         ? feeGrowthInside0Current - feeGrowthInside0LastX128
-        : BigInt(0);
+        : MAX_UINT256 - feeGrowthInside0LastX128 + feeGrowthInside0Current + BigInt(1);
     const delta1 =
       feeGrowthInside1Current >= feeGrowthInside1LastX128
         ? feeGrowthInside1Current - feeGrowthInside1LastX128
-        : BigInt(0);
+        : MAX_UINT256 - feeGrowthInside1LastX128 + feeGrowthInside1Current + BigInt(1);
 
     const amount0 = (delta0 * details.liquidity) / Q128;
     const amount1 = (delta1 * details.liquidity) / Q128;

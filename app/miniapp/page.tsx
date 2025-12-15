@@ -321,6 +321,8 @@ interface LpPosition {
   feesStatus?: 'idle' | 'loading' | 'loaded' | 'error';
   feesError?: string | null;
   collectStatus?: 'idle' | 'loading' | 'error';
+  compoundStatus?: 'idle' | 'checking' | 'collecting' | 'increasing' | 'success' | 'error';
+  compoundStep?: string;
   collectError?: string | null;
   removeStatus?: 'idle' | 'loading' | 'success' | 'error';
   removeError?: string | null;
@@ -2519,21 +2521,43 @@ function MiniAppPageInner() {
         return;
       }
 
+      // Step 1: Checking
       mutateLpPosition(tokenId, (pos) => ({
         ...pos,
+        compoundStatus: 'checking',
+        compoundStep: 'Preparing compound...',
         collectStatus: 'loading',
         collectError: null
       }));
 
       try {
+        // Fetch fresh fee data to ensure accuracy
+        const feeResponse = await fetch(`/api/lp-fees?tokenId=${tokenId}`);
+        let amount0Wei = position.fees.token0Wei ?? '0';
+        let amount1Wei = position.fees.token1Wei ?? '0';
+
+        if (feeResponse.ok) {
+          const feeData = await feeResponse.json();
+          if (feeData.fees) {
+            amount0Wei = feeData.fees.token0Wei ?? amount0Wei;
+            amount1Wei = feeData.fees.token1Wei ?? amount1Wei;
+            console.log('COMPOUND:fresh_fees', { amount0Wei, amount1Wei });
+          }
+        }
+
+        mutateLpPosition(tokenId, (pos) => ({
+          ...pos,
+          compoundStep: 'Building transaction...'
+        }));
+
         const response = await fetch('/api/lp-compound', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             tokenId,
             recipient: miniWalletAddress,
-            amount0Wei: position.fees.token0Wei ?? '0',
-            amount1Wei: position.fees.token1Wei ?? '0',
+            amount0Wei,
+            amount1Wei,
             slippagePercent: 5
           })
         });
@@ -2556,20 +2580,64 @@ function MiniAppPageInner() {
           throw new Error(payload.detail ?? payload.error ?? `compound_failed_${response.status}`);
         }
 
-        // Execute multicall with both collect + add liquidity
-        const calls = payload.calls.map((call: { data: `0x${string}`; value: string }) => ({
-          to: payload.to as `0x${string}`,
-          data: call.data,
-          value: BigInt(call.value || '0')
-        }));
-
-        await sendCallsViaProvider({ calls });
-
+        // Step 2: Collecting fees
         mutateLpPosition(tokenId, (pos) => ({
           ...pos,
-          collectStatus: 'idle',
-          collectError: null
+          compoundStatus: 'collecting',
+          compoundStep: 'Step 1/2: Collecting fees...'
         }));
+
+        // Execute collect transaction
+        const collectCall = payload.calls[0];
+        await sendCallsViaProvider({
+          calls: [
+            {
+              to: payload.to as `0x${string}`,
+              data: collectCall.data,
+              value: BigInt(collectCall.value || '0')
+            }
+          ]
+        });
+
+        // Step 3: Increasing liquidity
+        mutateLpPosition(tokenId, (pos) => ({
+          ...pos,
+          compoundStatus: 'increasing',
+          compoundStep: 'Step 2/2: Adding to position...'
+        }));
+
+        // Execute increase transaction
+        const increaseCall = payload.calls[1];
+        await sendCallsViaProvider({
+          calls: [
+            {
+              to: payload.to as `0x${string}`,
+              data: increaseCall.data,
+              value: BigInt(increaseCall.value || '0')
+            }
+          ]
+        });
+
+        // Success!
+        mutateLpPosition(tokenId, (pos) => ({
+          ...pos,
+          compoundStatus: 'success',
+          compoundStep: 'Compound complete! ✓',
+          collectStatus: 'idle',
+          collectError: null,
+          // Clear old fees - they've been compounded
+          fees: undefined,
+          feesStatus: 'idle'
+        }));
+
+        // Reset after 3 seconds
+        setTimeout(() => {
+          mutateLpPosition(tokenId, (pos) => ({
+            ...pos,
+            compoundStatus: 'idle',
+            compoundStep: undefined
+          }));
+        }, 3000);
 
         // Record harvest for points + auto-tune
         if (userData?.fid) {
@@ -2628,12 +2696,26 @@ function MiniAppPageInner() {
         refreshPersonalSigils();
       } catch (error) {
         console.error('LP_COMPOUND:failed', { tokenId, error });
+        const errorMessage = error instanceof Error ? error.message : 'Compound failed';
         mutateLpPosition(tokenId, (pos) => ({
           ...pos,
+          compoundStatus: 'error',
+          compoundStep: errorMessage,
           collectStatus: 'error',
-          collectError: error instanceof Error ? error.message : 'Compound failed'
+          collectError: errorMessage
         }));
-        showToast('error', 'Failed to compound');
+        showToast('error', errorMessage);
+
+        // Reset error state after 5 seconds
+        setTimeout(() => {
+          mutateLpPosition(tokenId, (pos) => ({
+            ...pos,
+            compoundStatus: 'idle',
+            compoundStep: undefined,
+            collectStatus: 'idle',
+            collectError: null
+          }));
+        }, 5000);
       }
     },
     [
@@ -4078,21 +4160,49 @@ Join the $m00n cabal 🌙`;
                     const isInRange = position.rangeStatus === 'in-range';
                     const canCompound = position.fees && ((hasToken0 && hasToken1) || !isInRange);
                     const noFees = !hasToken0 && !hasToken1;
+                    const isCompounding =
+                      position.compoundStatus && position.compoundStatus !== 'idle';
+                    const isSuccess = position.compoundStatus === 'success';
+                    const isError = position.compoundStatus === 'error';
 
                     return (
-                      <button
-                        type="button"
-                        onClick={() => handleCompoundLpFees(position.tokenId)}
-                        disabled={position.collectStatus === 'loading' || !canCompound || noFees}
-                        title={
-                          isInRange && !canCompound && !noFees
-                            ? 'In-range positions need both tokens to compound'
-                            : undefined
-                        }
-                        className="pixel-font text-[10px] tracking-[0.3em] px-4 py-2 border border-[var(--moss-green)]/50 text-[var(--moss-green)] rounded-full uppercase disabled:opacity-50 hover:bg-[var(--moss-green)]/20"
-                      >
-                        {position.collectStatus === 'loading' ? '...' : 'COMPOUND ↻'}
-                      </button>
+                      <div className="flex flex-col items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleCompoundLpFees(position.tokenId)}
+                          disabled={
+                            position.collectStatus === 'loading' ||
+                            isCompounding ||
+                            !canCompound ||
+                            noFees
+                          }
+                          title={
+                            isInRange && !canCompound && !noFees
+                              ? 'In-range positions need both tokens to compound'
+                              : undefined
+                          }
+                          className={`pixel-font text-[10px] tracking-[0.3em] px-4 py-2 border rounded-full uppercase disabled:opacity-50 transition-all ${
+                            isSuccess
+                              ? 'border-[var(--moss-green)] bg-[var(--moss-green)] text-black'
+                              : isError
+                                ? 'border-red-400 text-red-400'
+                                : 'border-[var(--moss-green)]/50 text-[var(--moss-green)] hover:bg-[var(--moss-green)]/20'
+                          }`}
+                        >
+                          {isCompounding && !isSuccess && !isError
+                            ? '...'
+                            : isSuccess
+                              ? '✓ DONE'
+                              : 'COMPOUND ↻'}
+                        </button>
+                        {position.compoundStep && (
+                          <span
+                            className={`text-[8px] ${isError ? 'text-red-400' : isSuccess ? 'text-[var(--moss-green)]' : 'text-white/60'}`}
+                          >
+                            {position.compoundStep}
+                          </span>
+                        )}
+                      </div>
                     );
                   })()}
                   <button
@@ -6489,21 +6599,45 @@ Join the $m00n cabal 🌙`;
                       const hasToken1 = BigInt(pos.fees?.token1Wei || '0') > BigInt(0);
                       const isInRange = pos.rangeStatus === 'in-range';
                       const canCompound = pos.fees && ((hasToken0 && hasToken1) || !isInRange);
+                      const isCompounding = pos.compoundStatus && pos.compoundStatus !== 'idle';
+                      const isSuccess = pos.compoundStatus === 'success';
+                      const isError = pos.compoundStatus === 'error';
 
                       return (
-                        <button
-                          type="button"
-                          onClick={() => handleCompoundLpFees(pos.tokenId)}
-                          disabled={pos.collectStatus === 'loading' || !canCompound}
-                          title={
-                            isInRange && !canCompound
-                              ? 'In-range positions need both tokens'
-                              : undefined
-                          }
-                          className="px-4 py-1.5 rounded-lg bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 text-[var(--moss-green)] font-semibold text-xs hover:bg-[var(--moss-green)] hover:text-black transition disabled:opacity-50"
-                        >
-                          {pos.collectStatus === 'loading' ? '...' : 'Compound ↻'}
-                        </button>
+                        <div className="flex flex-col items-center">
+                          <button
+                            type="button"
+                            onClick={() => handleCompoundLpFees(pos.tokenId)}
+                            disabled={
+                              pos.collectStatus === 'loading' || isCompounding || !canCompound
+                            }
+                            title={
+                              isInRange && !canCompound
+                                ? 'In-range positions need both tokens'
+                                : undefined
+                            }
+                            className={`px-4 py-1.5 rounded-lg font-semibold text-xs transition disabled:opacity-50 ${
+                              isSuccess
+                                ? 'bg-[var(--moss-green)] text-black border border-[var(--moss-green)]'
+                                : isError
+                                  ? 'bg-red-500/20 border border-red-500/50 text-red-400'
+                                  : 'bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 text-[var(--moss-green)] hover:bg-[var(--moss-green)] hover:text-black'
+                            }`}
+                          >
+                            {isCompounding && !isSuccess && !isError
+                              ? '...'
+                              : isSuccess
+                                ? '✓ Done'
+                                : 'Compound ↻'}
+                          </button>
+                          {pos.compoundStep && (
+                            <span
+                              className={`text-[9px] mt-1 ${isError ? 'text-red-400' : isSuccess ? 'text-[var(--moss-green)]' : 'text-white/50'}`}
+                            >
+                              {pos.compoundStep}
+                            </span>
+                          )}
+                        </div>
                       );
                     })()}
                     <button
