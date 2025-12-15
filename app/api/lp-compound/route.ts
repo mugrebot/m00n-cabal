@@ -128,18 +128,53 @@ export async function POST(request: NextRequest) {
     const amount0 = BigInt(amount0Wei ?? '0');
     const amount1 = BigInt(amount1Wei ?? '0');
 
+    // Check if amounts are too small
+    if (amount0 === BigInt(0) && amount1 === BigInt(0)) {
+      return NextResponse.json({ error: 'no_fees_to_compound' }, { status: 400 });
+    }
+
     // Build position from amounts for adding liquidity
-    const addPosition = Position.fromAmounts({
-      pool,
-      tickLower: positionDetails.tickLower,
-      tickUpper: positionDetails.tickUpper,
-      amount0: amount0.toString(),
-      amount1: amount1.toString(),
-      useFullPrecision: true
-    });
+    let addPosition: Position;
+    try {
+      addPosition = Position.fromAmounts({
+        pool,
+        tickLower: positionDetails.tickLower,
+        tickUpper: positionDetails.tickUpper,
+        amount0: amount0.toString(),
+        amount1: amount1.toString(),
+        useFullPrecision: true
+      });
+    } catch (err) {
+      console.error('LP_COMPOUND_ROUTE:position_build_failed', {
+        tickLower: positionDetails.tickLower,
+        tickUpper: positionDetails.tickUpper,
+        amount0: amount0.toString(),
+        amount1: amount1.toString(),
+        err
+      });
+      return NextResponse.json(
+        {
+          error: 'position_build_failed',
+          detail: 'Fee amounts too small to compound into liquidity'
+        },
+        { status: 400 }
+      );
+    }
+
+    // Check if position has valid liquidity
+    if (addPosition.liquidity.toString() === '0') {
+      return NextResponse.json(
+        {
+          error: 'zero_liquidity',
+          detail: 'Fee amounts result in zero liquidity - try collecting instead'
+        },
+        { status: 400 }
+      );
+    }
 
     const addOptions = {
       tokenId: tokenIdParam,
+      recipient, // Required for add
       slippageTolerance: slippage,
       deadline,
       hookData: '0x'

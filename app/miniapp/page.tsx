@@ -2488,7 +2488,19 @@ function MiniAppPageInner() {
         showToast('error', 'Failed to collect rewards');
       }
     },
-    [miniWalletAddress, mutateLpPosition, refreshPersonalSigils, sendCallsViaProvider, showToast]
+    [
+      miniWalletAddress,
+      mutateLpPosition,
+      refreshPersonalSigils,
+      sendCallsViaProvider,
+      showToast,
+      userData?.fid,
+      userData?.username,
+      checkInData,
+      lpGateState.lpPositions,
+      lpGateState.poolWmonUsdPrice,
+      lpGateState.poolCurrentTick
+    ]
   );
 
   // Compound: collect fees + add them back to position
@@ -2524,11 +2536,19 @@ function MiniAppPageInner() {
           })
         });
 
-        if (!response.ok) {
-          throw new Error(`compound_route_${response.status}`);
-        }
-
         const payload = await response.json();
+
+        if (!response.ok) {
+          // Handle specific errors with helpful messages
+          if (payload.error === 'no_fees_to_compound') {
+            throw new Error('No fees to compound');
+          } else if (payload.error === 'zero_liquidity') {
+            throw new Error('Fees too small to add liquidity - try collecting instead');
+          } else if (payload.error === 'position_build_failed') {
+            throw new Error(payload.detail ?? 'Cannot build position from fees');
+          }
+          throw new Error(payload.error ?? `compound_failed_${response.status}`);
+        }
 
         // Execute multicall with both collect + add liquidity
         const calls = payload.calls.map((call: { data: `0x${string}`; value: string }) => ({
@@ -6957,14 +6977,12 @@ Join the $m00n cabal 🌙`;
               >
                 {houseMult}x
               </span>
-              {houseTier?.nextTier && (
-                <button
-                  onClick={() => setShowBurnModal(true)}
-                  className="px-2 py-0.5 text-[10px] bg-orange-500/20 border border-orange-500/50 text-orange-400 rounded hover:bg-orange-500/30 transition"
-                >
-                  Ascend
-                </button>
-              )}
+              <button
+                onClick={() => setShowBurnModal(true)}
+                className="px-2 py-0.5 text-[10px] bg-orange-500/20 border border-orange-500/50 text-orange-400 rounded hover:bg-orange-500/30 transition"
+              >
+                {houseTier?.nextTier ? 'Ascend' : '🔥 Burn'}
+              </button>
             </div>
           </div>
         </div>
@@ -7001,7 +7019,7 @@ Join the $m00n cabal 🌙`;
                 </p>
               </div>
 
-              {houseTier?.nextTier && (
+              {houseTier?.nextTier ? (
                 <div className="bg-black/40 rounded-lg p-3 text-center">
                   <p className="text-xs opacity-50">Next tier</p>
                   <p className="font-bold text-orange-400">{houseTier.nextTier.tier.name} House</p>
@@ -7009,6 +7027,11 @@ Join the $m00n cabal 🌙`;
                   <p className="text-[10px] text-[var(--moss-green)]">
                     Unlock higher harvest bonus!
                   </p>
+                </div>
+              ) : (
+                <div className="bg-black/40 rounded-lg p-3 text-center">
+                  <p className="text-xs opacity-50">You&apos;ve reached the highest tier!</p>
+                  <p className="font-bold text-[var(--moss-green)]">Keep burning for glory 🔥</p>
                 </div>
               )}
 
