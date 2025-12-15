@@ -2411,7 +2411,7 @@ function MiniAppPageInner() {
           collectError: null
         }));
 
-        // Record harvest for points
+        // Record harvest for points + auto-tune (harvest = daily tune)
         const position = lpGateState.lpPositions?.find((p) => p.tokenId === tokenId);
         if (userData?.fid && position?.fees) {
           try {
@@ -2420,6 +2420,7 @@ function MiniAppPageInner() {
             const moonPriceInWmon = currentTick ? Math.pow(1.0001, currentTick) : 0;
             const moonPrice = moonPriceInWmon * wmonPrice;
 
+            // Record harvest
             await fetch('/api/harvest', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -2434,14 +2435,39 @@ function MiniAppPageInner() {
                 moonPriceUsd: moonPrice
               })
             });
-            // Refresh harvest stats
+
+            // Auto-tune: harvesting counts as daily tune
+            if (checkInData?.canCheckIn) {
+              const tuneResponse = await fetch('/api/daily-checkin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fid: userData.fid, action: 'checkin' })
+              });
+              if (tuneResponse.ok) {
+                const tuneData = await tuneResponse.json();
+                setCheckInData({
+                  currentStreak: tuneData.currentStreak ?? 0,
+                  totalCheckIns: tuneData.totalCheckIns ?? 0,
+                  multiplier: tuneData.multiplier ?? 1,
+                  multiplierTier: tuneData.multiplierTier ?? '—',
+                  canCheckIn: false,
+                  nextAvailableAt: tuneData.nextAvailableAt,
+                  hoursUntilAvailable: tuneData.hoursUntilAvailable
+                });
+              }
+            }
+
+            // Refresh stats
             setHarvestStats(null);
           } catch (e) {
-            console.warn('Failed to record harvest', e);
+            console.warn('Failed to record harvest/tune', e);
           }
         }
 
-        showToast('success', 'Rewards collected! +harvest points 🌙');
+        showToast(
+          'success',
+          'Harvested! 🌾 +points' + (checkInData?.canCheckIn ? ' +tuned 🎵' : '')
+        );
         refreshPersonalSigils();
       } catch (error) {
         console.error('LP_FEES:collect_failed', { tokenId, error });
@@ -6618,7 +6644,7 @@ Join the $m00n cabal 🌙`;
             )}
           </div>
 
-          {/* Tune (renamed from Check-In) */}
+          {/* Tune (auto via harvest) */}
           <div className="flex items-center justify-between py-1.5 border-b border-white/10">
             <div className="flex items-center gap-2">
               <span>🎵</span>
@@ -6628,13 +6654,7 @@ Join the $m00n cabal 🌙`;
               )}
             </div>
             {checkInData?.canCheckIn ? (
-              <button
-                onClick={handleDailyCheckIn}
-                disabled={checkInStatus === 'checking_in' || positions.length === 0}
-                className="px-3 py-1 text-xs bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 text-[var(--moss-green)] rounded-lg hover:bg-[var(--moss-green)] hover:text-black transition disabled:opacity-40"
-              >
-                {checkInStatus === 'checking_in' ? '...' : 'Tune In'}
-              </button>
+              <span className="text-[10px] text-yellow-400">harvest to tune →</span>
             ) : (
               <span className="text-[var(--moss-green)] text-sm font-bold">{tuneMult}x ✓</span>
             )}
