@@ -40,6 +40,8 @@ type FeeEntry = {
   unclaimed: {
     token0: string;
     token1: string;
+    token0Wei: string; // Added for compound/collect
+    token1Wei: string; // Added for compound/collect
     usd?: number | null;
   };
   lifetime: {
@@ -180,6 +182,8 @@ export async function GET(request: NextRequest) {
         unclaimed: {
           token0: formatUnits(unclaimed0, token0Meta.decimals),
           token1: formatUnits(unclaimed1, token1Meta.decimals),
+          token0Wei: unclaimed0.toString(), // Wei value for compound/collect
+          token1Wei: unclaimed1.toString(), // Wei value for compound/collect
           usd: unclaimedUsd
         },
         lifetime: {

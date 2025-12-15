@@ -1802,6 +1802,8 @@ function MiniAppPageInner() {
             unclaimed?: {
               token0: string;
               token1: string;
+              token0Wei?: string;
+              token1Wei?: string;
               usd: number | null;
             };
             lifetime?: {
@@ -1823,8 +1825,8 @@ function MiniAppPageInner() {
             return {
               ...pos,
               fees: {
-                token0Wei: '0',
-                token1Wei: '0',
+                token0Wei: feeInfo.unclaimed?.token0Wei ?? '0',
+                token1Wei: feeInfo.unclaimed?.token1Wei ?? '0',
                 token0Formatted: feeInfo.unclaimed?.token0 ?? '0',
                 token1Formatted: feeInfo.unclaimed?.token1 ?? '0',
                 unclaimedUsd: feeInfo.unclaimed?.usd ?? null,
