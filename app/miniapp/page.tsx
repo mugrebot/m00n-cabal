@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode
@@ -1111,17 +1112,23 @@ function MiniAppPageInner() {
     };
   }, [userData?.fid, activeTab]);
 
-  // Fetch daily check-in data
+  // Fetch daily check-in data - only once per session
+  // Use a ref to track if we've loaded for this fid to avoid race conditions
+  const checkInLoadedForFid = useRef<number | null>(null);
+
   useEffect(() => {
     const fid = userData?.fid;
     if (!fid) {
       setCheckInData(null);
+      checkInLoadedForFid.current = null;
       return;
     }
     // Fetch when on rewards tab
     if (activeTab !== 'rewards') return;
-    // Skip if already loaded
-    if (checkInData !== null && checkInStatus !== 'idle') return;
+    // Skip if already loaded for this fid (prevents refetch after collect/compound)
+    if (checkInLoadedForFid.current === fid) return;
+    // Skip if currently loading
+    if (checkInStatus === 'loading') return;
 
     let cancelled = false;
     const loadCheckInData = async () => {
@@ -1141,6 +1148,7 @@ function MiniAppPageInner() {
             nextAvailableAt: data.nextAvailableAt,
             hoursUntilAvailable: data.hoursUntilAvailable
           });
+          checkInLoadedForFid.current = fid;
           setCheckInStatus('idle');
         }
       } catch (err) {
@@ -1152,7 +1160,7 @@ function MiniAppPageInner() {
     return () => {
       cancelled = true;
     };
-  }, [userData?.fid, activeTab]);
+  }, [userData?.fid, activeTab, checkInStatus]);
 
   // Fetch app added bonus data
   useEffect(() => {
