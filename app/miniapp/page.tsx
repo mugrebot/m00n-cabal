@@ -689,6 +689,35 @@ function MiniAppPageInner() {
   } | null>(null);
   const [appAddedStatus, setAppAddedStatus] = useState<'idle' | 'loading' | 'adding'>('idle');
 
+  // House (Ascension/Burn Tier) state
+  const [houseTier, setHouseTier] = useState<{
+    tier: string;
+    name: string;
+    emoji: string;
+    harvestMultiplier: number;
+    totalBurnedFormatted: string;
+    nextTier?: {
+      tier: { name: string; burnRequiredFormatted: string };
+      burnNeededFormatted: string;
+    };
+  } | null>(null);
+
+  // Referral state
+  const [referralData, setReferralData] = useState<{
+    referralCode: string;
+    referralLink: string;
+    directReferrals: number;
+    totalReferralPoints: number;
+    referredBy?: number;
+  } | null>(null);
+
+  // Harvest stats state
+  const [harvestStats, setHarvestStats] = useState<{
+    totalHarvests: number;
+    totalPoints: number;
+    currentWeekPoints: number;
+  } | null>(null);
+
   const [tokenomicsData, setTokenomicsData] = useState<TokenomicsResponse | null>(null);
   const [tokenomicsStatus, setTokenomicsStatus] = useState<'idle' | 'loading' | 'error' | 'loaded'>(
     'idle'
@@ -1149,6 +1178,92 @@ function MiniAppPageInner() {
     };
   }, [userData?.fid, activeTab]);
 
+  // Fetch house tier (ascension) data
+  useEffect(() => {
+    const fid = userData?.fid;
+    if (!fid) {
+      setHouseTier(null);
+      return;
+    }
+    if (activeTab !== 'rewards') return;
+    if (houseTier !== null) return;
+
+    const loadHouseTier = async () => {
+      try {
+        const response = await fetch(`/api/ascension?fid=${fid}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        setHouseTier({
+          tier: data.tier?.tier ?? 'wanderer',
+          name: data.tier?.name ?? 'Wanderer',
+          emoji: data.tier?.emoji ?? '◌',
+          harvestMultiplier: data.tier?.harvestMultiplier ?? 1,
+          totalBurnedFormatted: data.totalBurnedFormatted ?? '0',
+          nextTier: data.nextTier
+        });
+      } catch (err) {
+        console.warn('Failed to load house tier', err);
+      }
+    };
+    loadHouseTier();
+  }, [userData?.fid, activeTab, houseTier]);
+
+  // Fetch referral data
+  useEffect(() => {
+    const fid = userData?.fid;
+    if (!fid) {
+      setReferralData(null);
+      return;
+    }
+    if (activeTab !== 'rewards') return;
+    if (referralData !== null) return;
+
+    const loadReferralData = async () => {
+      try {
+        const response = await fetch(`/api/referrals?fid=${fid}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        setReferralData({
+          referralCode: data.referralCode,
+          referralLink: data.referralLink,
+          directReferrals: data.directReferrals ?? 0,
+          totalReferralPoints: data.totalReferralPoints ?? 0,
+          referredBy: data.referredBy
+        });
+      } catch (err) {
+        console.warn('Failed to load referral data', err);
+      }
+    };
+    loadReferralData();
+  }, [userData?.fid, activeTab, referralData]);
+
+  // Fetch harvest stats
+  useEffect(() => {
+    const fid = userData?.fid;
+    if (!fid) {
+      setHarvestStats(null);
+      return;
+    }
+    if (activeTab !== 'rewards') return;
+    if (harvestStats !== null) return;
+
+    const loadHarvestStats = async () => {
+      try {
+        const response = await fetch(`/api/harvest?fid=${fid}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        setHarvestStats({
+          totalHarvests: data.totalHarvests ?? 0,
+          totalPoints: data.totalPoints ?? 0,
+          currentWeekPoints: data.currentWeekPoints ?? 0
+        });
+      } catch (err) {
+        console.warn('Failed to load harvest stats', err);
+      }
+    };
+    loadHarvestStats();
+  }, [userData?.fid, activeTab, harvestStats]);
+
   useEffect(() => {
     let cancelled = false;
     const loadSolarSystem = async () => {
@@ -1393,6 +1508,40 @@ function MiniAppPageInner() {
       setLpParamHandled(true);
     }
   }, [searchParams, canAccessLpFeatures, lpParamHandled]);
+
+  // Handle referral parameter
+  const [referralHandled, setReferralHandled] = useState(false);
+  useEffect(() => {
+    if (referralHandled) return;
+    const refParam = searchParams?.get('ref');
+    const fid = userData?.fid;
+    const address = miniWalletAddress ?? primaryAddress;
+    if (!refParam || !fid || !address) return;
+
+    const referrerFid = parseInt(refParam, 10);
+    if (isNaN(referrerFid) || referrerFid === fid) return;
+
+    // Record the referral
+    fetch('/api/referrals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        referrerFid,
+        refereeFid: fid,
+        refereeUsername: userData?.username,
+        refereeAddress: address
+      })
+    }).catch((e) => console.warn('Failed to record referral', e));
+
+    setReferralHandled(true);
+  }, [
+    searchParams,
+    userData?.fid,
+    userData?.username,
+    miniWalletAddress,
+    primaryAddress,
+    referralHandled
+  ]);
 
   const handleOpenLpGate = useCallback(() => {
     setIsObservationDeckOpen(false);
@@ -2262,7 +2411,37 @@ function MiniAppPageInner() {
           collectError: null
         }));
 
-        showToast('success', 'Rewards collection submitted');
+        // Record harvest for points
+        const position = lpGateState.lpPositions?.find((p) => p.tokenId === tokenId);
+        if (userData?.fid && position?.fees) {
+          try {
+            const wmonPrice = lpGateState.poolWmonUsdPrice ?? 0;
+            const currentTick = lpGateState.poolCurrentTick ?? 0;
+            const moonPriceInWmon = currentTick ? Math.pow(1.0001, currentTick) : 0;
+            const moonPrice = moonPriceInWmon * wmonPrice;
+
+            await fetch('/api/harvest', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                fid: userData.fid,
+                username: userData.username,
+                address: miniWalletAddress,
+                tokenId,
+                wmonAmountWei: position.fees.token1Wei ?? '0',
+                moonAmountWei: position.fees.token0Wei ?? '0',
+                wmonPriceUsd: wmonPrice,
+                moonPriceUsd: moonPrice
+              })
+            });
+            // Refresh harvest stats
+            setHarvestStats(null);
+          } catch (e) {
+            console.warn('Failed to record harvest', e);
+          }
+        }
+
+        showToast('success', 'Rewards collected! +harvest points 🌙');
         refreshPersonalSigils();
       } catch (error) {
         console.error('LP_FEES:collect_failed', { tokenId, error });
@@ -6056,282 +6235,7 @@ Join the $m00n cabal 🌙`;
     );
   };
 
-  // Yap Multiplier Card
-  const renderYapMultiplierCard = () => {
-    const positionCount = lpGateState.lpPositions?.length ?? 0;
-    const isActive = yapMultiplier && yapMultiplier.multiplier > 1;
-
-    return (
-      <div className={`${PANEL_CLASS} p-3 bg-black/60`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">📣</span>
-            <div>
-              <p className="text-sm font-bold">Yap Boost</p>
-              <p className="text-[10px] opacity-50">
-                {isActive
-                  ? `${yapMultiplier.castCount} casts • ${yapMultiplier.tier}`
-                  : 'Include $m00n in your casts!'}
-              </p>
-            </div>
-          </div>
-          <div
-            className={`text-lg font-bold ${
-              yapMultiplier && yapMultiplier.multiplier >= 3
-                ? 'text-[#ffd700]'
-                : yapMultiplier && yapMultiplier.multiplier >= 2
-                  ? 'text-[var(--monad-purple)]'
-                  : isActive
-                    ? 'text-[var(--moss-green)]'
-                    : 'opacity-50'
-            }`}
-          >
-            {yapMultiplier?.multiplier ?? 1}x
-          </div>
-        </div>
-        <p className="text-[9px] opacity-50 mt-2 text-center">
-          {positionCount === 0
-            ? '⚠️ Must have a qualifying LP to earn boost'
-            : 'Cast about $m00n to boost your points up to 5x!'}
-        </p>
-      </div>
-    );
-  };
-
-  // Daily Check-In Card
-  const renderCheckInCard = () => {
-    const positionCount = lpGateState.lpPositions?.length ?? 0;
-    const isActive = checkInData && checkInData.currentStreak > 0;
-    const canDo = checkInData?.canCheckIn ?? true;
-
-    // Format time until next check-in
-    const formatTimeUntil = () => {
-      if (!checkInData?.nextAvailableAt) return '';
-      const diff = checkInData.nextAvailableAt - Date.now();
-      if (diff <= 0) return 'Available now!';
-      const hours = Math.floor(diff / (60 * 60 * 1000));
-      const minutes = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
-      return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-    };
-
-    return (
-      <div className={`${PANEL_CLASS} p-3 bg-black/60`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">🌙</span>
-            <div>
-              <p className="text-sm font-bold">Daily Rhythm</p>
-              <p className="text-[10px] opacity-50">
-                {isActive
-                  ? `${checkInData.currentStreak} day streak • ${checkInData.multiplierTier}`
-                  : 'Check in daily for bonus!'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div
-              className={`text-lg font-bold ${
-                checkInData && checkInData.multiplier >= 2
-                  ? 'text-[#ffd700]'
-                  : checkInData && checkInData.multiplier >= 1.5
-                    ? 'text-[var(--monad-purple)]'
-                    : isActive
-                      ? 'text-[var(--moss-green)]'
-                      : 'opacity-50'
-              }`}
-            >
-              {checkInData?.multiplier ?? 1}x
-            </div>
-          </div>
-        </div>
-
-        {/* Check-in button or status */}
-        <div className="mt-3 flex items-center justify-between gap-2">
-          {canDo ? (
-            <button
-              type="button"
-              onClick={handleDailyCheckIn}
-              disabled={checkInStatus === 'checking_in' || positionCount === 0}
-              className={`flex-1 py-2 px-3 rounded-lg font-semibold text-xs transition ${
-                positionCount === 0
-                  ? 'bg-gray-600/30 text-gray-400 cursor-not-allowed'
-                  : 'bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 text-[var(--moss-green)] hover:bg-[var(--moss-green)] hover:text-black'
-              }`}
-            >
-              {checkInStatus === 'checking_in' ? '...' : '✨ Check In Now'}
-            </button>
-          ) : (
-            <div className="flex-1 text-center">
-              <p className="text-[10px] text-[var(--moss-green)]">✓ Checked in today!</p>
-              <p className="text-[9px] opacity-40">Next: {formatTimeUntil()}</p>
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={refreshCheckInStatus}
-            className="p-2 rounded-lg bg-black/40 text-white/50 hover:text-white transition"
-            title="Refresh status"
-          >
-            🔄
-          </button>
-        </div>
-
-        {checkInMessage && (
-          <p className="text-[10px] text-center mt-2 text-[var(--moss-green)]">{checkInMessage}</p>
-        )}
-
-        <p className="text-[9px] opacity-50 mt-2 text-center">
-          {positionCount === 0
-            ? '⚠️ Must have a qualifying LP to earn boost'
-            : 'Build your streak for up to 2x bonus! 🔥'}
-        </p>
-      </div>
-    );
-  };
-
-  // App Added Bonus Card
-  const renderAppAddedCard = () => {
-    const positionCount = lpGateState.lpPositions?.length ?? 0;
-    const isAdded = appAddedData?.added ?? false;
-
-    return (
-      <div className={`${PANEL_CLASS} p-3 bg-black/60`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">📲</span>
-            <div>
-              <p className={`text-sm font-bold ${isAdded ? 'line-through opacity-60' : ''}`}>
-                Add App
-              </p>
-              <p className="text-[10px] opacity-50">
-                {isAdded ? '✓ Bonus unlocked!' : 'Permanent +10% bonus'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div
-              className={`text-lg font-bold ${isAdded ? 'text-[var(--moss-green)]' : 'opacity-50'}`}
-            >
-              {isAdded ? '1.1x' : '—'}
-            </div>
-          </div>
-        </div>
-
-        {/* Add app button or status */}
-        <div className="mt-3 flex items-center justify-between gap-2">
-          {isAdded ? (
-            <div className="flex-1 text-center py-2">
-              <p className="text-[10px] text-[var(--moss-green)]">
-                ✓ App added • Permanent 1.1x active
-              </p>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={handleAddApp}
-              disabled={appAddedStatus === 'adding' || positionCount === 0}
-              className={`flex-1 py-2 px-3 rounded-lg font-semibold text-xs transition ${
-                positionCount === 0
-                  ? 'bg-gray-600/30 text-gray-400 cursor-not-allowed'
-                  : 'bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 text-[var(--monad-purple)] hover:bg-[var(--monad-purple)] hover:text-white'
-              }`}
-            >
-              {appAddedStatus === 'adding' ? '...' : '📲 Add to Warpcast'}
-            </button>
-          )}
-          {!isAdded && (
-            <button
-              type="button"
-              onClick={async () => {
-                // Refresh app added status
-                const fid = userData?.fid;
-                if (!fid) return;
-                try {
-                  const response = await fetch(`/api/app-bonus?fid=${fid}`);
-                  const data = await response.json();
-                  if (data.added) {
-                    setAppAddedData({
-                      added: true,
-                      addedAt: data.addedAt,
-                      multiplier: data.multiplier
-                    });
-                  }
-                } catch {
-                  // Ignore
-                }
-              }}
-              className="p-2 rounded-lg bg-black/40 text-white/50 hover:text-white transition"
-              title="Refresh status"
-            >
-              🔄
-            </button>
-          )}
-        </div>
-
-        <p className="text-[9px] opacity-50 mt-2 text-center">
-          {positionCount === 0
-            ? '⚠️ Must have a qualifying LP to earn boost'
-            : isAdded
-              ? 'Staking your attention on m00n 💜'
-              : 'Add m00n to your Warpcast apps for permanent boost!'}
-        </p>
-      </div>
-    );
-  };
-
-  // Combined Bonus Multipliers Card (shows total)
-  const renderBonusMultipliersCard = () => {
-    const yapMult = yapMultiplier?.multiplier ?? 1;
-    const checkInMult = checkInData?.multiplier ?? 1;
-    const appMult = appAddedData?.added ? (appAddedData.multiplier ?? 1.1) : 1;
-
-    // Calculate combined multiplier
-    const combinedMultiplier = yapMult * checkInMult * appMult;
-    const hasAnyBonus = combinedMultiplier > 1;
-
-    return (
-      <div
-        className={`${PANEL_CLASS} p-3 bg-gradient-to-r from-[var(--monad-purple)]/20 to-[var(--moss-green)]/20 border border-white/10`}
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold">✨ Combined Multiplier</p>
-            <p className="text-[9px] opacity-50">All bonuses stacked</p>
-          </div>
-          <div
-            className={`text-2xl font-bold ${
-              combinedMultiplier >= 5
-                ? 'text-[#ffd700] animate-pulse'
-                : combinedMultiplier >= 2
-                  ? 'text-[var(--monad-purple)]'
-                  : hasAnyBonus
-                    ? 'text-[var(--moss-green)]'
-                    : 'opacity-50'
-            }`}
-          >
-            {combinedMultiplier.toFixed(2)}x
-          </div>
-        </div>
-
-        {/* Breakdown */}
-        <div className="mt-2 flex items-center justify-center gap-3 text-[10px]">
-          <span className={yapMult > 1 ? 'text-[var(--moss-green)]' : 'opacity-40'}>
-            📣 {yapMult}x
-          </span>
-          <span className="opacity-30">×</span>
-          <span className={checkInMult > 1 ? 'text-[var(--moss-green)]' : 'opacity-40'}>
-            🌙 {checkInMult}x
-          </span>
-          <span className="opacity-30">×</span>
-          <span className={appMult > 1 ? 'text-[var(--moss-green)]' : 'opacity-40'}>
-            📲 {appMult}x
-          </span>
-        </div>
-      </div>
-    );
-  };
-
-  // Qualification Requirements Card with Progress
+  // Qualification Requirements Card with Progress (legacy, kept for reference)
   const renderQualificationCard = () => {
     // Get user's current status
     const positions = lpGateState.lpPositions ?? [];
@@ -6443,8 +6347,8 @@ Join the $m00n cabal 🌙`;
 
       if (checkInData?.canCheckIn) {
         tips.push({
-          icon: '🌙',
-          text: 'Check in daily to build your streak bonus!',
+          icon: '🎵',
+          text: 'Tune in daily to build your streak bonus!',
           priority: 'medium'
         });
       }
@@ -6597,9 +6501,10 @@ Join the $m00n cabal 🌙`;
   const renderRewardsTab = () => {
     // Calculate combined multiplier
     const yapMult = yapMultiplier?.multiplier ?? 1;
-    const checkInMult = checkInData?.multiplier ?? 1;
+    const tuneMult = checkInData?.multiplier ?? 1; // Renamed from checkIn
     const appMult = appAddedData?.added ? 1.1 : 1;
-    const combinedMult = yapMult * checkInMult * appMult;
+    const houseMult = houseTier?.harvestMultiplier ?? 1;
+    const combinedMult = yapMult * tuneMult * appMult * houseMult;
 
     // Qualification checks - use best available balance source
     const positions = lpGateState.lpPositions ?? [];
@@ -6635,20 +6540,42 @@ Join the $m00n cabal 🌙`;
     const hasValue = totalLpValue >= 5;
     const isQualified = hasMoonBal && hasPosition && hasAge && hasValue;
 
+    // Copy referral link
+    const copyReferralLink = () => {
+      if (referralData?.referralLink) {
+        navigator.clipboard.writeText(referralData.referralLink);
+        showToast('success', 'Referral link copied!');
+      }
+    };
+
     return (
       <div className="space-y-4 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
-        {/* Compact Header with Combined Multiplier */}
+        {/* Header: House Tier + Combined Multiplier */}
         <div
           className={`${PANEL_CLASS} p-4 bg-gradient-to-r from-[var(--monad-purple)]/20 to-[var(--moss-green)]/20`}
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs opacity-50">Total Boost</p>
+              <div className="flex items-center gap-2 mb-1">
+                <span
+                  className="text-lg"
+                  style={{
+                    textShadow:
+                      houseTier?.tier !== 'wanderer'
+                        ? `0 0 8px ${houseTier?.tier === 'celestial' ? '#b9f2ff' : houseTier?.tier === 'luminary' ? '#ffd700' : houseTier?.tier === 'guardian' ? '#c0c0c0' : '#cd7f32'}`
+                        : 'none'
+                  }}
+                >
+                  {houseTier?.emoji ?? '◌'}
+                </span>
+                <span className="text-xs opacity-70">{houseTier?.name ?? 'Wanderer'} House</span>
+              </div>
               <p
                 className={`text-2xl font-bold ${combinedMult >= 2 ? 'text-[#ffd700]' : combinedMult > 1 ? 'text-[var(--moss-green)]' : 'opacity-50'}`}
               >
                 {combinedMult.toFixed(2)}x
               </p>
+              <p className="text-[10px] opacity-40">Total Boost</p>
             </div>
             <div className="text-right">
               <p className="text-[10px] opacity-50">Season 1 • Genesis</p>
@@ -6657,15 +6584,20 @@ Join the $m00n cabal 🌙`;
               >
                 {isQualified ? '✓ Qualified' : '⚠ Not qualified'}
               </p>
+              {harvestStats && harvestStats.totalPoints > 0 && (
+                <p className="text-[10px] text-[var(--moss-green)] mt-1">
+                  🌾 {harvestStats.totalPoints.toLocaleString()} pts
+                </p>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Compact Boost Actions - All in one row per boost */}
+        {/* Boost Actions */}
         <div className={`${PANEL_CLASS} p-3 space-y-2`}>
           <p className="text-[10px] opacity-50 uppercase tracking-wider mb-2">Boosts</p>
 
-          {/* App Added - Inline */}
+          {/* App Added */}
           <div className="flex items-center justify-between py-1.5 border-b border-white/10">
             <div className="flex items-center gap-2">
               <span>📲</span>
@@ -6686,15 +6618,13 @@ Join the $m00n cabal 🌙`;
             )}
           </div>
 
-          {/* Check-In - Inline */}
+          {/* Tune (renamed from Check-In) */}
           <div className="flex items-center justify-between py-1.5 border-b border-white/10">
             <div className="flex items-center gap-2">
-              <span>🌙</span>
-              <span className="text-sm">Daily</span>
+              <span>🎵</span>
+              <span className="text-sm">Tune</span>
               {checkInData && checkInData.currentStreak > 0 && (
-                <span className="text-[10px] text-white/50">
-                  {checkInData.currentStreak}d streak
-                </span>
+                <span className="text-[10px] text-white/50">{checkInData.currentStreak}d</span>
               )}
             </div>
             {checkInData?.canCheckIn ? (
@@ -6703,15 +6633,15 @@ Join the $m00n cabal 🌙`;
                 disabled={checkInStatus === 'checking_in' || positions.length === 0}
                 className="px-3 py-1 text-xs bg-[var(--moss-green)]/20 border border-[var(--moss-green)]/50 text-[var(--moss-green)] rounded-lg hover:bg-[var(--moss-green)] hover:text-black transition disabled:opacity-40"
               >
-                {checkInStatus === 'checking_in' ? '...' : 'Check In'}
+                {checkInStatus === 'checking_in' ? '...' : 'Tune In'}
               </button>
             ) : (
-              <span className="text-[var(--moss-green)] text-sm font-bold">{checkInMult}x ✓</span>
+              <span className="text-[var(--moss-green)] text-sm font-bold">{tuneMult}x ✓</span>
             )}
           </div>
 
-          {/* Yap - Inline */}
-          <div className="flex items-center justify-between py-1.5">
+          {/* Yap */}
+          <div className="flex items-center justify-between py-1.5 border-b border-white/10">
             <div className="flex items-center gap-2">
               <span>📣</span>
               <span className="text-sm">Yap</span>
@@ -6725,9 +6655,53 @@ Join the $m00n cabal 🌙`;
               {yapMult}x
             </span>
           </div>
+
+          {/* House (Burn Tier) */}
+          <div className="flex items-center justify-between py-1.5">
+            <div className="flex items-center gap-2">
+              <span>🔥</span>
+              <span className="text-sm">House</span>
+              {houseTier && houseTier.totalBurnedFormatted !== '0' && (
+                <span className="text-[10px] text-white/50">
+                  {houseTier.totalBurnedFormatted} burned
+                </span>
+              )}
+            </div>
+            <span
+              className={`text-sm font-bold ${houseMult > 1 ? 'text-[var(--moss-green)]' : 'opacity-50'}`}
+            >
+              {houseMult}x
+            </span>
+          </div>
         </div>
 
-        {/* Compact Qualification - Only show if not qualified */}
+        {/* Referral Link */}
+        <div className={`${PANEL_CLASS} p-3`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[10px] opacity-50 uppercase tracking-wider">Share & Earn</p>
+              <p className="text-xs mt-1">
+                {referralData?.directReferrals ?? 0} referrals
+                {referralData && referralData.totalReferralPoints > 0 && (
+                  <span className="text-[var(--moss-green)] ml-2">
+                    +{referralData.totalReferralPoints.toLocaleString()} pts
+                  </span>
+                )}
+              </p>
+            </div>
+            <button
+              onClick={copyReferralLink}
+              className="px-3 py-1.5 text-xs bg-[var(--monad-purple)]/20 border border-[var(--monad-purple)]/50 text-[var(--monad-purple)] rounded-lg hover:bg-[var(--monad-purple)] hover:text-white transition flex items-center gap-1"
+            >
+              🔗 Copy Link
+            </button>
+          </div>
+          <p className="text-[9px] opacity-40 mt-2">
+            Earn 5% of your referrals&apos; points forever
+          </p>
+        </div>
+
+        {/* Qualification - Only show if not qualified */}
         {!isQualified && (
           <div className={`${PANEL_CLASS} p-3 border-l-2 border-yellow-500`}>
             <p className="text-xs text-yellow-400 mb-1">To qualify:</p>
@@ -6749,7 +6723,7 @@ Join the $m00n cabal 🌙`;
           </div>
         )}
 
-        {/* Streak Leaderboard - Keep but simplified header */}
+        {/* Streak Leaderboard */}
         {renderStreakLeaderboard()}
       </div>
     );
