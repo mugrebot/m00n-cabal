@@ -1115,6 +1115,7 @@ function MiniAppPageInner() {
   // Fetch daily check-in data - only once per session
   // Use a ref to track if we've loaded for this fid to avoid race conditions
   const checkInLoadedForFid = useRef<number | null>(null);
+  const checkInFetchInFlight = useRef(false);
 
   useEffect(() => {
     const fid = userData?.fid;
@@ -1127,31 +1128,28 @@ function MiniAppPageInner() {
     if (activeTab !== 'rewards') return;
     // Skip if already loaded for this fid (prevents refetch after collect/compound)
     if (checkInLoadedForFid.current === fid) return;
-    // Skip if currently loading
-    if (checkInStatus === 'loading') return;
+    // Skip if currently fetching (use ref to avoid dependency issues)
+    if (checkInFetchInFlight.current) return;
 
-    let cancelled = false;
+    checkInFetchInFlight.current = true;
+    setCheckInStatus('loading');
+
     const loadCheckInData = async () => {
-      setCheckInStatus('loading');
       try {
         const response = await fetch(`/api/daily-checkin?fid=${fid}`);
-        if (!cancelled) {
-          if (!response.ok) {
-            // API failed - set default state so UI doesn't stay stuck on loading
-            setCheckInData({
-              currentStreak: 0,
-              longestStreak: 0,
-              totalCheckIns: 0,
-              multiplier: 1,
-              multiplierTier: '—',
-              canCheckIn: true,
-              nextAvailableAt: undefined,
-              hoursUntilAvailable: undefined
-            });
-            checkInLoadedForFid.current = fid;
-            setCheckInStatus('idle');
-            return;
-          }
+        if (!response.ok) {
+          // API failed - set default state so UI doesn't stay stuck on loading
+          setCheckInData({
+            currentStreak: 0,
+            longestStreak: 0,
+            totalCheckIns: 0,
+            multiplier: 1,
+            multiplierTier: '—',
+            canCheckIn: true,
+            nextAvailableAt: undefined,
+            hoursUntilAvailable: undefined
+          });
+        } else {
           const data = await response.json();
           setCheckInData({
             currentStreak: data.currentStreak ?? 0,
@@ -1163,33 +1161,29 @@ function MiniAppPageInner() {
             nextAvailableAt: data.nextAvailableAt,
             hoursUntilAvailable: data.hoursUntilAvailable
           });
-          checkInLoadedForFid.current = fid;
-          setCheckInStatus('idle');
         }
+        checkInLoadedForFid.current = fid;
       } catch (err) {
         console.warn('Failed to load check-in data', err);
-        if (!cancelled) {
-          // Error - set default state so UI doesn't stay stuck on loading
-          setCheckInData({
-            currentStreak: 0,
-            longestStreak: 0,
-            totalCheckIns: 0,
-            multiplier: 1,
-            multiplierTier: '—',
-            canCheckIn: true,
-            nextAvailableAt: undefined,
-            hoursUntilAvailable: undefined
-          });
-          checkInLoadedForFid.current = fid;
-          setCheckInStatus('idle');
-        }
+        // Error - set default state so UI doesn't stay stuck on loading
+        setCheckInData({
+          currentStreak: 0,
+          longestStreak: 0,
+          totalCheckIns: 0,
+          multiplier: 1,
+          multiplierTier: '—',
+          canCheckIn: true,
+          nextAvailableAt: undefined,
+          hoursUntilAvailable: undefined
+        });
+        checkInLoadedForFid.current = fid;
+      } finally {
+        checkInFetchInFlight.current = false;
+        setCheckInStatus('idle');
       }
     };
     loadCheckInData();
-    return () => {
-      cancelled = true;
-    };
-  }, [userData?.fid, activeTab, checkInStatus]);
+  }, [userData?.fid, activeTab]);
 
   // Fetch app added bonus data
   useEffect(() => {
