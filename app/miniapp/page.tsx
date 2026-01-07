@@ -2428,6 +2428,29 @@ function MiniAppPageInner() {
       }));
 
       try {
+        // Fetch fresh fee values BEFORE collect to ensure accurate point recording
+        let collectedWmonWei = '0';
+        let collectedMoonWei = '0';
+        try {
+          const feeResponse = await fetch(`/api/lp-fees?tokenId=${tokenId}`);
+          if (feeResponse.ok) {
+            const feeData = await feeResponse.json();
+            if (feeData.fees) {
+              collectedWmonWei = feeData.fees.token1Wei ?? '0';
+              collectedMoonWei = feeData.fees.token0Wei ?? '0';
+              console.log('COLLECT:pre_collect_fees', { collectedWmonWei, collectedMoonWei });
+            }
+          }
+        } catch (feeErr) {
+          // Fall back to cached fees from state
+          const pos = lpGateState.lpPositions?.find((p) => p.tokenId === tokenId);
+          if (pos?.fees) {
+            collectedWmonWei = pos.fees.token1Wei ?? '0';
+            collectedMoonWei = pos.fees.token0Wei ?? '0';
+          }
+          console.warn('Failed to fetch fresh fees, using cached', feeErr);
+        }
+
         const response = await fetch('/api/lp-collect', {
           method: 'POST',
           headers: {
@@ -2471,15 +2494,15 @@ function MiniAppPageInner() {
         }));
 
         // Record harvest for points + auto-tune (harvest = daily tune)
-        const position = lpGateState.lpPositions?.find((p) => p.tokenId === tokenId);
-        if (userData?.fid && position?.fees) {
+        // Use the pre-collected fee values (captured before tx was sent)
+        if (userData?.fid && collectedWmonWei && collectedMoonWei) {
           try {
             const wmonPrice = lpGateState.poolWmonUsdPrice ?? 0;
             const currentTick = lpGateState.poolCurrentTick ?? 0;
             const moonPriceInWmon = currentTick ? Math.pow(1.0001, currentTick) : 0;
             const moonPrice = moonPriceInWmon * wmonPrice;
 
-            // Record harvest
+            // Record harvest with the actual collected amounts
             await fetch('/api/harvest', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -2488,8 +2511,8 @@ function MiniAppPageInner() {
                 username: userData.username,
                 address: miniWalletAddress,
                 tokenId,
-                wmonAmountWei: position.fees.token1Wei ?? '0',
-                moonAmountWei: position.fees.token0Wei ?? '0',
+                wmonAmountWei: collectedWmonWei,
+                moonAmountWei: collectedMoonWei,
                 wmonPriceUsd: wmonPrice,
                 moonPriceUsd: moonPrice
               })
