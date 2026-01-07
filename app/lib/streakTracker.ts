@@ -183,9 +183,10 @@ export async function updateStreaks(): Promise<{
   const currentSeason = await getCurrentSeason();
   const seasonId = currentSeason?.id ?? 'season-1';
 
-  // Fetch current positions - get ALL qualifying positions, not just top N
-  // This ensures smaller positions also accumulate points
-  const positions = await getTopM00nLpPositions(1000); // Get up to 1000 positions
+  // Fetch current positions - get qualifying positions
+  // Cron runs hourly so positions are picked up over time
+  // Limit to 300 to stay within function timeout
+  const positions = await getTopM00nLpPositions(300);
 
   // Load existing streak data
   const streakData = await getStreakData();

@@ -6,6 +6,10 @@ import {
 } from '@/app/lib/streakTracker';
 import { checkRateLimit, getClientIp, RATE_LIMITS } from '@/app/lib/rateLimit';
 
+// Allow up to 60 seconds for this route (Pro plan max)
+// This is needed because streak updates process many positions with on-chain calls
+export const maxDuration = 60;
+
 const FALLBACK_REBUILD_ENABLED = process.env.NODE_ENV !== 'production';
 
 // GET: Fetch the streak leaderboard (also handles Vercel cron)
