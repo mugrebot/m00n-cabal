@@ -7169,11 +7169,22 @@ Join the $m00n cabal 🌙`;
               >
                 {isQualified ? '✓ Qualified' : '⚠ Not qualified'}
               </p>
-              {harvestStats && harvestStats.totalPoints > 0 && (
-                <p className="text-[10px] text-[var(--moss-green)] mt-1">
-                  🌾 {harvestStats.totalPoints.toLocaleString()} pts
-                </p>
-              )}
+              {/* LP Points (grow over time based on position age/value) */}
+              {tokenomicsData?.userAllocation?.totalPoints !== undefined &&
+                tokenomicsData.userAllocation.totalPoints > 0 && (
+                  <p className="text-[10px] text-[var(--moss-green)] mt-1">
+                    🏆 {tokenomicsData.userAllocation.totalPoints.toLocaleString()} pts
+                  </p>
+                )}
+              {/* Show harvest points only if no LP points or as secondary */}
+              {(!tokenomicsData?.userAllocation?.totalPoints ||
+                tokenomicsData.userAllocation.totalPoints === 0) &&
+                harvestStats &&
+                harvestStats.totalPoints > 0 && (
+                  <p className="text-[10px] text-[var(--moss-green)] mt-1">
+                    🌾 {harvestStats.totalPoints.toLocaleString()} pts
+                  </p>
+                )}
             </div>
           </div>
         </div>
