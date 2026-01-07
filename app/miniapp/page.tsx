@@ -1113,9 +1113,9 @@ function MiniAppPageInner() {
   }, [userData?.fid, activeTab]);
 
   // Fetch daily check-in data - only once per session
-  // Use a ref to track if we've loaded for this fid to avoid race conditions
+  // Use refs to track state and prevent race conditions
   const checkInLoadedForFid = useRef<number | null>(null);
-  const checkInFetchInFlight = useRef(false);
+  const checkInFetchVersion = useRef(0);
 
   useEffect(() => {
     const fid = userData?.fid;
@@ -1128,15 +1128,23 @@ function MiniAppPageInner() {
     if (activeTab !== 'rewards') return;
     // Skip if already loaded for this fid (prevents refetch after collect/compound)
     if (checkInLoadedForFid.current === fid) return;
-    // Skip if currently fetching (use ref to avoid dependency issues)
-    if (checkInFetchInFlight.current) return;
 
-    checkInFetchInFlight.current = true;
+    // Increment version to invalidate any in-flight fetches
+    const fetchVersion = ++checkInFetchVersion.current;
     setCheckInStatus('loading');
 
     const loadCheckInData = async () => {
       try {
         const response = await fetch(`/api/daily-checkin?fid=${fid}`);
+        // Check if this fetch is still current (user might have tuned while we were fetching)
+        if (fetchVersion !== checkInFetchVersion.current) {
+          return; // Stale fetch, ignore
+        }
+        // Also skip if already loaded by another source (e.g., harvest/compound)
+        if (checkInLoadedForFid.current === fid) {
+          setCheckInStatus('idle');
+          return;
+        }
         if (!response.ok) {
           // API failed - set default state so UI doesn't stay stuck on loading
           setCheckInData({
@@ -1165,6 +1173,9 @@ function MiniAppPageInner() {
         checkInLoadedForFid.current = fid;
       } catch (err) {
         console.warn('Failed to load check-in data', err);
+        if (fetchVersion !== checkInFetchVersion.current) {
+          return; // Stale fetch, ignore
+        }
         // Error - set default state so UI doesn't stay stuck on loading
         setCheckInData({
           currentStreak: 0,
@@ -1178,8 +1189,9 @@ function MiniAppPageInner() {
         });
         checkInLoadedForFid.current = fid;
       } finally {
-        checkInFetchInFlight.current = false;
-        setCheckInStatus('idle');
+        if (fetchVersion === checkInFetchVersion.current) {
+          setCheckInStatus('idle');
+        }
       }
     };
     loadCheckInData();
@@ -2492,6 +2504,10 @@ function MiniAppPageInner() {
               });
               if (tuneResponse.ok) {
                 const tuneData = await tuneResponse.json();
+                // Increment version to invalidate any stale fetches
+                checkInFetchVersion.current++;
+                // Mark as loaded so useEffect doesn't refetch
+                checkInLoadedForFid.current = userData.fid;
                 setCheckInData({
                   currentStreak: tuneData.currentStreak ?? 0,
                   longestStreak: tuneData.longestStreak ?? 0,
@@ -2725,6 +2741,10 @@ function MiniAppPageInner() {
               });
               if (tuneResponse.ok) {
                 const tuneData = await tuneResponse.json();
+                // Increment version to invalidate any stale fetches
+                checkInFetchVersion.current++;
+                // Mark as loaded so useEffect doesn't refetch
+                checkInLoadedForFid.current = userData.fid;
                 setCheckInData({
                   currentStreak: tuneData.currentStreak ?? 0,
                   longestStreak: tuneData.longestStreak ?? 0,
