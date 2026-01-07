@@ -1135,9 +1135,24 @@ function MiniAppPageInner() {
       setCheckInStatus('loading');
       try {
         const response = await fetch(`/api/daily-checkin?fid=${fid}`);
-        if (!response.ok) return;
-        const data = await response.json();
         if (!cancelled) {
+          if (!response.ok) {
+            // API failed - set default state so UI doesn't stay stuck on loading
+            setCheckInData({
+              currentStreak: 0,
+              longestStreak: 0,
+              totalCheckIns: 0,
+              multiplier: 1,
+              multiplierTier: '—',
+              canCheckIn: true,
+              nextAvailableAt: undefined,
+              hoursUntilAvailable: undefined
+            });
+            checkInLoadedForFid.current = fid;
+            setCheckInStatus('idle');
+            return;
+          }
+          const data = await response.json();
           setCheckInData({
             currentStreak: data.currentStreak ?? 0,
             longestStreak: data.longestStreak ?? 0,
@@ -1153,7 +1168,21 @@ function MiniAppPageInner() {
         }
       } catch (err) {
         console.warn('Failed to load check-in data', err);
-        setCheckInStatus('idle');
+        if (!cancelled) {
+          // Error - set default state so UI doesn't stay stuck on loading
+          setCheckInData({
+            currentStreak: 0,
+            longestStreak: 0,
+            totalCheckIns: 0,
+            multiplier: 1,
+            multiplierTier: '—',
+            canCheckIn: true,
+            nextAvailableAt: undefined,
+            hoursUntilAvailable: undefined
+          });
+          checkInLoadedForFid.current = fid;
+          setCheckInStatus('idle');
+        }
       }
     };
     loadCheckInData();
