@@ -7203,86 +7203,50 @@ Join the $m00n cabal 🌙`;
             )}
           </div>
 
-          {/* Tune (auto via harvest) - Expanded Section */}
-          <div className="py-2 border-b border-white/10">
-            {/* Main row */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span>🎵</span>
-                <span className="text-sm">Tune</span>
-                {checkInData && checkInData.currentStreak > 0 && (
-                  <span className="text-[10px] text-white/50">
-                    {checkInData.currentStreak}d streak
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {checkInData === null ? (
-                  <span className="text-[10px] text-white/50">loading...</span>
-                ) : checkInData.canCheckIn ? (
-                  <button
-                    onClick={() => setActiveTab('lp')}
-                    className="px-2 py-0.5 text-[10px] text-yellow-400 hover:text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-full transition animate-pulse"
-                  >
-                    🎵 harvest to tune →
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[var(--moss-green)]/10 border border-[var(--moss-green)]/30 rounded-full">
-                    <span className="text-[var(--moss-green)] text-sm font-bold">
-                      {tuneMult}x ✓
-                    </span>
-                    <span className="text-[10px] text-[var(--moss-green)]/70">tuned!</span>
+          {/* Tune (auto via harvest) - Simplified: based on uncollected rewards */}
+          {(() => {
+            // Calculate total unclaimed USD from all positions
+            const totalUnclaimedUsd = positions.reduce((sum, pos) => {
+              return sum + (pos.fees?.unclaimedUsd ?? 0);
+            }, 0);
+            const hasRewardsToCollect = totalUnclaimedUsd > 0.5;
+
+            return (
+              <div className="py-2 border-b border-white/10">
+                {/* Main row */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span>🎵</span>
+                    <span className="text-sm">Tune</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {hasRewardsToCollect ? (
+                      <button
+                        onClick={() => setActiveTab('lp')}
+                        className="px-2 py-0.5 text-[10px] text-yellow-400 hover:text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-full transition animate-pulse"
+                      >
+                        🎵 harvest to tune →
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-1.5 px-2 py-0.5 bg-[var(--moss-green)]/10 border border-[var(--moss-green)]/30 rounded-full">
+                        <span className="text-[var(--moss-green)] text-sm font-bold">
+                          {tuneMult}x ✓
+                        </span>
+                        <span className="text-[10px] text-[var(--moss-green)]/70">tuned!</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Show unclaimed amount if there are rewards */}
+                {hasRewardsToCollect && (
+                  <div className="mt-1.5 text-[10px] text-white/40">
+                    ~${totalUnclaimedUsd.toFixed(2)} unclaimed rewards
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* Tier & Stats row */}
-            {checkInData && (
-              <div className="mt-1.5 flex items-center justify-between text-[10px]">
-                {/* Tier name */}
-                <div className="flex items-center gap-2">
-                  {checkInData.multiplierTier && checkInData.multiplierTier !== '—' && (
-                    <span className="text-white/70">{checkInData.multiplierTier}</span>
-                  )}
-                  {checkInData.longestStreak && checkInData.longestStreak > 0 && (
-                    <span className="text-white/40">best: {checkInData.longestStreak}d</span>
-                  )}
-                  {checkInData.totalCheckIns && checkInData.totalCheckIns > 0 && (
-                    <span className="text-white/40">total: {checkInData.totalCheckIns}</span>
-                  )}
-                </div>
-
-                {/* Countdown when already tuned */}
-                {!checkInData.canCheckIn && checkInData.hoursUntilAvailable && (
-                  <span className="text-white/40">next in {checkInData.hoursUntilAvailable}h</span>
-                )}
-              </div>
-            )}
-
-            {/* Streak progress bar */}
-            {checkInData && checkInData.currentStreak > 0 && (
-              <div className="mt-2">
-                <div className="flex items-center gap-1 text-[8px] text-white/40 mb-1">
-                  <span>1d</span>
-                  <div className="flex-1" />
-                  <span>7d</span>
-                  <div className="flex-1" />
-                  <span>14d</span>
-                  <div className="flex-1" />
-                  <span>30d 🌙</span>
-                </div>
-                <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-[var(--monad-purple)] to-[var(--moss-green)] transition-all duration-500"
-                    style={{
-                      width: `${Math.min(100, (checkInData.currentStreak / 30) * 100)}%`
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
+            );
+          })()}
 
           {/* Yap */}
           <div className="flex items-center justify-between py-1.5 border-b border-white/10">
