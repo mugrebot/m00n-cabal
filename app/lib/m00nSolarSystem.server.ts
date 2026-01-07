@@ -34,7 +34,7 @@ const HOOK_ADDRESS = '0x94f802a9efe4dd542fdbd77a25d9e69a6dc828cc';
 const FEE = 8_388_608;
 const TICK_SPACING = 200;
 const POSITION_SAMPLE_SIZE = Number(
-  process.env.M00N_SOLAR_POSITION_SAMPLE_SIZE ?? process.env.M00N_SOLAR_POOL_SAMPLE_SIZE ?? 100
+  process.env.M00N_SOLAR_POSITION_SAMPLE_SIZE ?? process.env.M00N_SOLAR_POOL_SAMPLE_SIZE ?? 50
 );
 const POSITION_PAGE_SIZE = Number(process.env.M00N_SOLAR_POSITION_PAGE_SIZE ?? 100);
 const LABEL_OWNER_LOOKUP_LIMIT = Number(process.env.M00N_SOLAR_LABEL_OWNER_LIMIT ?? 50);
@@ -325,16 +325,21 @@ export async function getTopM00nLpPositions(limit = MAX_SOLAR_POSITIONS): Promis
     }
   }
 
-  const ownerLookupTargets = buildOwnerLookupTargets(labeledAddresses, ownerMap);
-  for (const owner of ownerLookupTargets) {
-    try {
-      const ids = await getPositionIds(owner as Address);
-      ids.forEach((id) => {
-        tokenIdSet.add(id);
-        ownerMap.set(id.toString(), owner);
-      });
-    } catch (error) {
-      console.warn('[m00nSolarSystem] Failed to load position ids for owner', owner, error);
+  // Skip expensive per-owner on-chain lookups to stay within timeout
+  // Recent positions from subgraph + seed positions are sufficient
+  // Owner lookup is only done for small limits (solar system display)
+  if (limit <= 20) {
+    const ownerLookupTargets = buildOwnerLookupTargets(labeledAddresses, ownerMap);
+    for (const owner of ownerLookupTargets) {
+      try {
+        const ids = await getPositionIds(owner as Address);
+        ids.forEach((id) => {
+          tokenIdSet.add(id);
+          ownerMap.set(id.toString(), owner);
+        });
+      } catch (error) {
+        console.warn('[m00nSolarSystem] Failed to load position ids for owner', owner, error);
+      }
     }
   }
 

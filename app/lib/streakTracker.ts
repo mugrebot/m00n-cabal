@@ -184,7 +184,8 @@ export async function updateStreaks(): Promise<{
   const seasonId = currentSeason?.id ?? 'season-1';
 
   // Fetch current positions - limit to fit within Hobby plan 10s timeout
-  const positions = await getTopM00nLpPositions(150);
+  // Process fewer positions per run; existing streaks persist in KV
+  const positions = await getTopM00nLpPositions(50);
 
   // Load existing streak data
   const streakData = await getStreakData();
