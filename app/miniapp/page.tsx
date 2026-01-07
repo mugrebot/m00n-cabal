@@ -6763,18 +6763,30 @@ Join the $m00n cabal 🌙`;
     const moonProgress = Math.min((moonBalance / requiredMoonBalance) * 100, 100);
     const hasMoonBalance = moonBalance >= requiredMoonBalance;
 
-    // Calculate LP value
+    // Calculate LP value (both WMON and m00n)
+    const qualWmonPrice = lpGateState.poolWmonUsdPrice ?? 0;
+    const qualCurrentTick = lpGateState.poolCurrentTick ?? 0;
+    const qualMoonPriceInWmon = qualCurrentTick ? Math.pow(1.0001, qualCurrentTick) : 0;
+    const qualMoonPriceUsd = qualMoonPriceInWmon * qualWmonPrice;
+
     const totalLpValueUsd = positions.reduce((sum, pos) => {
-      const token0Value =
-        pos.token0?.amountFormatted && lpGateState.poolWmonUsdPrice
-          ? Number(pos.token0.amountFormatted) *
-            (pos.token0.symbol === 'WMON' ? lpGateState.poolWmonUsdPrice : 0)
-          : 0;
-      const token1Value =
-        pos.token1?.amountFormatted && lpGateState.poolWmonUsdPrice
-          ? Number(pos.token1.amountFormatted) *
-            (pos.token1.symbol === 'WMON' ? lpGateState.poolWmonUsdPrice : 0)
-          : 0;
+      // token0 = m00n, token1 = WMON
+      const token0Value = pos.token0?.amountFormatted
+        ? Number(pos.token0.amountFormatted) *
+          (pos.token0.symbol === 'WMON'
+            ? qualWmonPrice
+            : pos.token0.symbol === 'm00n'
+              ? qualMoonPriceUsd
+              : 0)
+        : 0;
+      const token1Value = pos.token1?.amountFormatted
+        ? Number(pos.token1.amountFormatted) *
+          (pos.token1.symbol === 'WMON'
+            ? qualWmonPrice
+            : pos.token1.symbol === 'm00n'
+              ? qualMoonPriceUsd
+              : 0)
+        : 0;
       return sum + token0Value + token1Value;
     }, 0);
     const requiredLpValue = 5;
@@ -7035,17 +7047,26 @@ Join the $m00n cabal 🌙`;
       return Math.max(oldest, ageDays);
     }, 0);
 
-    // Calculate total LP value from token amounts
+    // Calculate total LP value from token amounts (both WMON and m00n)
     const wmonPrice = lpGateState.poolWmonUsdPrice ?? 0;
+    const currentTick = lpGateState.poolCurrentTick ?? 0;
+    const moonPriceInWmon = currentTick ? Math.pow(1.0001, currentTick) : 0;
+    const moonPriceUsd = moonPriceInWmon * wmonPrice;
+
     const totalLpValue = positions.reduce((sum, pos) => {
+      // token0 = m00n, token1 = WMON
       const t0Val =
-        pos.token0?.amountFormatted && pos.token0.symbol === 'WMON'
-          ? Number(pos.token0.amountFormatted) * wmonPrice
-          : 0;
+        pos.token0?.amountFormatted && pos.token0.symbol === 'm00n'
+          ? Number(pos.token0.amountFormatted) * moonPriceUsd
+          : pos.token0?.amountFormatted && pos.token0.symbol === 'WMON'
+            ? Number(pos.token0.amountFormatted) * wmonPrice
+            : 0;
       const t1Val =
         pos.token1?.amountFormatted && pos.token1.symbol === 'WMON'
           ? Number(pos.token1.amountFormatted) * wmonPrice
-          : 0;
+          : pos.token1?.amountFormatted && pos.token1.symbol === 'm00n'
+            ? Number(pos.token1.amountFormatted) * moonPriceUsd
+            : 0;
       return sum + t0Val + t1Val;
     }, 0);
 
@@ -7153,7 +7174,9 @@ Join the $m00n cabal 🌙`;
                 )}
               </div>
               <div className="flex items-center gap-2">
-                {checkInData?.canCheckIn ? (
+                {checkInData === null ? (
+                  <span className="text-[10px] text-white/50">loading...</span>
+                ) : checkInData.canCheckIn ? (
                   <button
                     onClick={() => setActiveTab('lp')}
                     className="px-2 py-0.5 text-[10px] text-yellow-400 hover:text-yellow-300 bg-yellow-400/10 border border-yellow-400/30 rounded-full transition animate-pulse"

@@ -135,6 +135,16 @@ export async function GET(request: NextRequest) {
     const wmonUsdPrice = await getWmonUsdPriceFromSubgraph();
     const moonPriceUsd = wmonUsdPrice !== null ? tickToPrice(poolState.tick) * wmonUsdPrice : null;
 
+    // Debug logging for price sanity check
+    console.log('[LP_FEES] Price debug:', {
+      poolTick: poolState.tick,
+      tickPriceRatio: tickToPrice(poolState.tick),
+      wmonUsdPrice,
+      moonPriceUsd,
+      // Sanity check: if WMON is ~$18, m00n should be ~$0.00025
+      expectedMoonPriceIfWmon18: tickToPrice(poolState.tick) * 18
+    });
+
     const positions: FeeEntry[] = [];
 
     for (const details of detailsList) {
