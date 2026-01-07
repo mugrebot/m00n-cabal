@@ -204,7 +204,12 @@ const POSITION_MANAGER_ABI = [
 
 const GET_POSITIONS_QUERY = gql`
   query GetPositions($owner: String!) {
-    positions(where: { owner: $owner }) {
+    positions(
+      where: { owner: $owner }
+      first: 1000
+      orderBy: createdAtTimestamp
+      orderDirection: desc
+    ) {
       tokenId
       id
       owner
@@ -242,6 +247,8 @@ export async function getPositionIdsWithTimestamps(
     const positions = data.positions ?? [];
     const result: PositionIdWithTimestamp[] = [];
 
+    console.log(`[LP_POSITIONS] Subgraph returned ${positions.length} positions for ${ownerLower}`);
+
     for (const p of positions) {
       try {
         if (!p.tokenId) continue;
@@ -254,9 +261,10 @@ export async function getPositionIdsWithTimestamps(
       }
     }
 
+    console.log(`[LP_POSITIONS] Parsed ${result.length} valid positions`);
     return result;
   } catch (error) {
-    console.error('Failed to fetch positions from Monad Uniswap v4 subgraph', error);
+    console.error('[LP_POSITIONS] Failed to fetch positions from Monad Uniswap v4 subgraph', error);
     return [];
   }
 }
@@ -345,6 +353,7 @@ export async function getPositionDetails(tokenId: bigint): Promise<PositionDetai
 
 /**
  * Fetch details for many LP NFTs in parallel.
+ * Errors for individual positions are logged but don't break the batch.
  */
 export async function getManyPositionDetails(tokenIds: bigint[]): Promise<PositionDetails[]> {
   if (tokenIds.length === 0) return [];
@@ -358,8 +367,13 @@ export async function getManyPositionDetails(tokenIds: bigint[]): Promise<Positi
     if (i > 0 && delayMs > 0) {
       await sleep(delayMs);
     }
-    const detail = await getPositionDetails(tokenIds[i]);
-    details.push(detail);
+    try {
+      const detail = await getPositionDetails(tokenIds[i]);
+      details.push(detail);
+    } catch (err) {
+      // Log error but continue processing other positions
+      console.warn(`Failed to get details for position ${tokenIds[i].toString()}:`, err);
+    }
   }
 
   return details;
@@ -739,13 +753,18 @@ export async function enrichManyPositionsWithAmounts(
   const poolStateCache = new Map<string, { sqrtPriceX96: bigint; tick: number }>();
 
   for (const position of positions) {
-    const poolId = getPoolIdFromKey(position.poolKey);
-    let poolState = poolStateCache.get(poolId);
-    if (!poolState) {
-      poolState = await getCurrentPoolState(position.poolKey);
-      poolStateCache.set(poolId, poolState);
+    try {
+      const poolId = getPoolIdFromKey(position.poolKey);
+      let poolState = poolStateCache.get(poolId);
+      if (!poolState) {
+        poolState = await getCurrentPoolState(position.poolKey);
+        poolStateCache.set(poolId, poolState);
+      }
+      results.push(buildPositionWithPoolState(position, poolState));
+    } catch (err) {
+      // Log error but continue processing other positions
+      console.warn(`Failed to enrich position ${position.tokenId.toString()}:`, err);
     }
-    results.push(buildPositionWithPoolState(position, poolState));
   }
 
   return results;
